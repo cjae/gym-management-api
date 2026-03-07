@@ -5,8 +5,10 @@ import {
   IsInt,
   Min,
   IsBoolean,
+  IsEnum,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { BillingInterval } from '@prisma/client';
 
 export class UpdatePlanDto {
   @ApiPropertyOptional({ example: 'Monthly Plan' })
@@ -20,11 +22,10 @@ export class UpdatePlanDto {
   @Min(0)
   price?: number;
 
-  @ApiPropertyOptional({ example: 30 })
+  @ApiPropertyOptional({ enum: BillingInterval, example: 'MONTHLY' })
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  durationDays?: number;
+  @IsEnum(BillingInterval)
+  billingInterval?: BillingInterval;
 
   @ApiPropertyOptional({ example: 'Full access for 30 days' })
   @IsOptional()
