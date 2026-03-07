@@ -18,7 +18,8 @@ export class EmailService {
 
   constructor(private readonly configService: ConfigService) {
     this.mailConfig = this.configService.get<MailConfig>(getMailConfigName())!;
-    this.adminUrl = this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
+    this.adminUrl =
+      this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
 
     if (this.mailConfig.enabled) {
       const mailgun = new Mailgun(FormData);
@@ -51,14 +52,23 @@ export class EmailService {
       return this.templates.get(templateName)!;
     }
 
-    const templatePath = path.join(__dirname, 'templates', `${templateName}.hbs`);
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      `${templateName}.hbs`,
+    );
     const source = fs.readFileSync(templatePath, 'utf-8');
     const compiled = Handlebars.compile(source);
     this.templates.set(templateName, compiled);
     return compiled;
   }
 
-  async sendEmail(to: string, subject: string, templateName: string, context: Record<string, any>): Promise<void> {
+  async sendEmail(
+    to: string,
+    subject: string,
+    templateName: string,
+    context: Record<string, any>,
+  ): Promise<void> {
     const template = this.getTemplate(templateName);
     const html = template(context);
 
@@ -78,12 +88,78 @@ export class EmailService {
     this.logger.log(`Email sent to ${to} | Subject: ${subject}`);
   }
 
-  async sendPasswordResetEmail(to: string, firstName: string, resetToken: string): Promise<void> {
+  async sendPasswordResetEmail(
+    to: string,
+    firstName: string,
+    resetToken: string,
+  ): Promise<void> {
     const resetUrl = `${this.adminUrl}/reset-password?token=${resetToken}`;
 
     await this.sendEmail(to, 'Reset Your Password', 'password-reset', {
       firstName,
       resetUrl,
     });
+  }
+
+  async sendSubscriptionReminderEmail(
+    to: string,
+    firstName: string,
+    planName: string,
+    amount: number,
+    daysUntil: number,
+    paymentUrl: string,
+  ): Promise<void> {
+    await this.sendEmail(
+      to,
+      `Your ${planName} subscription renews soon`,
+      'subscription-reminder',
+      {
+        firstName,
+        planName,
+        amount,
+        daysUntil,
+        isDueToday: daysUntil === 0,
+        isSingleDay: daysUntil === 1,
+        paymentUrl,
+      },
+    );
+  }
+
+  async sendSubscriptionExpiredEmail(
+    to: string,
+    firstName: string,
+    planName: string,
+    paymentUrl: string,
+  ): Promise<void> {
+    await this.sendEmail(
+      to,
+      `Your ${planName} subscription has expired`,
+      'subscription-expired',
+      {
+        firstName,
+        planName,
+        paymentUrl,
+      },
+    );
+  }
+
+  async sendCardPaymentFailedEmail(
+    to: string,
+    firstName: string,
+    planName: string,
+    amount: number,
+    paymentUrl: string,
+  ): Promise<void> {
+    await this.sendEmail(
+      to,
+      'Payment failed - action required',
+      'card-payment-failed',
+      {
+        firstName,
+        planName,
+        amount,
+        paymentUrl,
+      },
+    );
   }
 }

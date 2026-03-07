@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
+import { getNextBillingDate } from '../common/utils/billing.util';
 
 @Injectable()
 export class SubscriptionsService {
@@ -22,8 +23,7 @@ export class SubscriptionsService {
     }
 
     const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + plan.durationDays);
+    const endDate = getNextBillingDate(startDate, plan.billingInterval);
 
     return this.prisma.memberSubscription.create({
       data: {
@@ -31,6 +31,8 @@ export class SubscriptionsService {
         planId: dto.planId,
         startDate,
         endDate,
+        paymentMethod: dto.paymentMethod,
+        nextBillingDate: endDate,
         members: {
           create: {
             memberId,
@@ -76,9 +78,7 @@ export class SubscriptionsService {
       where: { email: memberEmail },
     });
     if (!user) {
-      throw new NotFoundException(
-        `User with email ${memberEmail} not found`,
-      );
+      throw new NotFoundException(`User with email ${memberEmail} not found`);
     }
 
     return this.prisma.subscriptionMember.create({
@@ -104,7 +104,7 @@ export class SubscriptionsService {
   }
 
   async findByMember(memberId: string) {
-    return this.prisma.memberSubscription.findMany({
+    const subscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         members: {
           some: { memberId },
@@ -126,10 +126,11 @@ export class SubscriptionsService {
         },
       },
     });
+    return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
   async findAll() {
-    return this.prisma.memberSubscription.findMany({
+    const subscriptions = await this.prisma.memberSubscription.findMany({
       include: {
         primaryMember: {
           select: {
@@ -154,6 +155,7 @@ export class SubscriptionsService {
         },
       },
     });
+    return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
   async cancel(subscriptionId: string, requesterId: string) {
@@ -175,7 +177,7 @@ export class SubscriptionsService {
 
     return this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
-      data: { status: 'CANCELLED' },
+      data: { autoRenew: false },
     });
   }
 }

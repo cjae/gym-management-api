@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { AppController } from './app.controller';
@@ -17,11 +18,17 @@ import { LegalModule } from './legal/legal.module';
 import { SalaryModule } from './salary/salary.module';
 import { SentryUserModule } from './sentry/sentry.module';
 import { EmailModule } from './email/email.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { BillingModule } from './billing/billing.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 
 @Module({
   imports: [
     ConfigLoaderModule,
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 30 }],
+    }),
+    ScheduleModule.forRoot(),
     SentryModule.forRoot(),
     SentryUserModule,
     EmailModule,
@@ -36,12 +43,17 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
     TrainersModule,
     LegalModule,
     SalaryModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [
     {
       provide: APP_FILTER,
       useClass: SentryGlobalFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
     AppService,
   ],

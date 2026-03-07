@@ -7,8 +7,15 @@ describe('EmailService', () => {
 
   const mockConfigService = {
     get: jest.fn((key: string) => {
-      if (key === 'mail') return { apiKey: '', domain: '', from: 'test@test.com', enabled: false };
-      if (key === 'app') return { port: 3000, adminUrl: 'http://localhost:3001' };
+      if (key === 'mail')
+        return {
+          apiKey: '',
+          domain: '',
+          from: 'test@test.com',
+          enabled: false,
+        };
+      if (key === 'app')
+        return { port: 3000, adminUrl: 'http://localhost:3001' };
       return null;
     }),
   };
@@ -29,10 +36,15 @@ describe('EmailService', () => {
       const logSpy = jest.spyOn(service['logger'], 'log').mockImplementation();
       jest.spyOn(service['logger'], 'debug').mockImplementation();
 
-      await service.sendEmail('test@test.com', 'Test Subject', 'password-reset', {
-        firstName: 'John',
-        resetUrl: 'http://localhost:3001/reset-password?token=abc',
-      });
+      await service.sendEmail(
+        'test@test.com',
+        'Test Subject',
+        'password-reset',
+        {
+          firstName: 'John',
+          resetUrl: 'http://localhost:3001/reset-password?token=abc',
+        },
+      );
 
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('test@test.com'),

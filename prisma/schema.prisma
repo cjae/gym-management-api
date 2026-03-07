@@ -32,6 +32,20 @@ enum PaymentStatus {
   FAILED
 }
 
+enum BillingInterval {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  BI_ANNUALLY
+  ANNUALLY
+}
+
+enum PaymentMethod {
+  CARD
+  MPESA
+}
+
 enum SalaryStatus {
   PENDING
   PAID
@@ -65,7 +79,7 @@ model SubscriptionPlan {
   name         String
   price        Float
   currency     String   @default("KES")
-  durationDays Int
+  billingInterval BillingInterval @default(MONTHLY)
   description  String?
   maxMembers   Int      @default(1)
   isActive     Boolean  @default(true)
@@ -81,15 +95,18 @@ model MemberSubscription {
   planId            String
   startDate         DateTime
   endDate           DateTime
-  status            SubscriptionStatus @default(ACTIVE)
-  paystackReference String?
-  paymentStatus     PaymentStatus      @default(PENDING)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  status                    SubscriptionStatus @default(ACTIVE)
+  paymentMethod             PaymentMethod @default(MPESA)
+  paystackAuthorizationCode String?
+  autoRenew                 Boolean       @default(true)
+  nextBillingDate           DateTime?
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
 
   primaryMember User               @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
   plan          SubscriptionPlan   @relation(fields: [planId], references: [id])
   members       SubscriptionMember[]
+  payments      Payment[]
 }
 
 model SubscriptionMember {
@@ -220,6 +237,21 @@ model InvalidatedToken {
   jti       String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  subscriptionId    String
+  amount            Float
+  currency          String        @default("KES")
+  status            PaymentStatus @default(PENDING)
+  paymentMethod     PaymentMethod
+  paystackReference String?       @unique
+  failureReason     String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  subscription MemberSubscription @relation(fields: [subscriptionId], references: [id])
 }
 
 model GymQrCode {

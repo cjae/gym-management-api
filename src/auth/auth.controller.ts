@@ -7,6 +7,7 @@ import {
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -26,6 +27,7 @@ export class AuthController {
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
   @ApiConflictResponse({ description: 'Email already registered' })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -34,6 +36,7 @@ export class AuthController {
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -41,6 +44,7 @@ export class AuthController {
   @Post('forgot-password')
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
@@ -49,6 +53,7 @@ export class AuthController {
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
   @ApiBadRequestResponse({ description: 'Invalid or expired reset token' })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }

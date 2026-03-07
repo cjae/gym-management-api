@@ -4,6 +4,16 @@ import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 
+const safeUserSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  phone: true,
+  role: true,
+  status: true,
+};
+
 @Injectable()
 export class TrainersService {
   constructor(private prisma: PrismaService) {}
@@ -16,21 +26,27 @@ export class TrainersService {
         bio: dto.bio,
         availability: dto.availability,
       },
-      include: { user: true },
+      include: { user: { select: safeUserSelect } },
     });
   }
 
-  async findAll() {
-    return this.prisma.trainerProfile.findMany({
-      include: { user: true, schedules: true },
-    });
+  async findAll(page: number = 1, limit: number = 20) {
+    const [data, total] = await Promise.all([
+      this.prisma.trainerProfile.findMany({
+        include: { user: { select: safeUserSelect }, schedules: true },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.trainerProfile.count(),
+    ]);
+    return { data, total, page, limit };
   }
 
   async findOne(id: string) {
     return this.prisma.trainerProfile.findUnique({
       where: { id },
       include: {
-        user: true,
+        user: { select: safeUserSelect },
         schedules: true,
         assignments: {
           include: {
@@ -80,7 +96,7 @@ export class TrainersService {
       where: { memberId, endDate: null },
       include: {
         trainer: {
-          include: { user: true, schedules: true },
+          include: { user: { select: safeUserSelect }, schedules: true },
         },
       },
     });

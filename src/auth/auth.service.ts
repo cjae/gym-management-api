@@ -5,15 +5,20 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import {
+  AuthConfig,
+  getAuthConfigName,
+} from '../common/config/auth.config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, createHash } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +26,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -69,32 +75,48 @@ export class AuthService {
     });
 
     // Always return success to prevent email enumeration
-    if (!user) return { message: 'If an account with that email exists, a reset link has been sent.' };
+    if (!user)
+      return {
+        message:
+          'If an account with that email exists, a reset link has been sent.',
+      };
 
     const token = randomBytes(32).toString('hex');
+    const hashedToken = this.hashToken(token);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await this.prisma.passwordResetToken.create({
       data: {
         userId: user.id,
-        token,
+        token: hashedToken,
         expiresAt,
       },
     });
 
-    await this.emailService.sendPasswordResetEmail(user.email, user.firstName, token);
+    await this.emailService.sendPasswordResetEmail(
+      user.email,
+      user.firstName,
+      token,
+    );
 
-    return { message: 'If an account with that email exists, a reset link has been sent.' };
+    return {
+      message:
+        'If an account with that email exists, a reset link has been sent.',
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
+    const hashedToken = this.hashToken(dto.token);
     const resetToken = await this.prisma.passwordResetToken.findUnique({
-      where: { token: dto.token },
+      where: { token: hashedToken },
     });
 
-    if (!resetToken) throw new BadRequestException('Invalid or expired reset token');
-    if (resetToken.usedAt) throw new BadRequestException('Invalid or expired reset token');
-    if (resetToken.expiresAt < new Date()) throw new BadRequestException('Invalid or expired reset token');
+    if (!resetToken)
+      throw new BadRequestException('Invalid or expired reset token');
+    if (resetToken.usedAt)
+      throw new BadRequestException('Invalid or expired reset token');
+    if (resetToken.expiresAt < new Date())
+      throw new BadRequestException('Invalid or expired reset token');
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
 
@@ -118,8 +140,12 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('User not found');
 
-    const passwordValid = await bcrypt.compare(dto.currentPassword, user.password);
-    if (!passwordValid) throw new UnauthorizedException('Current password is incorrect');
+    const passwordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.password,
+    );
+    if (!passwordValid)
+      throw new UnauthorizedException('Current password is incorrect');
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({
@@ -142,12 +168,24 @@ export class AuthService {
     return { message: 'Logged out successfully.' };
   }
 
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   private async generateTokens(userId: string, email: string, role: string) {
+    const authConfig =
+      this.configService.get<AuthConfig>(getAuthConfigName())!;
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync({ sub: userId, email, role, jti: accessJti }, { expiresIn: '15m' }),
-      this.jwtService.signAsync({ sub: userId, email, role, jti: refreshJti }, { expiresIn: '7d' }),
+      this.jwtService.signAsync(
+        { sub: userId, email, role, jti: accessJti },
+        { expiresIn: '15m' },
+      ),
+      this.jwtService.signAsync(
+        { sub: userId, email, role, jti: refreshJti },
+        { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
+      ),
     ]);
     return { accessToken, refreshToken };
   }

@@ -16,10 +16,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: authConfig.jwtSecret,
+      algorithms: ['HS256'],
     });
   }
 
-  async validate(payload: { sub: string; email: string; role: string; jti: string }) {
+  async validate(payload: {
+    sub: string;
+    email: string;
+    role: string;
+    jti: string;
+  }) {
     const invalidated = await this.prisma.invalidatedToken.findUnique({
       where: { jti: payload.jti },
     });
@@ -28,6 +34,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token has been invalidated');
     }
 
-    return { id: payload.sub, email: payload.email, role: payload.role, jti: payload.jti };
+    return {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      jti: payload.jti,
+    };
   }
 }

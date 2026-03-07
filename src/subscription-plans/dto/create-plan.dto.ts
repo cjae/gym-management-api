@@ -1,5 +1,13 @@
-import { IsString, IsNumber, IsOptional, IsInt, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsInt,
+  Min,
+  IsEnum,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BillingInterval } from '@prisma/client';
 
 export class CreatePlanDto {
   @ApiProperty({ example: 'Monthly Plan' })
@@ -11,12 +19,11 @@ export class CreatePlanDto {
   @Min(0)
   price: number;
 
-  @ApiProperty({ example: 30 })
-  @IsInt()
-  @Min(1)
-  durationDays: number;
+  @ApiProperty({ enum: BillingInterval, example: 'MONTHLY' })
+  @IsEnum(BillingInterval)
+  billingInterval: BillingInterval;
 
-  @ApiPropertyOptional({ example: 'Full access for 30 days' })
+  @ApiPropertyOptional({ example: 'Full access monthly subscription' })
   @IsOptional()
   @IsString()
   description?: string;

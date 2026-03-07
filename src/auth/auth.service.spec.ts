@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import {
   ConflictException,
   UnauthorizedException,
@@ -38,6 +39,15 @@ describe('AuthService', () => {
     sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockConfigService = {
+    get: jest.fn().mockReturnValue({
+      jwtSecret: 'test-secret',
+      jwtRefreshSecret: 'test-refresh-secret',
+      basicAuthUser: '',
+      basicAuthPassword: '',
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -45,6 +55,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: JwtService, useValue: mockJwtService },
         { provide: EmailService, useValue: mockEmailService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -132,7 +143,11 @@ describe('AuthService', () => {
       const result = await service.forgotPassword({ email: 'test@test.com' });
 
       expect(result.message).toContain('reset link has been sent');
-      expect(mockPrisma.passwordResetToken.create).toHaveBeenCalled();
+      expect(mockPrisma.passwordResetToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          token: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      });
       expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledWith(
         'test@test.com',
         'Test',

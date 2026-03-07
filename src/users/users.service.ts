@@ -18,8 +18,17 @@ const safeUserSelect = {
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    return this.prisma.user.findMany({ select: safeUserSelect });
+  async findAll(page: number = 1, limit: number = 20) {
+    const [data, total] = await Promise.all([
+      this.prisma.user.findMany({
+        select: safeUserSelect,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count(),
+    ]);
+    return { data, total, page, limit };
   }
 
   async findOne(id: string) {

@@ -25,6 +25,7 @@ describe('UsersService', () => {
       findUnique: jest.fn().mockResolvedValue(mockUser),
       update: jest.fn().mockResolvedValue(mockUser),
       delete: jest.fn().mockResolvedValue(mockUser),
+      count: jest.fn().mockResolvedValue(1),
     },
   };
 
@@ -45,10 +46,15 @@ describe('UsersService', () => {
   });
 
   describe('findAll', () => {
-    it('should return an array of users', async () => {
-      const result = await service.findAll();
-      expect(result).toEqual([mockUser]);
-      expect(prisma.user.findMany).toHaveBeenCalled();
+    it('should return paginated users', async () => {
+      const result = await service.findAll(1, 20);
+      expect(result).toEqual({ data: [mockUser], total: 1, page: 1, limit: 20 });
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 0,
+          take: 20,
+        }),
+      );
     });
   });
 

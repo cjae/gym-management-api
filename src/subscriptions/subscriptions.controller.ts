@@ -67,10 +67,7 @@ export class SubscriptionsController {
   @Patch(':id/cancel')
   @ApiNotFoundResponse({ description: 'Subscription not found' })
   @ApiForbiddenResponse({ description: 'Not subscription owner' })
-  cancel(
-    @Param('id') id: string,
-    @CurrentUser('id') requesterId: string,
-  ) {
+  cancel(@Param('id') id: string, @CurrentUser('id') requesterId: string) {
     return this.subscriptionsService.cancel(id, requesterId);
   }
 }

@@ -24,9 +24,11 @@ describe('SalaryService', () => {
     staffSalaryRecord: {
       create: jest.fn().mockResolvedValue(mockRecord),
       findMany: jest.fn().mockResolvedValue([mockRecord]),
-      update: jest
-        .fn()
-        .mockResolvedValue({ ...mockRecord, status: 'PAID', paidAt: new Date() }),
+      update: jest.fn().mockResolvedValue({
+        ...mockRecord,
+        status: 'PAID',
+        paidAt: new Date(),
+      }),
       delete: jest.fn().mockResolvedValue(mockRecord),
     },
   };

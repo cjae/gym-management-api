@@ -39,6 +39,7 @@ describe('TrainersService', () => {
       create: jest.fn().mockResolvedValue(mockProfile),
       findMany: jest.fn().mockResolvedValue([mockProfile]),
       findUnique: jest.fn().mockResolvedValue(mockProfile),
+      count: jest.fn().mockResolvedValue(1),
     },
     trainerSchedule: {
       create: jest.fn().mockResolvedValue(mockSchedule),
@@ -79,9 +80,15 @@ describe('TrainersService', () => {
   });
 
   describe('findAll', () => {
-    it('should return all trainer profiles', async () => {
-      const result = await service.findAll();
-      expect(result).toEqual([mockProfile]);
+    it('should return paginated trainer profiles', async () => {
+      const result = await service.findAll(1, 20);
+      expect(result).toEqual({ data: [mockProfile], total: 1, page: 1, limit: 20 });
+      expect(prisma.trainerProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 0,
+          take: 20,
+        }),
+      );
     });
   });
 

@@ -6,7 +6,10 @@ export class CreateScheduleDto {
   @IsString()
   title: string;
 
-  @ApiProperty({ example: 1, description: 'Day of week (0 = Sunday, 6 = Saturday)' })
+  @ApiProperty({
+    example: 1,
+    description: 'Day of week (0 = Sunday, 6 = Saturday)',
+  })
   @IsInt()
   @Min(0)
   @Max(6)

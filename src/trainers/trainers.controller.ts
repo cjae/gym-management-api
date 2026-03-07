@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Param,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
@@ -15,6 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Trainers')
 @ApiBearerAuth()
@@ -31,8 +25,8 @@ export class TrainersController {
   }
 
   @Get()
-  findAll() {
-    return this.trainersService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.trainersService.findAll(query.page, query.limit);
   }
 
   @Get('my/trainer')
