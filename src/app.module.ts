@@ -20,6 +20,7 @@ import { SentryUserModule } from './sentry/sentry.module';
 import { EmailModule } from './email/email.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BillingModule } from './billing/billing.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 
 @Module({
@@ -44,6 +45,7 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
     LegalModule,
     SalaryModule,
     BillingModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
