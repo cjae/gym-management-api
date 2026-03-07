@@ -145,28 +145,37 @@ A full security audit was conducted. The following **critical** and **high** fin
 
 ## What's Remaining
 
-### Security — Remaining Items
+### Security Audit Tracker
 
-**High priority (should fix before production):**
-- Hash password reset tokens in database (currently stored plaintext)
-- Use separate JWT secret for refresh tokens (`JWT_REFRESH_SECRET` is defined but unused)
-- Encrypt `paystackAuthorizationCode` at rest (currently plaintext in DB)
-- Add request body size limits in `main.ts`
-- Add pagination to `findAll` endpoints (users, trainers, legal, plans)
-
-**Medium priority:**
-- Invalidate all sessions on password change (currently tokens remain valid until expiry)
-- Protect Swagger docs in production (currently accessible without auth at `/api/docs`)
-- Add CSRF protection for state-changing endpoints
-- Add cleanup cron for expired `InvalidatedToken` and `PasswordResetToken` records
-- Billing charges `plan.price` — should store agreed price on subscription to prevent mid-cycle price changes
-
-**Low priority:**
-- Strengthen password requirements (currently only `MinLength(8)`, no complexity rules)
-- Normalize email addresses (case-insensitive comparison)
-- Reduce Sentry sample rates for production
-- Add audit logging for sensitive operations
-- Mask reset tokens in dev console logs
+| # | Priority | Item | Status | Notes |
+|---|----------|------|--------|-------|
+| 1 | Critical | Webhook signature uses raw body | Done | Phase 1 — HMAC SHA-512 on raw Buffer |
+| 2 | Critical | Webhook replay protection | Done | Phase 1 — `@unique` on `paystackReference` |
+| 3 | Critical | Role escalation via UpdateUserDto | Done | Phase 1 — `role` field stripped |
+| 4 | Critical | `paystackAuthorizationCode` in API responses | Done | Phase 1 — stripped via destructuring |
+| 5 | Critical | Password hash leak via trainer endpoints | Done | Phase 1 — `safeUserSelect` |
+| 6 | Critical | IDOR on payment initialization | Done | Phase 1 — ownership check |
+| 7 | Critical | Empty PAYSTACK_SECRET_KEY allowed | Done | Phase 1 — throws at startup |
+| 8 | High | Rate limiting | Done | Phase 1 — global 30/min, auth 3-10/min |
+| 9 | High | Security headers (helmet) | Done | Phase 1 — HSTS, X-Frame-Options, etc. |
+| 10 | High | JWT algorithm pinned to HS256 | Done | Phase 1 — prevents algorithm confusion |
+| 11 | High | Unbounded string fields in DTOs | Done | Phase 1 — `@MaxLength` on all fields |
+| 12 | High | Silent error in chargeAuthorization | Done | Phase 1 — error logging added |
+| 13 | High | Password reset tokens stored plaintext | Done | Phase 2 — SHA-256 hashed before storing |
+| 14 | High | Shared JWT secret for access & refresh | Done | Phase 2 — separate `JWT_REFRESH_SECRET` |
+| 15 | High | `paystackAuthorizationCode` plaintext in DB | Done | Phase 2 — AES-256-GCM encryption (`ENCRYPTION_KEY`) |
+| 16 | High | No request body size limits | Done | Phase 2 — 1mb limit via `useBodyParser` |
+| 17 | High | No pagination on findAll endpoints | Done | Phase 2 — `PaginationQueryDto` (max 100/page) |
+| 18 | Medium | Invalidate sessions on password change | TODO | Tokens remain valid until expiry |
+| 19 | Medium | Swagger docs exposed in production | TODO | Accessible without auth at `/api/docs` |
+| 20 | Medium | CSRF protection | TODO | State-changing endpoints unprotected |
+| 21 | Medium | Cleanup cron for expired tokens | TODO | `InvalidatedToken` and `PasswordResetToken` records accumulate |
+| 22 | Medium | Price locked at billing time | TODO | Billing charges `plan.price`, not agreed price |
+| 23 | Low | Stronger password requirements | TODO | Only `MinLength(8)`, no complexity rules |
+| 24 | Low | Email normalization | TODO | Case-sensitive comparison |
+| 25 | Low | Sentry sample rates for production | TODO | Currently 100% sampling |
+| 26 | Low | Audit logging | TODO | No logging for sensitive operations |
+| 27 | Low | Mask reset tokens in dev logs | TODO | Raw tokens visible in console |
 
 ### Phase 4: Admin Dashboard (separate project)
 Create `gym-admin` at `~/Documents/js/gym-admin` using Next.js + Tailwind.

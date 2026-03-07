@@ -66,7 +66,9 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 
 - `DATABASE_URL` — PostgreSQL connection string
 - `JWT_SECRET` — Falls back to `'dev-secret'` if unset
+- `JWT_REFRESH_SECRET` — Separate secret for refresh tokens (falls back to `'dev-refresh-secret'`)
 - `PAYSTACK_SECRET_KEY` — **Required** — app throws at startup if missing
+- `ENCRYPTION_KEY` — 32-byte hex key for encrypting Paystack auth codes at rest (optional, no encryption when unset)
 - `ADMIN_URL` — CORS origin (defaults to `http://localhost:3001`)
 - `PORT` — Server port (defaults to 3000)
 - `SENTRY_DSN` — Sentry project DSN (optional in dev, required in prod)
@@ -85,9 +87,13 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - **IDOR protection**: Payment initialization validates subscription ownership (`primaryMemberId === userId`)
 - **Data exposure prevention**: `paystackAuthorizationCode` stripped from subscription responses, `safeUserSelect` used in trainer queries (no password hash leaks)
 - **Role escalation prevention**: `role` field removed from `UpdateUserDto` — role changes require direct DB access
-- **JWT**: Algorithm pinned to `HS256`, 15m access tokens, JTI-based blocklist on logout
+- **JWT**: Algorithm pinned to `HS256`, 15m access tokens, separate refresh secret (`JWT_REFRESH_SECRET`), JTI-based blocklist on logout
 - **Input bounds**: All string DTO fields have `@MaxLength` constraints
+- **Body size limits**: 1mb limit on JSON and URL-encoded request bodies
+- **Password reset tokens**: SHA-256 hashed before storing in DB (raw token sent via email)
+- **Encryption at rest**: `paystackAuthorizationCode` encrypted with AES-256-GCM when `ENCRYPTION_KEY` is set
+- **Pagination**: All `findAll` endpoints paginated via `PaginationQueryDto` (default 20, max 100 per page)
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 11 spec files, 61 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 12 spec files, 64 tests total.
