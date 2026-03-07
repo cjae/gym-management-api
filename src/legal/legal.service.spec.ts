@@ -31,6 +31,7 @@ describe('LegalService', () => {
       create: jest.fn().mockResolvedValue(mockDocument),
       findMany: jest.fn().mockResolvedValue([mockDocument]),
       findUnique: jest.fn().mockResolvedValue(mockDocument),
+      count: jest.fn().mockResolvedValue(1),
     },
     documentSignature: {
       create: jest.fn().mockResolvedValue(mockSignature),
@@ -70,9 +71,15 @@ describe('LegalService', () => {
   });
 
   describe('findAll', () => {
-    it('should return all documents', async () => {
-      const result = await service.findAll();
-      expect(result).toEqual([mockDocument]);
+    it('should return paginated documents', async () => {
+      const result = await service.findAll(1, 20);
+      expect(result).toEqual({ data: [mockDocument], total: 1, page: 1, limit: 20 });
+      expect(prisma.legalDocument.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 0,
+          take: 20,
+        }),
+      );
     });
   });
 

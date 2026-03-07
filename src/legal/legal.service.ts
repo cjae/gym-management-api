@@ -21,10 +21,16 @@ export class LegalService {
     });
   }
 
-  async findAll() {
-    return this.prisma.legalDocument.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(page: number = 1, limit: number = 20) {
+    const [data, total] = await Promise.all([
+      this.prisma.legalDocument.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.legalDocument.count(),
+    ]);
+    return { data, total, page, limit };
   }
 
   async findOne(id: string) {

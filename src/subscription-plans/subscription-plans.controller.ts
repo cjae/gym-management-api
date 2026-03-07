@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiNotFoundResponse } from '@nestjs/swagger';
@@ -15,6 +16,7 @@ import { UpdatePlanDto } from './dto/update-plan.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Subscription Plans')
 @ApiBearerAuth()
@@ -36,8 +38,8 @@ export class SubscriptionPlansController {
 
   @Get('all')
   @Roles('ADMIN', 'SUPER_ADMIN')
-  findAll() {
-    return this.plansService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.plansService.findAll(query.page, query.limit);
   }
 
   @Get(':id')

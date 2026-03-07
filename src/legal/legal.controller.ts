@@ -4,6 +4,7 @@ import {
   Get,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { Request } from 'express';
 
 @ApiTags('Legal Documents')
@@ -37,8 +39,8 @@ export class LegalController {
   }
 
   @Get()
-  findAll() {
-    return this.legalService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.legalService.findAll(query.page, query.limit);
   }
 
   @Get('unsigned')

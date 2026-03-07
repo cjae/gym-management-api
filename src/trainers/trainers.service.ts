@@ -30,10 +30,16 @@ export class TrainersService {
     });
   }
 
-  async findAll() {
-    return this.prisma.trainerProfile.findMany({
-      include: { user: { select: safeUserSelect }, schedules: true },
-    });
+  async findAll(page: number = 1, limit: number = 20) {
+    const [data, total] = await Promise.all([
+      this.prisma.trainerProfile.findMany({
+        include: { user: { select: safeUserSelect }, schedules: true },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.trainerProfile.count(),
+    ]);
+    return { data, total, page, limit };
   }
 
   async findOne(id: string) {
