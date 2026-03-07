@@ -4,15 +4,21 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppConfig, getAppConfigName } from './common/config/app.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+    bodyParser: false,
+  });
   const configService = app.get(ConfigService);
   const appConfig = configService.get<AppConfig>(getAppConfigName())!;
 
+  (app as any).useBodyParser('json', true, { limit: '1mb' });
+  (app as any).useBodyParser('urlencoded', true, { limit: '1mb', extended: true });
   app.use(helmet());
   app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
   app.useGlobalPipes(
