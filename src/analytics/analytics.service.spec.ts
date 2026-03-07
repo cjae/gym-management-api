@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsService } from './analytics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Granularity } from './dto/analytics-query.dto';
 
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
@@ -203,6 +204,218 @@ describe('AnalyticsService', () => {
       // Check message format
       expect(result[0].message).toContain('John Doe');
       expect(result[2].message).toContain('5000');
+    });
+  });
+
+  describe('getRevenueTrends', () => {
+    it('should return revenue series grouped by period', async () => {
+      mockPrisma.payment.findMany.mockResolvedValue([
+        {
+          amount: 5000,
+          status: 'PAID',
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-03-01T10:00:00Z'),
+        },
+        {
+          amount: 3000,
+          status: 'PAID',
+          paymentMethod: 'MPESA',
+          createdAt: new Date('2026-03-02T10:00:00Z'),
+        },
+        {
+          amount: 2000,
+          status: 'FAILED',
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-03-03T10:00:00Z'),
+        },
+        {
+          amount: 1000,
+          status: 'PENDING',
+          paymentMethod: 'MPESA',
+          createdAt: new Date('2026-02-15T10:00:00Z'),
+        },
+      ]);
+
+      const result = await service.getRevenueTrends({
+        from: '2026-02-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(2);
+      // February bucket
+      expect(result.series[0].period).toBe('2026-02');
+      expect(result.series[0].total).toBe(1000);
+      expect(result.series[0].pending).toBe(1000);
+      expect(result.series[0].byMethod.mpesa).toBe(1000);
+      // March bucket
+      expect(result.series[1].period).toBe('2026-03');
+      expect(result.series[1].total).toBe(10000);
+      expect(result.series[1].paid).toBe(8000);
+      expect(result.series[1].failed).toBe(2000);
+      expect(result.series[1].byMethod.card).toBe(7000);
+      expect(result.series[1].byMethod.mpesa).toBe(3000);
+    });
+
+    it('should filter by paymentMethod when provided', async () => {
+      mockPrisma.payment.findMany.mockResolvedValue([]);
+
+      await service.getRevenueTrends(
+        { from: '2026-01-01', to: '2026-03-31' },
+        'CARD',
+      );
+
+      expect(mockPrisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ paymentMethod: 'CARD' }),
+        }),
+      );
+    });
+  });
+
+  describe('getAttendanceTrends', () => {
+    it('should return attendance series with peak data', async () => {
+      // Monday March 2, 2026 and Wednesday March 4, 2026
+      const monday = new Date('2026-03-02T08:00:00Z');
+      const wednesday = new Date('2026-03-04T17:00:00Z');
+      const wednesday2 = new Date('2026-03-04T09:00:00Z');
+
+      mockPrisma.attendance.findMany.mockResolvedValue([
+        {
+          checkInDate: monday,
+          checkInTime: monday,
+          memberId: 'u1',
+        },
+        {
+          checkInDate: wednesday,
+          checkInTime: wednesday,
+          memberId: 'u2',
+        },
+        {
+          checkInDate: wednesday,
+          checkInTime: wednesday2,
+          memberId: 'u3',
+        },
+      ]);
+
+      const result = await service.getAttendanceTrends({
+        from: '2026-03-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(1);
+      expect(result.series[0].checkIns).toBe(3);
+      expect(result.series[0].uniqueMembers).toBe(3);
+      // Wednesday (day 3) has 2 check-ins, Monday (day 1) has 1
+      expect(result.peakDayOfWeek).toBe('Wednesday');
+      expect(typeof result.peakHour).toBe('number');
+    });
+  });
+
+  describe('getSubscriptionTrends', () => {
+    it('should return subscription series with churn rate', async () => {
+      mockPrisma.memberSubscription.findMany.mockResolvedValue([
+        {
+          status: 'ACTIVE',
+          createdAt: new Date('2026-03-01T10:00:00Z'),
+          plan: { name: 'Basic' },
+          paymentMethod: 'CARD',
+        },
+        {
+          status: 'ACTIVE',
+          createdAt: new Date('2026-03-02T10:00:00Z'),
+          plan: { name: 'Premium' },
+          paymentMethod: 'MPESA',
+        },
+        {
+          status: 'CANCELLED',
+          createdAt: new Date('2026-03-03T10:00:00Z'),
+          plan: { name: 'Basic' },
+          paymentMethod: 'CARD',
+        },
+        {
+          status: 'EXPIRED',
+          createdAt: new Date('2026-03-04T10:00:00Z'),
+          plan: { name: 'Basic' },
+          paymentMethod: 'MPESA',
+        },
+      ]);
+
+      mockPrisma.memberSubscription.count.mockResolvedValue(50);
+
+      const result = await service.getSubscriptionTrends({
+        from: '2026-03-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(1);
+      expect(result.series[0].newSubscriptions).toBe(2);
+      expect(result.series[0].cancellations).toBe(1);
+      expect(result.series[0].expirations).toBe(1);
+      expect(result.byPlan).toEqual({ Basic: 1, Premium: 1 });
+      expect(result.byPaymentMethod).toEqual({ CARD: 1, MPESA: 1 });
+      // churnRate = (1 + 1) / 50 * 100 = 4
+      expect(result.churnRate).toBe(4);
+    });
+  });
+
+  describe('getMemberTrends', () => {
+    it('should return member series with running totals and breakdowns', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([
+        {
+          role: 'MEMBER',
+          status: 'ACTIVE',
+          createdAt: new Date('2026-03-01T10:00:00Z'),
+        },
+        {
+          role: 'MEMBER',
+          status: 'ACTIVE',
+          createdAt: new Date('2026-03-05T10:00:00Z'),
+        },
+        {
+          role: 'TRAINER',
+          status: 'ACTIVE',
+          createdAt: new Date('2026-03-10T10:00:00Z'),
+        },
+        {
+          role: 'MEMBER',
+          status: 'INACTIVE',
+          createdAt: new Date('2026-02-15T10:00:00Z'),
+        },
+      ]);
+
+      // 10 users created before the from date
+      mockPrisma.user.count.mockResolvedValue(10);
+
+      const result = await service.getMemberTrends({
+        from: '2026-02-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(2);
+      // February: 1 new, running total = 10 + 1 = 11
+      expect(result.series[0].period).toBe('2026-02');
+      expect(result.series[0].newMembers).toBe(1);
+      expect(result.series[0].totalMembers).toBe(11);
+      // March: 3 new, running total = 11 + 3 = 14
+      expect(result.series[1].period).toBe('2026-03');
+      expect(result.series[1].newMembers).toBe(3);
+      expect(result.series[1].totalMembers).toBe(14);
+
+      expect(result.byRole).toEqual({
+        MEMBER: 3,
+        TRAINER: 1,
+        ADMIN: 0,
+        SUPER_ADMIN: 0,
+      });
+      expect(result.byStatus).toEqual({
+        ACTIVE: 3,
+        INACTIVE: 1,
+        SUSPENDED: 0,
+      });
     });
   });
 });
