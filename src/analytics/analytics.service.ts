@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { Granularity } from './dto/analytics-query.dto';
 
-interface DashboardResult {
+export interface DashboardResult {
   members: {
     total: number;
     active: number;
@@ -36,7 +36,7 @@ interface DashboardResult {
   recentActivity: ActivityItem[];
 }
 
-interface ActivityItem {
+export interface ActivityItem {
   type: string;
   message: string;
   timestamp: Date;
@@ -455,7 +455,8 @@ export class AnalyticsService {
       else if (payment.status === 'PENDING') bucket.pending += payment.amount;
 
       if (payment.paymentMethod === 'CARD') bucket.card += payment.amount;
-      else if (payment.paymentMethod === 'MPESA') bucket.mpesa += payment.amount;
+      else if (payment.paymentMethod === 'MPESA')
+        bucket.mpesa += payment.amount;
     }
 
     const series = Array.from(buckets.entries())
@@ -517,9 +518,9 @@ export class AnalyticsService {
       'Saturday',
     ];
     const peakDayIndex = dayOfWeekCounts.indexOf(
-      Math.max(...dayOfWeekCounts),
+      Math.max(...(dayOfWeekCounts as number[])),
     );
-    const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
+    const peakHour = hourCounts.indexOf(Math.max(...(hourCounts as number[])));
 
     const series = Array.from(buckets.entries())
       .map(([period, data]) => ({

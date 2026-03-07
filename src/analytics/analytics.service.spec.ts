@@ -267,7 +267,10 @@ describe('AnalyticsService', () => {
 
       expect(mockPrisma.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ paymentMethod: 'CARD' }),
+          where: expect.objectContaining({ paymentMethod: 'CARD' }) as Record<
+            string,
+            unknown
+          >,
         }),
       );
     });
