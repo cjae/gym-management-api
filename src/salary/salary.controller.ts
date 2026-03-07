@@ -9,12 +9,15 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { SalaryService } from './salary.service';
 import { CreateSalaryRecordDto } from './dto/create-salary-record.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Salary')
+@ApiBearerAuth()
 @Controller('salary')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN')
@@ -27,6 +30,8 @@ export class SalaryController {
   }
 
   @Get()
+  @ApiQuery({ name: 'month', required: false, type: Number })
+  @ApiQuery({ name: 'year', required: false, type: Number })
   findAll(@Query('month') month?: string, @Query('year') year?: string) {
     const filters: { month?: number; year?: number } = {};
     if (month) filters.month = parseInt(month, 10);

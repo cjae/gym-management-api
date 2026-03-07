@@ -6,6 +6,7 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
@@ -15,6 +16,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Trainers')
+@ApiBearerAuth()
 @Controller('trainers')
 @UseGuards(JwtAuthGuard)
 export class TrainersController {

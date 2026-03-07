@@ -7,6 +7,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiNotFoundResponse,
+  ApiConflictResponse,
+} from '@nestjs/swagger';
 import { LegalService } from './legal.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { SignDocumentDto } from './dto/sign-document.dto';
@@ -16,6 +22,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Request } from 'express';
 
+@ApiTags('Legal Documents')
+@ApiBearerAuth()
 @Controller('legal')
 @UseGuards(JwtAuthGuard)
 export class LegalController {
@@ -39,6 +47,8 @@ export class LegalController {
   }
 
   @Post('sign')
+  @ApiNotFoundResponse({ description: 'Document not found' })
+  @ApiConflictResponse({ description: 'Document already signed' })
   sign(
     @CurrentUser('id') memberId: string,
     @Body() dto: SignDocumentDto,

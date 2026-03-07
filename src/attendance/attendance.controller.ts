@@ -1,4 +1,10 @@
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+} from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,12 +12,16 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Attendance')
+@ApiBearerAuth()
 @Controller('attendance')
 @UseGuards(JwtAuthGuard)
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
   @Post('check-in')
+  @ApiBadRequestResponse({ description: 'Invalid or expired QR code' })
+  @ApiForbiddenResponse({ description: 'No active subscription' })
   checkIn(@CurrentUser('id') memberId: string, @Body() dto: CheckInDto) {
     return this.attendanceService.checkIn(memberId, dto);
   }

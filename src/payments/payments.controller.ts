@@ -7,16 +7,25 @@ import {
   Headers,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiBadRequestResponse,
+  ApiHeader,
+} from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post('initialize/:subscriptionId')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiBadRequestResponse({ description: 'Subscription not found' })
   initialize(
     @Param('subscriptionId') subscriptionId: string,
     @CurrentUser('email') email: string,
@@ -25,6 +34,11 @@ export class PaymentsController {
   }
 
   @Post('webhook')
+  @ApiHeader({
+    name: 'x-paystack-signature',
+    description: 'HMAC SHA512 signature from Paystack',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid signature' })
   webhook(
     @Body() body: any,
     @Headers('x-paystack-signature') signature: string,
@@ -34,6 +48,7 @@ export class PaymentsController {
 
   @Get('history')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   history(@CurrentUser('id') memberId: string) {
     return this.paymentsService.getPaymentHistory(memberId);
   }
