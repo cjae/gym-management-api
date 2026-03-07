@@ -15,10 +15,12 @@ import { QrModule } from './qr/qr.module';
 import { TrainersModule } from './trainers/trainers.module';
 import { LegalModule } from './legal/legal.module';
 import { SalaryModule } from './salary/salary.module';
+import { SentryUserModule } from './sentry/sentry.module';
 
 @Module({
   imports: [
     SentryModule.forRoot(),
+    SentryUserModule,
     PrismaModule,
     AuthModule,
     UsersModule,
