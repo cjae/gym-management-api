@@ -13,7 +13,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, createHash } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -76,12 +76,13 @@ export class AuthService {
       };
 
     const token = randomBytes(32).toString('hex');
+    const hashedToken = this.hashToken(token);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await this.prisma.passwordResetToken.create({
       data: {
         userId: user.id,
-        token,
+        token: hashedToken,
         expiresAt,
       },
     });
@@ -99,8 +100,9 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto) {
+    const hashedToken = this.hashToken(dto.token);
     const resetToken = await this.prisma.passwordResetToken.findUnique({
-      where: { token: dto.token },
+      where: { token: hashedToken },
     });
 
     if (!resetToken)
@@ -158,6 +160,10 @@ export class AuthService {
     });
 
     return { message: 'Logged out successfully.' };
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   private async generateTokens(userId: string, email: string, role: string) {

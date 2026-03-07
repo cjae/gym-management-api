@@ -132,7 +132,11 @@ describe('AuthService', () => {
       const result = await service.forgotPassword({ email: 'test@test.com' });
 
       expect(result.message).toContain('reset link has been sent');
-      expect(mockPrisma.passwordResetToken.create).toHaveBeenCalled();
+      expect(mockPrisma.passwordResetToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          token: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      });
       expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledWith(
         'test@test.com',
         'Test',
