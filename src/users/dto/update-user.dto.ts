@@ -1,5 +1,6 @@
 import { IsOptional, IsString, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Role, UserStatus } from '@prisma/client';
 
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'John', description: 'First name' })
@@ -12,18 +13,29 @@ export class UpdateUserDto {
   @IsString()
   lastName?: string;
 
-  @ApiPropertyOptional({ example: '+254712345678', description: 'Phone number' })
+  @ApiPropertyOptional({
+    example: '+254712345678',
+    description: 'Phone number',
+  })
   @IsOptional()
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'ACTIVE', description: 'User status', enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'] })
+  @ApiPropertyOptional({
+    example: 'ACTIVE',
+    description: 'User status',
+    enum: UserStatus,
+  })
   @IsOptional()
-  @IsEnum(['ACTIVE', 'INACTIVE', 'SUSPENDED'])
-  status?: string;
+  @IsEnum(UserStatus)
+  status?: UserStatus;
 
-  @ApiPropertyOptional({ example: 'MEMBER', description: 'User role', enum: ['SUPER_ADMIN', 'ADMIN', 'TRAINER', 'MEMBER'] })
+  @ApiPropertyOptional({
+    example: 'MEMBER',
+    description: 'User role',
+    enum: Role,
+  })
   @IsOptional()
-  @IsEnum(['SUPER_ADMIN', 'ADMIN', 'TRAINER', 'MEMBER'])
-  role?: string;
+  @IsEnum(Role)
+  role?: Role;
 }

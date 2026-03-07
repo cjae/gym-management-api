@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -42,7 +42,7 @@ async function main() {
   });
 
   // Members
-  const members = [];
+  const members: User[] = [];
   for (let i = 1; i <= 10; i++) {
     const member = await prisma.user.create({
       data: { email: `member${i}@example.com`, password: hash, firstName: `Member`, lastName: `${i}`, role: 'MEMBER', phone: `+2547000000${i.toString().padStart(2, '0')}` },

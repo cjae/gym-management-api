@@ -38,6 +38,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `legal/` — Documents with digital signature capture
 - `salary/` — Staff payroll, SUPER_ADMIN only
 - `email/` — Global EmailService using Mailgun + Handlebars templates (partials: header, footer, button). Logs emails when Mailgun is not configured.
+- `billing/` — Daily cron job for recurring subscription billing. Auto-charges card users via Paystack authorization codes, sends email reminders to M-Pesa users. Expires overdue subscriptions.
 - `common/config/` — Typed config factories (app, auth, mail, payment, sentry)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
 
@@ -48,6 +49,8 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 **Database**: Schema in `prisma/schema.prisma`. All IDs are UUIDs. Currency defaults to KES. Timestamps use `@default(now())` / `@updatedAt`.
 
 **Module pattern**: Each module follows controller → service → Prisma. Services inject `PrismaService` directly. No repository layer.
+
+**Recurring Billing**: Self-managed billing cycle via daily cron (`@nestjs/schedule`). Card users are auto-charged via Paystack saved authorization codes. M-Pesa users receive email reminders and pay manually. `Payment` table tracks every charge attempt. See `docs/plans/2026-03-07-recurring-billing-design.md`.
 
 **Configuration**: Uses `@nestjs/config` with typed config factories in `src/common/config/` (`registerAs()` pattern). `ConfigLoaderModule` in `src/common/loaders/config.loader.module.ts` loads all configs globally with caching. Services inject `ConfigService` and read typed configs via `configService.get<AppConfig>(getAppConfigName())`. Never use `process.env` directly in services — add a config file instead.
 
@@ -76,4 +79,4 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 9 spec files, ~50 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 11 spec files, 61 tests total.
