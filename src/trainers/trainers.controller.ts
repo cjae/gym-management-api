@@ -1,0 +1,63 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
+import { TrainersService } from './trainers.service';
+import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
+import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { AssignMemberDto } from './dto/assign-member.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+@Controller('trainers')
+@UseGuards(JwtAuthGuard)
+export class TrainersController {
+  constructor(private readonly trainersService: TrainersService) {}
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  createProfile(@Body() dto: CreateTrainerProfileDto) {
+    return this.trainersService.createProfile(dto);
+  }
+
+  @Get()
+  findAll() {
+    return this.trainersService.findAll();
+  }
+
+  @Get('my/trainer')
+  getMyTrainer(@CurrentUser('id') memberId: string) {
+    return this.trainersService.getMemberTrainer(memberId);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.trainersService.findOne(id);
+  }
+
+  @Post(':id/schedules')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  addSchedule(@Param('id') trainerId: string, @Body() dto: CreateScheduleDto) {
+    return this.trainersService.addSchedule(trainerId, dto);
+  }
+
+  @Get(':id/schedules')
+  getSchedules(@Param('id') trainerId: string) {
+    return this.trainersService.getSchedules(trainerId);
+  }
+
+  @Post('assign')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  assignMember(@Body() dto: AssignMemberDto) {
+    return this.trainersService.assignMember(dto);
+  }
+}
