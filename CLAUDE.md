@@ -66,7 +66,7 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 
 - `DATABASE_URL` — PostgreSQL connection string
 - `JWT_SECRET` — Falls back to `'dev-secret'` if unset
-- `PAYSTACK_SECRET_KEY` — For payment verification
+- `PAYSTACK_SECRET_KEY` — **Required** — app throws at startup if missing
 - `ADMIN_URL` — CORS origin (defaults to `http://localhost:3001`)
 - `PORT` — Server port (defaults to 3000)
 - `SENTRY_DSN` — Sentry project DSN (optional in dev, required in prod)
@@ -76,6 +76,17 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `MAILGUN_API_KEY` — Mailgun API key (emails logged to console when unset)
 - `MAILGUN_DOMAIN` — Mailgun sending domain
 - `MAIL_FROM` — Sender address (defaults to `noreply@{MAILGUN_DOMAIN}`)
+
+## Security
+
+- **Rate limiting**: Global `@nestjs/throttler` (30 req/min), tighter on auth endpoints (login 10/min, register 5/min, forgot-password 3/min)
+- **Security headers**: `helmet` middleware (HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
+- **Webhook verification**: HMAC SHA-512 against raw request body (`rawBody: true` in NestFactory). Idempotency via `@unique` on `Payment.paystackReference`.
+- **IDOR protection**: Payment initialization validates subscription ownership (`primaryMemberId === userId`)
+- **Data exposure prevention**: `paystackAuthorizationCode` stripped from subscription responses, `safeUserSelect` used in trainer queries (no password hash leaks)
+- **Role escalation prevention**: `role` field removed from `UpdateUserDto` — role changes require direct DB access
+- **JWT**: Algorithm pinned to `HS256`, 15m access tokens, JTI-based blocklist on logout
+- **Input bounds**: All string DTO fields have `@MaxLength` constraints
 
 ## Testing
 

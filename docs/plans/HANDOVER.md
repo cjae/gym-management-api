@@ -2,12 +2,12 @@
 
 ## What's Done
 
-The **gym-management API** (NestJS 11 + Prisma + PostgreSQL) is fully built and tested. 12 commits, 39 passing tests, 11 modules.
+The **gym-management API** (NestJS 11 + Prisma + PostgreSQL) is fully built, tested, and security-hardened. 14 commits, 61 passing tests, 11 modules.
 
 ### Project Location
 - API: `/Users/osagieomonzokpia/Documents/js/gym-management`
 - Branch: `main`
-- Latest commit: `d49b07b`
+- Latest commit: `57fc005`
 
 ### Tech Stack
 - NestJS 11, Prisma 6, PostgreSQL, JWT auth, Paystack payments
@@ -24,7 +24,7 @@ The **gym-management API** (NestJS 11 + Prisma + PostgreSQL) is fully built and 
 **Users** (`/api/users`) — Admin/SuperAdmin only
 - `GET /` — list all users (no password field)
 - `GET /:id` — single user
-- `PATCH /:id` — update firstName, lastName, phone, status, role
+- `PATCH /:id` — update firstName, lastName, phone, status (role removed for security)
 - `DELETE /:id` — remove user
 
 **Subscription Plans** (`/api/subscription-plans`)
@@ -111,14 +111,62 @@ Default password for all seed users: `password123`
 DATABASE_URL=postgresql://...
 JWT_SECRET=...
 JWT_REFRESH_SECRET=...
-PAYSTACK_SECRET_KEY=...
+PAYSTACK_SECRET_KEY=...          # REQUIRED — app will not start without it
 PORT=3000
 ADMIN_URL=http://localhost:3001
+BASIC_AUTH_USER=...
+BASIC_AUTH_PASSWORD=...
+MAILGUN_API_KEY=...              # optional — logs emails to console when unset
+MAILGUN_DOMAIN=...
+SENTRY_DSN=...                   # optional in dev
 ```
+
+### Security Hardening (Applied)
+
+A full security audit was conducted. The following **critical** and **high** findings have been fixed:
+
+**Critical fixes:**
+1. Webhook signature verification now uses raw request body (not re-serialized JSON)
+2. Webhook replay protection via idempotency check on `paystackReference` (`@unique`)
+3. Role escalation removed — `role` field stripped from `UpdateUserDto`
+4. `paystackAuthorizationCode` stripped from all subscription API responses
+5. Password hashes no longer leak through trainer endpoints (`safeUserSelect`)
+6. IDOR fixed — payment initialization validates subscription ownership
+7. `PAYSTACK_SECRET_KEY` now required at startup (no empty string fallback)
+
+**High fixes:**
+8. Rate limiting via `@nestjs/throttler` — global 30/min, auth endpoints 3-10/min
+9. Security headers via `helmet` (HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
+10. JWT algorithm pinned to `HS256` to prevent algorithm confusion attacks
+11. `@MaxLength` added to all unbounded string fields across DTOs
+12. Error logging in `chargeAuthorization` catch block (was silently swallowed)
 
 ---
 
 ## What's Remaining
+
+### Security — Remaining Items
+
+**High priority (should fix before production):**
+- Hash password reset tokens in database (currently stored plaintext)
+- Use separate JWT secret for refresh tokens (`JWT_REFRESH_SECRET` is defined but unused)
+- Encrypt `paystackAuthorizationCode` at rest (currently plaintext in DB)
+- Add request body size limits in `main.ts`
+- Add pagination to `findAll` endpoints (users, trainers, legal, plans)
+
+**Medium priority:**
+- Invalidate all sessions on password change (currently tokens remain valid until expiry)
+- Protect Swagger docs in production (currently accessible without auth at `/api/docs`)
+- Add CSRF protection for state-changing endpoints
+- Add cleanup cron for expired `InvalidatedToken` and `PasswordResetToken` records
+- Billing charges `plan.price` — should store agreed price on subscription to prevent mid-cycle price changes
+
+**Low priority:**
+- Strengthen password requirements (currently only `MinLength(8)`, no complexity rules)
+- Normalize email addresses (case-insensitive comparison)
+- Reduce Sentry sample rates for production
+- Add audit logging for sensitive operations
+- Mask reset tokens in dev console logs
 
 ### Phase 4: Admin Dashboard (separate project)
 Create `gym-admin` at `~/Documents/js/gym-admin` using Next.js + Tailwind.
