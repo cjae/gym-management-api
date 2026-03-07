@@ -6,6 +6,8 @@ import {
   Body,
   Headers,
   UseGuards,
+  Version,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -34,6 +36,7 @@ export class PaymentsController {
   }
 
   @Post('webhook')
+  @Version(VERSION_NEUTRAL)
   @ApiHeader({
     name: 'x-paystack-signature',
     description: 'HMAC SHA512 signature from Paystack',

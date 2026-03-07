@@ -16,11 +16,15 @@ import { TrainersModule } from './trainers/trainers.module';
 import { LegalModule } from './legal/legal.module';
 import { SalaryModule } from './salary/salary.module';
 import { SentryUserModule } from './sentry/sentry.module';
+import { EmailModule } from './email/email.module';
+import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 
 @Module({
   imports: [
+    ConfigLoaderModule,
     SentryModule.forRoot(),
     SentryUserModule,
+    EmailModule,
     PrismaModule,
     AuthModule,
     UsersModule,

@@ -2,18 +2,25 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
+import { randomBytes, randomUUID } from 'crypto';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private emailService: EmailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -56,11 +63,91 @@ export class AuthService {
     return this.generateTokens(user.id, user.email, user.role);
   }
 
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) return { message: 'If an account with that email exists, a reset link has been sent.' };
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    await this.emailService.sendPasswordResetEmail(user.email, user.firstName, token);
+
+    return { message: 'If an account with that email exists, a reset link has been sent.' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const resetToken = await this.prisma.passwordResetToken.findUnique({
+      where: { token: dto.token },
+    });
+
+    if (!resetToken) throw new BadRequestException('Invalid or expired reset token');
+    if (resetToken.usedAt) throw new BadRequestException('Invalid or expired reset token');
+    if (resetToken.expiresAt < new Date()) throw new BadRequestException('Invalid or expired reset token');
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { password: hashedPassword },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Password has been reset successfully.' };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const passwordValid = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!passwordValid) throw new UnauthorizedException('Current password is incorrect');
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'Password changed successfully.' };
+  }
+
+  async logout(jti: string) {
+    // Calculate when the token expires (15m from now is the max for access tokens)
+    // We store until 7d to also cover refresh tokens that share the same jti pattern
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.invalidatedToken.create({
+      data: { jti, expiresAt },
+    });
+
+    return { message: 'Logged out successfully.' };
+  }
+
   private async generateTokens(userId: string, email: string, role: string) {
-    const payload = { sub: userId, email, role };
+    const accessJti = randomUUID();
+    const refreshJti = randomUUID();
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, { expiresIn: '15m' }),
-      this.jwtService.signAsync(payload, { expiresIn: '7d' }),
+      this.jwtService.signAsync({ sub: userId, email, role, jti: accessJti }, { expiresIn: '15m' }),
+      this.jwtService.signAsync({ sub: userId, email, role, jti: refreshJti }, { expiresIn: '7d' }),
     ]);
     return { accessToken, refreshToken };
   }

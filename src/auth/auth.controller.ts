@@ -1,8 +1,21 @@
-import { Controller, Post, Body } from '@nestjs/common';
-import { ApiTags, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { Controller, Post, Patch, Body, UseGuards } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBasicAuth,
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { BasicAuthGuard } from './guards/basic-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CurrentUser } from './decorators/current-user.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -10,14 +23,51 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('register')
+  @UseGuards(BasicAuthGuard)
+  @ApiBasicAuth()
   @ApiConflictResponse({ description: 'Email already registered' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
+  @UseGuards(BasicAuthGuard)
+  @ApiBasicAuth()
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('forgot-password')
+  @UseGuards(BasicAuthGuard)
+  @ApiBasicAuth()
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Post('reset-password')
+  @UseGuards(BasicAuthGuard)
+  @ApiBasicAuth()
+  @ApiBadRequestResponse({ description: 'Invalid or expired reset token' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Patch('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiUnauthorizedResponse({ description: 'Current password is incorrect' })
+  changePassword(
+    @CurrentUser('id') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(userId, dto);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  logout(@CurrentUser('jti') jti: string) {
+    return this.authService.logout(jti);
   }
 }

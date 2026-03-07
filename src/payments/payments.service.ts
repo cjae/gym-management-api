@@ -1,13 +1,22 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentConfig, getPaymentConfigName } from '../common/config/payment.config';
 import axios from 'axios';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class PaymentsService {
   private paystackBaseUrl = 'https://api.paystack.co';
+  private readonly paystackSecretKey: string;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {
+    const paymentConfig = this.configService.get<PaymentConfig>(getPaymentConfigName())!;
+    this.paystackSecretKey = paymentConfig.paystackSecretKey;
+  }
 
   async initializePayment(subscriptionId: string, email: string) {
     const subscription = await this.prisma.memberSubscription.findUnique({
@@ -27,7 +36,7 @@ export class PaymentsService {
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${this.paystackSecretKey}`,
           'Content-Type': 'application/json',
         },
       },
@@ -37,7 +46,7 @@ export class PaymentsService {
 
   async handleWebhook(body: any, signature: string) {
     const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
+      .createHmac('sha512', this.paystackSecretKey)
       .update(JSON.stringify(body))
       .digest('hex');
     if (hash !== signature) throw new BadRequestException('Invalid signature');

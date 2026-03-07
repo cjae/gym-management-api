@@ -23,11 +23,11 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 
 ## Architecture
 
-**Framework**: NestJS with global prefix `/api`, global `ValidationPipe` (whitelist + transform), CORS for `ADMIN_URL`.
+**Framework**: NestJS with global prefix `/api`, URI versioning (default `v1` — endpoints are `/api/v1/...`), global `ValidationPipe` (whitelist + transform), CORS for `ADMIN_URL`. Webhooks are version-neutral (`/api/payments/webhook`).
 
 **Modules** (all in `src/`):
 - `prisma/` — Global PrismaService, injected everywhere
-- `auth/` — JWT strategy (15m access tokens), login/register endpoints
+- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints
 - `users/` — CRUD with role-based access
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members)
 - `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table)
@@ -37,14 +37,19 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `trainers/` — Profiles, schedules, member assignments
 - `legal/` — Documents with digital signature capture
 - `salary/` — Staff payroll, SUPER_ADMIN only
+- `email/` — Global EmailService using Mailgun + Handlebars templates (partials: header, footer, button). Logs emails when Mailgun is not configured.
+- `common/config/` — Typed config factories (app, auth, mail, payment, sentry)
+- `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
 
-**Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user.
+**Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`).
 
 **Roles hierarchy**: `SUPER_ADMIN > ADMIN > TRAINER > MEMBER`. The guards check exact role match (not hierarchical).
 
 **Database**: Schema in `prisma/schema.prisma`. All IDs are UUIDs. Currency defaults to KES. Timestamps use `@default(now())` / `@updatedAt`.
 
 **Module pattern**: Each module follows controller → service → Prisma. Services inject `PrismaService` directly. No repository layer.
+
+**Configuration**: Uses `@nestjs/config` with typed config factories in `src/common/config/` (`registerAs()` pattern). `ConfigLoaderModule` in `src/common/loaders/config.loader.module.ts` loads all configs globally with caching. Services inject `ConfigService` and read typed configs via `configService.get<AppConfig>(getAppConfigName())`. Never use `process.env` directly in services — add a config file instead.
 
 ## API Documentation
 
@@ -63,7 +68,12 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `PORT` — Server port (defaults to 3000)
 - `SENTRY_DSN` — Sentry project DSN (optional in dev, required in prod)
 - `SENTRY_ENVIRONMENT` — Defaults to `development`
+- `BASIC_AUTH_USER` — Username for Basic Auth on public endpoints (login/register)
+- `BASIC_AUTH_PASSWORD` — Password for Basic Auth on public endpoints
+- `MAILGUN_API_KEY` — Mailgun API key (emails logged to console when unset)
+- `MAILGUN_DOMAIN` — Mailgun sending domain
+- `MAIL_FROM` — Sender address (defaults to `noreply@{MAILGUN_DOMAIN}`)
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 8 spec files, ~39 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 9 spec files, ~50 tests total.

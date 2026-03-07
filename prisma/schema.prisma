@@ -57,6 +57,7 @@ model User {
   trainerAssignmentsAsMember TrainerAssignment[] @relation("MemberAssignments")
   documentSignatures  DocumentSignature[]
   salaryRecords       StaffSalaryRecord[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model SubscriptionPlan {
@@ -201,6 +202,24 @@ model StaffSalaryRecord {
   staff User @relation(fields: [staffId], references: [id])
 
   @@unique([staffId, month, year])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model InvalidatedToken {
+  id        String   @id @default(uuid())
+  jti       String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 model GymQrCode {
