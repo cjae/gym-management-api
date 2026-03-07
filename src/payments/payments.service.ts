@@ -100,10 +100,7 @@ export class PaymentsService {
           };
 
           // Save card authorization for future recurring charges
-          if (
-            channel === 'card' &&
-            authorization?.authorization_code
-          ) {
+          if (channel === 'card' && authorization?.authorization_code) {
             updateData.paystackAuthorizationCode =
               authorization.authorization_code;
             updateData.paymentMethod = 'CARD';

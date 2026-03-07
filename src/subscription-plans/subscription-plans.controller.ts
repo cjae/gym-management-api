@@ -8,11 +8,7 @@ import {
   Body,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiNotFoundResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiNotFoundResponse } from '@nestjs/swagger';
 import { SubscriptionPlansService } from './subscription-plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';

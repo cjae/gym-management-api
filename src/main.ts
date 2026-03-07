@@ -13,7 +13,13 @@ async function bootstrap() {
   const appConfig = configService.get<AppConfig>(getAppConfigName())!;
 
   app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
   app.setGlobalPrefix('api');
   app.enableVersioning({
     type: VersioningType.URI,
@@ -22,7 +28,9 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Gym Management API')
-    .setDescription('API for gym management platform — subscriptions, attendance, payments, trainers, and more.')
+    .setDescription(
+      'API for gym management platform — subscriptions, attendance, payments, trainers, and more.',
+    )
     .setVersion('0.0.1')
     .addBearerAuth()
     .addBasicAuth()
