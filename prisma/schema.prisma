@@ -246,7 +246,7 @@ model Payment {
   currency          String        @default("KES")
   status            PaymentStatus @default(PENDING)
   paymentMethod     PaymentMethod
-  paystackReference String?
+  paystackReference String?       @unique
   failureReason     String?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt

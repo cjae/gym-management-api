@@ -4,6 +4,7 @@ import {
   IsInt,
   Min,
   Max,
+  MaxLength,
   IsOptional,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -31,5 +32,6 @@ export class CreateSalaryRecordDto {
   @ApiPropertyOptional({ example: 'March salary' })
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   notes?: string;
 }

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { AppController } from './app.controller';
@@ -24,6 +25,9 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 @Module({
   imports: [
     ConfigLoaderModule,
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 30 }],
+    }),
     ScheduleModule.forRoot(),
     SentryModule.forRoot(),
     SentryUserModule,
@@ -46,6 +50,10 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
     {
       provide: APP_FILTER,
       useClass: SentryGlobalFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
     AppService,
   ],

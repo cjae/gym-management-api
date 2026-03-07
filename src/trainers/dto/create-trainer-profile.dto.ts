@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTrainerProfileDto {
@@ -9,11 +9,13 @@ export class CreateTrainerProfileDto {
   @ApiPropertyOptional({ example: 'Weight Training' })
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   specialization?: string;
 
   @ApiPropertyOptional({ example: 'Certified personal trainer' })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   bio?: string;
 
   @ApiPropertyOptional({

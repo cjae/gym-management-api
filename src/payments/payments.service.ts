@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -14,6 +19,7 @@ import * as crypto from 'crypto';
 export class PaymentsService {
   private paystackBaseUrl = 'https://api.paystack.co';
   private readonly paystackSecretKey: string;
+  private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
     private prisma: PrismaService,
@@ -25,12 +31,20 @@ export class PaymentsService {
     this.paystackSecretKey = paymentConfig.paystackSecretKey;
   }
 
-  async initializePayment(subscriptionId: string, email: string) {
+  async initializePayment(
+    subscriptionId: string,
+    email: string,
+    userId: string,
+  ) {
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
       include: { plan: true },
     });
     if (!subscription) throw new BadRequestException('Subscription not found');
+
+    if (subscription.primaryMemberId !== userId) {
+      throw new ForbiddenException('You can only initialize payments for your own subscriptions');
+    }
 
     const payment = await this.prisma.payment.create({
       data: {
@@ -59,17 +73,30 @@ export class PaymentsService {
     return response.data.data;
   }
 
-  async handleWebhook(body: any, signature: string) {
+  async handleWebhook(rawBody: Buffer, signature: string) {
     const hash = crypto
       .createHmac('sha512', this.paystackSecretKey)
-      .update(JSON.stringify(body))
+      .update(rawBody)
       .digest('hex');
     if (hash !== signature) throw new BadRequestException('Invalid signature');
+
+    const body = JSON.parse(rawBody.toString());
 
     if (body.event === 'charge.success') {
       const { reference, metadata, authorization, channel } = body.data;
       const subscriptionId = metadata?.subscriptionId;
       const paymentId = metadata?.paymentId;
+
+      // Idempotency: skip if this reference was already processed
+      if (reference) {
+        const existing = await this.prisma.payment.findFirst({
+          where: { paystackReference: reference },
+        });
+        if (existing) {
+          this.logger.warn(`Duplicate webhook for reference ${reference}, skipping`);
+          return { received: true };
+        }
+      }
 
       if (paymentId) {
         await this.prisma.payment.update({
@@ -112,6 +139,8 @@ export class PaymentsService {
           });
         }
       }
+
+      this.logger.log(`Webhook charge.success processed for reference ${reference}`);
     }
 
     if (body.event === 'charge.failed') {
@@ -127,6 +156,8 @@ export class PaymentsService {
           },
         });
       }
+
+      this.logger.warn(`Webhook charge.failed: ${gateway_response}`);
     }
 
     return { received: true };
@@ -163,7 +194,10 @@ export class PaymentsService {
           },
         },
       );
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        `Charge authorization failed for subscription ${subscriptionId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
       await this.prisma.payment.update({
         where: { id: payment.id },
         data: {

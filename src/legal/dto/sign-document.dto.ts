@@ -1,4 +1,4 @@
-import { IsString } from 'class-validator';
+import { IsString, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class SignDocumentDto {
@@ -8,5 +8,6 @@ export class SignDocumentDto {
 
   @ApiProperty({ example: 'data:image/png;base64,...' })
   @IsString()
+  @MaxLength(500000)
   signatureData: string; // base64 encoded signature image
 }

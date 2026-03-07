@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsDateString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AssignMemberDto {
@@ -22,5 +22,6 @@ export class AssignMemberDto {
   @ApiPropertyOptional({ example: 'Focus on strength training' })
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   notes?: string;
 }

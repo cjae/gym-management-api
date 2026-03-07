@@ -21,15 +21,25 @@ export class BillingService {
       this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_6AM)
-  async handleDailyBilling() {
-    this.logger.log('Starting daily billing cycle');
-
+  @Cron(CronExpression.EVERY_DAY_AT_1AM)
+  async handleCardRenewals() {
+    this.logger.log('Starting card renewals');
     await this.processCardRenewals();
-    await this.processMpesaReminders();
-    await this.expireOverdueSubscriptions();
+    this.logger.log('Card renewals complete');
+  }
 
-    this.logger.log('Daily billing cycle complete');
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async handleOverdueExpiry() {
+    this.logger.log('Starting overdue subscription expiry');
+    await this.expireOverdueSubscriptions();
+    this.logger.log('Overdue subscription expiry complete');
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_6AM)
+  async handleMpesaReminders() {
+    this.logger.log('Starting M-Pesa reminders');
+    await this.processMpesaReminders();
+    this.logger.log('M-Pesa reminders complete');
   }
 
   async processCardRenewals() {

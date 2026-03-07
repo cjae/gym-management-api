@@ -104,7 +104,7 @@ export class SubscriptionsService {
   }
 
   async findByMember(memberId: string) {
-    return this.prisma.memberSubscription.findMany({
+    const subscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         members: {
           some: { memberId },
@@ -126,10 +126,11 @@ export class SubscriptionsService {
         },
       },
     });
+    return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
   async findAll() {
-    return this.prisma.memberSubscription.findMany({
+    const subscriptions = await this.prisma.memberSubscription.findMany({
       include: {
         primaryMember: {
           select: {
@@ -154,6 +155,7 @@ export class SubscriptionsService {
         },
       },
     });
+    return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
   async cancel(subscriptionId: string, requesterId: string) {

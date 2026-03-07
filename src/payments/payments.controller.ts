@@ -3,8 +3,8 @@ import {
   Post,
   Get,
   Param,
-  Body,
   Headers,
+  Req,
   UseGuards,
   Version,
   VERSION_NEUTRAL,
@@ -15,6 +15,7 @@ import {
   ApiBadRequestResponse,
   ApiHeader,
 } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -31,8 +32,9 @@ export class PaymentsController {
   initialize(
     @Param('subscriptionId') subscriptionId: string,
     @CurrentUser('email') email: string,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.paymentsService.initializePayment(subscriptionId, email);
+    return this.paymentsService.initializePayment(subscriptionId, email, userId);
   }
 
   @Post('webhook')
@@ -43,10 +45,13 @@ export class PaymentsController {
   })
   @ApiBadRequestResponse({ description: 'Invalid signature' })
   webhook(
-    @Body() body: any,
+    @Req() req: Request,
     @Headers('x-paystack-signature') signature: string,
   ) {
-    return this.paymentsService.handleWebhook(body, signature);
+    return this.paymentsService.handleWebhook(
+      (req as any).rawBody as Buffer,
+      signature,
+    );
   }
 
   @Get('history')
