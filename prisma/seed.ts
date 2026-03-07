@@ -52,13 +52,13 @@ async function main() {
 
   // Subscription Plans
   const monthlyPlan = await prisma.subscriptionPlan.create({
-    data: { name: 'Monthly Solo', price: 3000, currency: 'KES', durationDays: 30, description: 'Standard monthly membership for one person', maxMembers: 1 },
+    data: { name: 'Monthly Solo', price: 3000, currency: 'KES', billingInterval: 'MONTHLY', description: 'Standard monthly membership for one person', maxMembers: 1 },
   });
   const duoPlan = await prisma.subscriptionPlan.create({
-    data: { name: 'Monthly Duo', price: 5000, currency: 'KES', durationDays: 30, description: 'Monthly membership for two people', maxMembers: 2 },
+    data: { name: 'Monthly Duo', price: 5000, currency: 'KES', billingInterval: 'MONTHLY', description: 'Monthly membership for two people', maxMembers: 2 },
   });
   const annualPlan = await prisma.subscriptionPlan.create({
-    data: { name: 'Annual Solo', price: 30000, currency: 'KES', durationDays: 365, description: 'Annual membership with savings', maxMembers: 1 },
+    data: { name: 'Annual Solo', price: 30000, currency: 'KES', billingInterval: 'ANNUALLY', description: 'Annual membership with savings', maxMembers: 1 },
   });
 
   // Active subscriptions
@@ -69,7 +69,8 @@ async function main() {
   const sub1 = await prisma.memberSubscription.create({
     data: {
       primaryMemberId: members[0].id, planId: monthlyPlan.id,
-      startDate: now, endDate: thirtyDaysLater, status: 'ACTIVE', paymentStatus: 'PAID',
+      startDate: now, endDate: thirtyDaysLater, status: 'ACTIVE',
+      paymentMethod: 'MPESA', autoRenew: true, nextBillingDate: thirtyDaysLater,
       members: { create: { memberId: members[0].id } },
     },
   });
@@ -78,7 +79,8 @@ async function main() {
   const sub2 = await prisma.memberSubscription.create({
     data: {
       primaryMemberId: members[1].id, planId: duoPlan.id,
-      startDate: now, endDate: thirtyDaysLater, status: 'ACTIVE', paymentStatus: 'PAID',
+      startDate: now, endDate: thirtyDaysLater, status: 'ACTIVE',
+      paymentMethod: 'MPESA', autoRenew: true, nextBillingDate: thirtyDaysLater,
       members: { create: [{ memberId: members[1].id }, { memberId: members[2].id }] },
     },
   });
