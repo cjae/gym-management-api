@@ -5,8 +5,13 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import {
+  AuthConfig,
+  getAuthConfigName,
+} from '../common/config/auth.config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -21,6 +26,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -167,6 +173,8 @@ export class AuthService {
   }
 
   private async generateTokens(userId: string, email: string, role: string) {
+    const authConfig =
+      this.configService.get<AuthConfig>(getAuthConfigName())!;
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
     const [accessToken, refreshToken] = await Promise.all([
@@ -176,7 +184,7 @@ export class AuthService {
       ),
       this.jwtService.signAsync(
         { sub: userId, email, role, jti: refreshJti },
-        { expiresIn: '7d' },
+        { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
       ),
     ]);
     return { accessToken, refreshToken };
