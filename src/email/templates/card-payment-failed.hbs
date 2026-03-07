@@ -1,0 +1,11 @@
+{{> header}}
+
+<h2>Hi {{firstName}},</h2>
+
+<p>We were unable to charge your card for your <strong>{{planName}}</strong> subscription (KES {{amount}}).</p>
+
+<p>Please update your payment method to keep your access active:</p>
+
+{{> button url=paymentUrl text="Update Payment Method"}}
+
+{{> footer}}

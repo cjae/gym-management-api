@@ -1,0 +1,13 @@
+{{> header}}
+
+<h2>Hi {{firstName}},</h2>
+
+<p>Your <strong>{{planName}}</strong> subscription {{#if isDueToday}}is due today{{else}}renews in {{daysUntil}} day{{#unless isSingleDay}}s{{/unless}}{{/if}}.</p>
+
+<p>Amount: <strong>KES {{amount}}</strong></p>
+
+{{> button url=paymentUrl text="Pay Now"}}
+
+<p>If you don't renew, your access will be suspended when the subscription expires.</p>
+
+{{> footer}}
