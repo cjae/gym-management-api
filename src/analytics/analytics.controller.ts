@@ -1,10 +1,5 @@
-import {
-  Controller,
-  Get,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -27,6 +22,7 @@ export class AnalyticsController {
 
   @Get('revenue')
   @Roles('SUPER_ADMIN')
+  @ApiQuery({ name: 'paymentMethod', required: false, enum: ['CARD', 'MPESA'] })
   getRevenue(
     @Query() query: AnalyticsQueryDto,
     @Query('paymentMethod') paymentMethod?: string,
