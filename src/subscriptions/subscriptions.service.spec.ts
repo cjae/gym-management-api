@@ -51,11 +51,13 @@ describe('SubscriptionsService', () => {
 
       const result = await service.hasActiveSubscription('user-1');
       expect(result).toBe(true);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.subscriptionMember.findFirst).toHaveBeenCalledWith({
         where: {
           memberId: 'user-1',
           subscription: {
             status: 'ACTIVE',
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             endDate: { gte: expect.any(Date) },
           },
         },

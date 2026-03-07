@@ -12,9 +12,39 @@ import {
 } from '../common/config/payment.config';
 import { getNextBillingDate } from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
-import { Payment } from '@prisma/client';
+import { Payment, Prisma } from '@prisma/client';
 import axios from 'axios';
 import * as crypto from 'crypto';
+
+interface PaystackInitializeResponse {
+  data: {
+    authorization_url: string;
+    access_code: string;
+    reference: string;
+  };
+}
+
+interface PaystackWebhookAuthorization {
+  authorization_code?: string;
+}
+
+interface PaystackWebhookMetadata {
+  subscriptionId?: string;
+  paymentId?: string;
+}
+
+interface PaystackWebhookData {
+  reference?: string;
+  metadata?: PaystackWebhookMetadata;
+  authorization?: PaystackWebhookAuthorization;
+  channel?: string;
+  gateway_response?: string;
+}
+
+interface PaystackWebhookBody {
+  event: string;
+  data: PaystackWebhookData;
+}
 
 @Injectable()
 export class PaymentsService {
@@ -46,7 +76,9 @@ export class PaymentsService {
     if (!subscription) throw new BadRequestException('Subscription not found');
 
     if (subscription.primaryMemberId !== userId) {
-      throw new ForbiddenException('You can only initialize payments for your own subscriptions');
+      throw new ForbiddenException(
+        'You can only initialize payments for your own subscriptions',
+      );
     }
 
     const payment = await this.prisma.payment.create({
@@ -57,7 +89,7 @@ export class PaymentsService {
       },
     });
 
-    const response = await axios.post(
+    const response = await axios.post<PaystackInitializeResponse>(
       `${this.paystackBaseUrl}/transaction/initialize`,
       {
         email,
@@ -83,7 +115,9 @@ export class PaymentsService {
       .digest('hex');
     if (hash !== signature) throw new BadRequestException('Invalid signature');
 
-    const body = JSON.parse(rawBody.toString());
+    const body: PaystackWebhookBody = JSON.parse(
+      rawBody.toString(),
+    ) as PaystackWebhookBody;
 
     if (body.event === 'charge.success') {
       const { reference, metadata, authorization, channel } = body.data;
@@ -96,7 +130,9 @@ export class PaymentsService {
           where: { paystackReference: reference },
         });
         if (existing) {
-          this.logger.warn(`Duplicate webhook for reference ${reference}, skipping`);
+          this.logger.warn(
+            `Duplicate webhook for reference ${reference}, skipping`,
+          );
           return { received: true };
         }
       }
@@ -123,7 +159,7 @@ export class PaymentsService {
             subscription.plan.billingInterval,
           );
 
-          const updateData: any = {
+          const updateData: Prisma.MemberSubscriptionUpdateInput = {
             status: 'ACTIVE',
             endDate: nextBillingDate,
             nextBillingDate,
@@ -144,12 +180,14 @@ export class PaymentsService {
         }
       }
 
-      this.logger.log(`Webhook charge.success processed for reference ${reference}`);
+      this.logger.log(
+        `Webhook charge.success processed for reference ${reference}`,
+      );
     }
 
     if (body.event === 'charge.failed') {
       const { metadata, gateway_response } = body.data;
-      const paymentId = metadata?.paymentId;
+      const paymentId: string | undefined = metadata?.paymentId;
 
       if (paymentId) {
         await this.prisma.payment.update({
@@ -214,13 +252,15 @@ export class PaymentsService {
     return payment;
   }
 
-  async getPaymentHistory(memberId: string) {
+  async getPaymentHistory(memberId: string, page = 1, limit = 20) {
     return this.prisma.payment.findMany({
       where: {
         subscription: { primaryMemberId: memberId },
       },
       include: { subscription: { include: { plan: true } } },
       orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
   }
 }

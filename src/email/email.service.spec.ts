@@ -64,6 +64,7 @@ describe('EmailService', () => {
         'password-reset',
         expect.objectContaining({
           firstName: 'John',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           resetUrl: expect.stringContaining('abc123'),
         }),
       );

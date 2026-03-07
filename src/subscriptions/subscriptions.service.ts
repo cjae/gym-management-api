@@ -126,6 +126,7 @@ export class SubscriptionsService {
         },
       },
     });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
@@ -155,6 +156,7 @@ export class SubscriptionsService {
         },
       },
     });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 

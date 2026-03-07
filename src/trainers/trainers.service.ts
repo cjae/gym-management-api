@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
@@ -24,7 +25,7 @@ export class TrainersService {
         userId: dto.userId,
         specialization: dto.specialization,
         bio: dto.bio,
-        availability: dto.availability,
+        availability: dto.availability as Prisma.InputJsonValue,
       },
       include: { user: { select: safeUserSelect } },
     });

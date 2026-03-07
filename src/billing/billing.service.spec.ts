@@ -31,7 +31,8 @@ describe('BillingService', () => {
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string) => {
       if (key === 'app') return { adminUrl: 'http://localhost:3001' };
-      if (key === 'payment') return { paystackSecretKey: 'sk_test', encryptionKey: '' };
+      if (key === 'payment')
+        return { paystackSecretKey: 'sk_test', encryptionKey: '' };
       return {};
     }),
   };

@@ -75,6 +75,7 @@ describe('TrainersService', () => {
         bio: 'Coach',
       });
       expect(result).toEqual(mockProfile);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.trainerProfile.create).toHaveBeenCalled();
     });
   });
@@ -82,7 +83,13 @@ describe('TrainersService', () => {
   describe('findAll', () => {
     it('should return paginated trainer profiles', async () => {
       const result = await service.findAll(1, 20);
-      expect(result).toEqual({ data: [mockProfile], total: 1, page: 1, limit: 20 });
+      expect(result).toEqual({
+        data: [mockProfile],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.trainerProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 0,

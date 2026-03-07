@@ -19,7 +19,7 @@ export class SalaryService {
   }
 
   async findAll(filters?: { month?: number; year?: number }) {
-    const where: any = {};
+    const where: Record<string, number> = {};
     if (filters?.month) where.month = filters.month;
     if (filters?.year) where.year = filters.year;
 

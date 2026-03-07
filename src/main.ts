@@ -17,8 +17,9 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const appConfig = configService.get<AppConfig>(getAppConfigName())!;
 
-  (app as any).useBodyParser('json', true, { limit: '1mb' });
-  (app as any).useBodyParser('urlencoded', true, { limit: '1mb', extended: true });
+  app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
+
   app.use(helmet());
   app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
   app.useGlobalPipes(
@@ -48,4 +49,4 @@ async function bootstrap() {
 
   await app.listen(appConfig.port);
 }
-bootstrap();
+void bootstrap();

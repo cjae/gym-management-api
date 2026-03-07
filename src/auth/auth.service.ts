@@ -8,10 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import {
-  AuthConfig,
-  getAuthConfigName,
-} from '../common/config/auth.config';
+import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -173,8 +170,7 @@ export class AuthService {
   }
 
   private async generateTokens(userId: string, email: string, role: string) {
-    const authConfig =
-      this.configService.get<AuthConfig>(getAuthConfigName())!;
+    const authConfig = this.configService.get<AuthConfig>(getAuthConfigName())!;
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
     const [accessToken, refreshToken] = await Promise.all([

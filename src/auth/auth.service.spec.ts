@@ -145,8 +145,8 @@ describe('AuthService', () => {
       expect(result.message).toContain('reset link has been sent');
       expect(mockPrisma.passwordResetToken.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          token: expect.stringMatching(/^[a-f0-9]{64}$/),
-        }),
+          token: expect.stringMatching(/^[a-f0-9]{64}$/) as string,
+        }) as Record<string, unknown>,
       });
       expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledWith(
         'test@test.com',
@@ -278,7 +278,7 @@ describe('AuthService', () => {
       expect(mockPrisma.invalidatedToken.create).toHaveBeenCalledWith({
         data: {
           jti: 'test-jti',
-          expiresAt: expect.any(Date),
+          expiresAt: expect.any(Date) as Date,
         },
       });
     });

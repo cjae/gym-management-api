@@ -73,7 +73,13 @@ describe('LegalService', () => {
   describe('findAll', () => {
     it('should return paginated documents', async () => {
       const result = await service.findAll(1, 20);
-      expect(result).toEqual({ data: [mockDocument], total: 1, page: 1, limit: 20 });
+      expect(result).toEqual({
+        data: [mockDocument],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.legalDocument.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 0,

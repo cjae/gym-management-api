@@ -48,7 +48,13 @@ describe('UsersService', () => {
   describe('findAll', () => {
     it('should return paginated users', async () => {
       const result = await service.findAll(1, 20);
-      expect(result).toEqual({ data: [mockUser], total: 1, page: 1, limit: 20 });
+      expect(result).toEqual({
+        data: [mockUser],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 0,
@@ -62,8 +68,10 @@ describe('UsersService', () => {
     it('should return a user by id', async () => {
       const result = await service.findOne('user-1');
       expect(result).toEqual(mockUser);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-1' },
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         select: expect.any(Object),
       });
     });

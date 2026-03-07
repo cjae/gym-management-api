@@ -69,6 +69,7 @@ describe('SalaryService', () => {
 
     it('should filter by month and year', async () => {
       await service.findAll({ month: 3, year: 2026 });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.staffSalaryRecord.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { month: 3, year: 2026 },
