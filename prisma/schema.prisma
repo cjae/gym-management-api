@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  TRAINER
+  MEMBER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum SalaryStatus {
+  PENDING
+  PAID
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  phone     String?
+  firstName String
+  lastName  String
+  role      Role       @default(MEMBER)
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  subscriptionsOwned  MemberSubscription[] @relation("SubscriptionOwner")
+  subscriptionMembers SubscriptionMember[]
+  attendances         Attendance[]
+  streak              Streak?
+  trainerProfile      TrainerProfile?
+  trainerAssignmentsAsMember TrainerAssignment[] @relation("MemberAssignments")
+  documentSignatures  DocumentSignature[]
+  salaryRecords       StaffSalaryRecord[]
+}
+
+model SubscriptionPlan {
+  id           String   @id @default(uuid())
+  name         String
+  price        Float
+  currency     String   @default("KES")
+  durationDays Int
+  description  String?
+  maxMembers   Int      @default(1)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions MemberSubscription[]
+}
+
+model MemberSubscription {
+  id                String             @id @default(uuid())
+  primaryMemberId   String
+  planId            String
+  startDate         DateTime
+  endDate           DateTime
+  status            SubscriptionStatus @default(ACTIVE)
+  paystackReference String?
+  paymentStatus     PaymentStatus      @default(PENDING)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  primaryMember User               @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
+  plan          SubscriptionPlan   @relation(fields: [planId], references: [id])
+  members       SubscriptionMember[]
+}
+
+model SubscriptionMember {
+  id             String @id @default(uuid())
+  subscriptionId String
+  memberId       String
+
+  subscription MemberSubscription @relation(fields: [subscriptionId], references: [id])
+  member       User               @relation(fields: [memberId], references: [id])
+
+  @@unique([subscriptionId, memberId])
+}
+
+model Attendance {
+  id          String   @id @default(uuid())
+  memberId    String
+  checkInDate DateTime @db.Date
+  checkInTime DateTime @default(now())
+
+  member User @relation(fields: [memberId], references: [id])
+
+  @@unique([memberId, checkInDate])
+}
+
+model Streak {
+  id              String    @id @default(uuid())
+  memberId        String    @unique
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  lastCheckInDate DateTime? @db.Date
+
+  member User @relation(fields: [memberId], references: [id])
+}
+
+model TrainerProfile {
+  id             String @id @default(uuid())
+  userId         String @unique
+  specialization String?
+  bio            String?
+  availability   Json?
+
+  user        User              @relation(fields: [userId], references: [id])
+  schedules   TrainerSchedule[]
+  assignments TrainerAssignment[]
+}
+
+model TrainerSchedule {
+  id          String @id @default(uuid())
+  trainerId   String
+  title       String
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  maxCapacity Int    @default(10)
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id])
+}
+
+model TrainerAssignment {
+  id        String    @id @default(uuid())
+  trainerId String
+  memberId  String
+  startDate DateTime
+  endDate   DateTime?
+  notes     String?
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id])
+  member  User           @relation("MemberAssignments", fields: [memberId], references: [id])
+}
+
+model LegalDocument {
+  id         String   @id @default(uuid())
+  title      String
+  content    String
+  version    Int      @default(1)
+  isRequired Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  signatures DocumentSignature[]
+}
+
+model DocumentSignature {
+  id            String   @id @default(uuid())
+  memberId      String
+  documentId    String
+  signatureData String
+  signedAt      DateTime @default(now())
+  ipAddress     String?
+
+  member   User          @relation(fields: [memberId], references: [id])
+  document LegalDocument @relation(fields: [documentId], references: [id])
+
+  @@unique([memberId, documentId])
+}
+
+model StaffSalaryRecord {
+  id        String       @id @default(uuid())
+  staffId   String
+  month     Int
+  year      Int
+  amount    Float
+  currency  String       @default("KES")
+  status    SalaryStatus @default(PENDING)
+  paidAt    DateTime?
+  notes     String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  staff User @relation(fields: [staffId], references: [id])
+
+  @@unique([staffId, month, year])
+}
+
+model GymQrCode {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+}
