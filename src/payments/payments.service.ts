@@ -11,6 +11,7 @@ import {
   getPaymentConfigName,
 } from '../common/config/payment.config';
 import { getNextBillingDate } from '../common/utils/billing.util';
+import { encrypt } from '../common/utils/encryption.util';
 import { Payment } from '@prisma/client';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -19,6 +20,7 @@ import * as crypto from 'crypto';
 export class PaymentsService {
   private paystackBaseUrl = 'https://api.paystack.co';
   private readonly paystackSecretKey: string;
+  private readonly encryptionKey: string;
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
@@ -29,6 +31,7 @@ export class PaymentsService {
       getPaymentConfigName(),
     )!;
     this.paystackSecretKey = paymentConfig.paystackSecretKey;
+    this.encryptionKey = paymentConfig.encryptionKey;
   }
 
   async initializePayment(
@@ -128,8 +131,9 @@ export class PaymentsService {
 
           // Save card authorization for future recurring charges
           if (channel === 'card' && authorization?.authorization_code) {
-            updateData.paystackAuthorizationCode =
-              authorization.authorization_code;
+            updateData.paystackAuthorizationCode = this.encryptionKey
+              ? encrypt(authorization.authorization_code, this.encryptionKey)
+              : authorization.authorization_code;
             updateData.paymentMethod = 'CARD';
           }
 

@@ -5,11 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { EmailService } from '../email/email.service';
 import { AppConfig, getAppConfigName } from '../common/config/app.config';
+import { PaymentConfig, getPaymentConfigName } from '../common/config/payment.config';
+import { decrypt } from '../common/utils/encryption.util';
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
   private readonly adminUrl: string;
+  private readonly encryptionKey: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -19,6 +22,8 @@ export class BillingService {
   ) {
     this.adminUrl =
       this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
+    this.encryptionKey =
+      this.configService.get<PaymentConfig>(getPaymentConfigName())!.encryptionKey;
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
@@ -87,9 +92,13 @@ export class BillingService {
         continue;
       }
 
+      const authCode = this.encryptionKey
+        ? decrypt(sub.paystackAuthorizationCode!, this.encryptionKey)
+        : sub.paystackAuthorizationCode!;
+
       await this.paymentsService.chargeAuthorization(
         sub.id,
-        sub.paystackAuthorizationCode!,
+        authCode,
         sub.primaryMember.email,
         sub.plan.price,
       );
