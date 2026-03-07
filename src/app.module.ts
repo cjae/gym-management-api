@@ -17,11 +17,13 @@ import { LegalModule } from './legal/legal.module';
 import { SalaryModule } from './salary/salary.module';
 import { SentryUserModule } from './sentry/sentry.module';
 import { EmailModule } from './email/email.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 
 @Module({
   imports: [
     ConfigLoaderModule,
+    ScheduleModule.forRoot(),
     SentryModule.forRoot(),
     SentryUserModule,
     EmailModule,
