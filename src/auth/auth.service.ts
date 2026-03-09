@@ -43,7 +43,7 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(user.id, user.email, user.role, false);
   }
 
   async login(dto: LoginDto) {
@@ -55,7 +55,12 @@ export class AuthService {
     const passwordValid = await bcrypt.compare(dto.password, user.password);
     if (!passwordValid) throw new UnauthorizedException('Invalid credentials');
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.mustChangePassword,
+    );
   }
 
   async refreshToken(userId: string) {
@@ -63,7 +68,12 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) throw new UnauthorizedException('User not found');
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.mustChangePassword,
+    );
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -169,7 +179,12 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async generateTokens(userId: string, email: string, role: string) {
+  private async generateTokens(
+    userId: string,
+    email: string,
+    role: string,
+    mustChangePassword: boolean,
+  ) {
     const authConfig = this.configService.get<AuthConfig>(getAuthConfigName())!;
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
@@ -183,6 +198,6 @@ export class AuthService {
         { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
       ),
     ]);
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, mustChangePassword };
   }
 }

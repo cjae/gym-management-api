@@ -83,6 +83,7 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
+      expect(result.mustChangePassword).toBe(false);
     });
 
     it('should throw ConflictException if email exists', async () => {
@@ -107,6 +108,7 @@ describe('AuthService', () => {
         email: 'test@test.com',
         password: hashedPassword,
         role: 'MEMBER',
+        mustChangePassword: false,
       });
 
       const result = await service.login({
@@ -115,6 +117,24 @@ describe('AuthService', () => {
       });
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
+      expect(result.mustChangePassword).toBe(false);
+    });
+
+    it('should return mustChangePassword true for seeded admin', async () => {
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '2',
+        email: 'admin@gym.co.ke',
+        password: hashedPassword,
+        role: 'SUPER_ADMIN',
+        mustChangePassword: true,
+      });
+
+      const result = await service.login({
+        email: 'admin@gym.co.ke',
+        password: 'password123',
+      });
+      expect(result.mustChangePassword).toBe(true);
     });
 
     it('should throw UnauthorizedException for invalid password', async () => {
@@ -265,6 +285,22 @@ describe('AuthService', () => {
           newPassword: 'newPassword123',
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('refreshToken', () => {
+    it('should return mustChangePassword from user record', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'admin@gym.co.ke',
+        role: 'SUPER_ADMIN',
+        mustChangePassword: true,
+      });
+
+      const result = await service.refreshToken('1');
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result.mustChangePassword).toBe(true);
     });
   });
 
