@@ -8,15 +8,15 @@ async function main() {
 
   // Super Admin
   const superAdmin = await prisma.user.create({
-    data: { email: 'admin@gym.co.ke', password: hash, firstName: 'Super', lastName: 'Admin', role: 'SUPER_ADMIN' },
+    data: { email: 'admin@gym.co.ke', password: hash, firstName: 'Super', lastName: 'Admin', role: 'SUPER_ADMIN', mustChangePassword: true },
   });
 
   // Admins
   const admin1 = await prisma.user.create({
-    data: { email: 'frontdesk1@gym.co.ke', password: hash, firstName: 'Jane', lastName: 'Wanjiku', role: 'ADMIN' },
+    data: { email: 'frontdesk1@gym.co.ke', password: hash, firstName: 'Jane', lastName: 'Wanjiku', role: 'ADMIN', mustChangePassword: true },
   });
   const admin2 = await prisma.user.create({
-    data: { email: 'frontdesk2@gym.co.ke', password: hash, firstName: 'John', lastName: 'Kamau', role: 'ADMIN' },
+    data: { email: 'frontdesk2@gym.co.ke', password: hash, firstName: 'John', lastName: 'Kamau', role: 'ADMIN', mustChangePassword: true },
   });
 
   // Trainers
