@@ -189,7 +189,7 @@ describe('AuthService', () => {
   });
 
   describe('resetPassword', () => {
-    it('should reset password with valid token', async () => {
+    it('should reset password and clear mustChangePassword flag', async () => {
       mockPrisma.passwordResetToken.findUnique.mockResolvedValue({
         id: 'token-id',
         userId: '1',
@@ -206,6 +206,12 @@ describe('AuthService', () => {
 
       expect(result.message).toContain('reset successfully');
       expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: expect.objectContaining({
+          mustChangePassword: false,
+        }),
+      });
     });
 
     it('should throw BadRequestException for expired token', async () => {
@@ -255,11 +261,12 @@ describe('AuthService', () => {
   });
 
   describe('changePassword', () => {
-    it('should change password with valid current password', async () => {
+    it('should change password and clear mustChangePassword flag', async () => {
       const hashedPassword = await bcrypt.hash('oldPassword123', 10);
       mockPrisma.user.findUnique.mockResolvedValue({
         id: '1',
         password: hashedPassword,
+        mustChangePassword: true,
       });
       mockPrisma.user.update.mockResolvedValue({});
 
@@ -269,7 +276,12 @@ describe('AuthService', () => {
       });
 
       expect(result.message).toContain('changed successfully');
-      expect(mockPrisma.user.update).toHaveBeenCalled();
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: expect.objectContaining({
+          mustChangePassword: false,
+        }),
+      });
     });
 
     it('should throw UnauthorizedException for wrong current password', async () => {

@@ -130,7 +130,7 @@ export class AuthService {
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: resetToken.userId },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, mustChangePassword: false },
       }),
       this.prisma.passwordResetToken.update({
         where: { id: resetToken.id },
@@ -157,7 +157,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, mustChangePassword: false },
     });
 
     return { message: 'Password changed successfully.' };
