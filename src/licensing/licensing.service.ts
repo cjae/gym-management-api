@@ -1,10 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  LicensingConfig,
-  getLicensingConfigName,
-} from './licensing.config';
+import { LicensingConfig, getLicensingConfigName } from './licensing.config';
 import { LicenseResponseDto } from './dto/license-response.dto';
 import axios from 'axios';
 
@@ -20,8 +18,9 @@ export class LicensingService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    const config =
-      this.configService.get<LicensingConfig>(getLicensingConfigName())!;
+    const config = this.configService.get<LicensingConfig>(
+      getLicensingConfigName(),
+    )!;
     this.licenseKey = config.licenseKey;
     this.licenseServerUrl = config.licenseServerUrl;
   }
@@ -86,7 +85,7 @@ export class LicensingService implements OnModuleInit {
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
           lastSuccessAt: now,
-          rawResponse: data as any,
+          rawResponse: data as unknown as Prisma.InputJsonValue,
         },
         create: {
           id: 'singleton',
@@ -98,7 +97,7 @@ export class LicensingService implements OnModuleInit {
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
           lastSuccessAt: now,
-          rawResponse: data as any,
+          rawResponse: data as unknown as Prisma.InputJsonValue,
         },
       });
 
