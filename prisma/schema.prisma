@@ -271,3 +271,24 @@ model GymQrCode {
   createdAt DateTime  @default(now())
   expiresAt DateTime?
 }
+
+enum LicenseStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+}
+
+model LicenseCache {
+  id            String        @id @default("singleton")
+  licenseKey    String
+  status        LicenseStatus @default(ACTIVE)
+  gymName       String?
+  tierName      String?
+  maxMembers    Int?
+  expiresAt     DateTime?
+  lastCheckedAt DateTime?
+  lastSuccessAt DateTime?
+  rawResponse   Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
