@@ -288,6 +288,42 @@ describe('AnalyticsService', () => {
     });
   });
 
+  describe('getExpiringMemberships', () => {
+    it('should return memberships expiring within 14 days sorted by urgency', async () => {
+      const fiveDaysFromNow = new Date(now);
+      fiveDaysFromNow.setDate(now.getDate() + 5);
+      const tenDaysFromNow = new Date(now);
+      tenDaysFromNow.setDate(now.getDate() + 10);
+
+      mockPrisma.memberSubscription.findMany.mockResolvedValue([
+        {
+          id: 'sub-1',
+          endDate: fiveDaysFromNow,
+          primaryMember: { id: 'u1', firstName: 'Jane', lastName: 'Muthoni' },
+          plan: { name: 'Premium Monthly' },
+        },
+        {
+          id: 'sub-2',
+          endDate: tenDaysFromNow,
+          primaryMember: { id: 'u2', firstName: 'John', lastName: 'Kamau' },
+          plan: { name: 'Basic Monthly' },
+        },
+      ]);
+
+      const result = await service.getExpiringMemberships();
+
+      expect(result.memberships).toHaveLength(2);
+      expect(result.memberships[0]).toEqual({
+        memberId: 'u1',
+        memberName: 'Jane Muthoni',
+        planName: 'Premium Monthly',
+        expiresAt: fiveDaysFromNow,
+        daysUntilExpiry: 5,
+      });
+      expect(result.memberships[1].daysUntilExpiry).toBe(10);
+    });
+  });
+
   describe('getMemberTrends', () => {
     it('should return member series with running totals and breakdowns', async () => {
       mockPrisma.user.findMany.mockResolvedValue([

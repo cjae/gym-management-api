@@ -19,6 +19,7 @@ import { RevenueTrendsResponseDto } from './dto/revenue-trends-response.dto';
 import { AttendanceTrendsResponseDto } from './dto/attendance-trends-response.dto';
 import { SubscriptionTrendsResponseDto } from './dto/subscription-trends-response.dto';
 import { MemberTrendsResponseDto } from './dto/member-trends-response.dto';
+import { ExpiringMembershipsResponseDto } from './dto/expiring-memberships-response.dto';
 
 @ApiTags('Analytics')
 @ApiBearerAuth()
@@ -39,6 +40,18 @@ export class AnalyticsController {
   @ApiOkResponse({ type: DashboardResponseDto })
   getDashboard(@CurrentUser('role') role: string) {
     return this.analyticsService.getDashboard(role);
+  }
+
+  @Get('expiring-memberships')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Get expiring memberships',
+    description:
+      'Returns memberships expiring within 14 days, sorted by urgency.',
+  })
+  @ApiOkResponse({ type: ExpiringMembershipsResponseDto })
+  getExpiringMemberships() {
+    return this.analyticsService.getExpiringMemberships();
   }
 
   @Get('revenue')

@@ -398,6 +398,42 @@ export class AnalyticsService {
     }
   }
 
+  async getExpiringMemberships() {
+    const now = new Date();
+    const fourteenDaysFromNow = new Date(now);
+    fourteenDaysFromNow.setDate(now.getDate() + 14);
+
+    const subscriptions = await this.prisma.memberSubscription.findMany({
+      where: {
+        status: 'ACTIVE',
+        endDate: { gte: now, lte: fourteenDaysFromNow },
+      },
+      select: {
+        endDate: true,
+        primaryMember: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        plan: { select: { name: true } },
+      },
+      orderBy: { endDate: 'asc' },
+      take: 20,
+    });
+
+    const memberships = subscriptions.map((sub) => {
+      const diffMs = sub.endDate.getTime() - now.getTime();
+      const daysUntilExpiry = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      return {
+        memberId: sub.primaryMember.id,
+        memberName: `${sub.primaryMember.firstName} ${sub.primaryMember.lastName}`,
+        planName: sub.plan.name,
+        expiresAt: sub.endDate,
+        daysUntilExpiry,
+      };
+    });
+
+    return { memberships };
+  }
+
   async getRevenueTrends(query: AnalyticsQueryDto, paymentMethod?: string) {
     const { from, to } = this.getDateRange(query);
     const granularity = query.granularity || Granularity.MONTHLY;
