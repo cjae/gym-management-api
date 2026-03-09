@@ -24,6 +24,8 @@ import { BillingModule } from './billing/billing.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
+import { LicensingModule } from './licensing/licensing.module';
+import { LicenseGuard } from './licensing/licensing.guard';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     SentryModule.forRoot(),
+    LicensingModule,
     SentryUserModule,
     EmailModule,
     PrismaModule,
@@ -56,6 +59,10 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
     {
       provide: APP_FILTER,
       useClass: SentryGlobalFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: LicenseGuard,
     },
     {
       provide: APP_GUARD,
