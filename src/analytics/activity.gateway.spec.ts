@@ -3,6 +3,7 @@ import { ActivityGateway } from './activity.gateway';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { Socket } from 'socket.io';
 
 describe('ActivityGateway', () => {
   let gateway: ActivityGateway;
@@ -43,7 +44,7 @@ describe('ActivityGateway', () => {
         disconnect: jest.fn(),
       };
 
-      await gateway.handleConnection(mockClient as any);
+      await gateway.handleConnection(mockClient as unknown as Socket);
       expect(mockClient.disconnect).toHaveBeenCalled();
     });
 
@@ -60,7 +61,7 @@ describe('ActivityGateway', () => {
         disconnect: jest.fn(),
       };
 
-      await gateway.handleConnection(mockClient as any);
+      await gateway.handleConnection(mockClient as unknown as Socket);
       expect(mockClient.disconnect).toHaveBeenCalled();
     });
 
@@ -77,7 +78,7 @@ describe('ActivityGateway', () => {
         disconnect: jest.fn(),
       };
 
-      await gateway.handleConnection(mockClient as any);
+      await gateway.handleConnection(mockClient as unknown as Socket);
       expect(mockClient.disconnect).not.toHaveBeenCalled();
     });
 
@@ -87,14 +88,16 @@ describe('ActivityGateway', () => {
         role: 'ADMIN',
         jti: 'jti-1',
       });
-      mockPrisma.invalidatedToken.findUnique.mockResolvedValue({ jti: 'jti-1' });
+      mockPrisma.invalidatedToken.findUnique.mockResolvedValue({
+        jti: 'jti-1',
+      });
 
       const mockClient = {
         handshake: { auth: { token: 'valid-token' } },
         disconnect: jest.fn(),
       };
 
-      await gateway.handleConnection(mockClient as any);
+      await gateway.handleConnection(mockClient as unknown as Socket);
       expect(mockClient.disconnect).toHaveBeenCalled();
     });
   });
@@ -102,7 +105,7 @@ describe('ActivityGateway', () => {
   describe('event broadcasting', () => {
     it('should broadcast activity events to connected clients', () => {
       const mockServer = { emit: jest.fn() };
-      gateway.server = mockServer as any;
+      gateway.server = mockServer as unknown as ActivityGateway['server'];
 
       const payload = {
         type: 'registration' as const,

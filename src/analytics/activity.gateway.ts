@@ -33,7 +33,7 @@ export class ActivityGateway implements OnGatewayConnection {
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token;
+      const token = (client.handshake.auth as Record<string, string>)?.token;
       if (!token) {
         client.disconnect();
         return;
@@ -41,9 +41,10 @@ export class ActivityGateway implements OnGatewayConnection {
 
       const authConfig =
         this.configService.get<AuthConfig>(getAuthConfigName())!;
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: authConfig.jwtSecret,
-      });
+      const payload: { sub: string; role: string; jti: string } =
+        await this.jwtService.verifyAsync(token, {
+          secret: authConfig.jwtSecret,
+        });
 
       // Check token not invalidated
       const invalidated = await this.prisma.invalidatedToken.findUnique({
