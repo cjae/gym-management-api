@@ -4,13 +4,17 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   async create(memberId: string, dto: CreateSubscriptionDto) {
     const plan = await this.prisma.subscriptionPlan.findUnique({
@@ -25,7 +29,12 @@ export class SubscriptionsService {
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
 
-    return this.prisma.memberSubscription.create({
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberId },
+      select: { firstName: true, lastName: true },
+    });
+
+    const subscription = await this.prisma.memberSubscription.create({
       data: {
         primaryMemberId: memberId,
         planId: dto.planId,
@@ -44,6 +53,24 @@ export class SubscriptionsService {
         members: true,
       },
     });
+
+    const memberName = member
+      ? `${member.firstName} ${member.lastName}`
+      : 'Unknown member';
+    const planName = plan.name;
+
+    this.eventEmitter.emit('activity.subscription', {
+      type: 'subscription',
+      description: `${memberName} started a ${planName} subscription`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        subscriptionId: subscription.id,
+        planName,
+        status: 'ACTIVE',
+      },
+    });
+
+    return subscription;
   }
 
   async addDuoMember(
@@ -163,6 +190,12 @@ export class SubscriptionsService {
   async cancel(subscriptionId: string, requesterId: string) {
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
+      include: {
+        plan: true,
+        primaryMember: {
+          select: { firstName: true, lastName: true },
+        },
+      },
     });
 
     if (!subscription) {
@@ -177,9 +210,21 @@ export class SubscriptionsService {
       );
     }
 
-    return this.prisma.memberSubscription.update({
+    const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
       data: { autoRenew: false },
     });
+
+    const memberName = `${subscription.primaryMember.firstName} ${subscription.primaryMember.lastName}`;
+    const planName = subscription.plan.name;
+
+    this.eventEmitter.emit('activity.subscription', {
+      type: 'subscription',
+      description: `${memberName} cancelled their ${planName} subscription`,
+      timestamp: new Date().toISOString(),
+      metadata: { subscriptionId, planName, status: 'CANCELLED' },
+    });
+
+    return result;
   }
 }

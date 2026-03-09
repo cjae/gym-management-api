@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
   let prisma: PrismaService;
+
+  const mockEventEmitter = { emit: jest.fn() };
 
   const mockPrisma = {
     subscriptionPlan: {
@@ -30,6 +33,7 @@ describe('SubscriptionsService', () => {
       providers: [
         SubscriptionsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 
