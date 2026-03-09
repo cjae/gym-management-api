@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { LicensingService } from './licensing.service';
@@ -7,10 +8,24 @@ import axios from 'axios';
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+type MockPrisma = {
+  licenseCache: {
+    findUnique: jest.Mock;
+    upsert: jest.Mock;
+  };
+  user: {
+    count: jest.Mock;
+  };
+};
+
+type MockConfig = {
+  get: jest.Mock;
+};
+
 describe('LicensingService', () => {
   let service: LicensingService;
 
-  const mockPrisma = {
+  const mockPrisma: MockPrisma = {
     licenseCache: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
@@ -20,7 +35,7 @@ describe('LicensingService', () => {
     },
   };
 
-  const mockConfigService = {
+  const mockConfigService: MockConfig = {
     get: jest.fn().mockReturnValue({
       licenseKey: 'test-license-key',
       licenseServerUrl: 'https://license.example.com',
@@ -52,8 +67,8 @@ describe('LicensingService', () => {
         licenseServerUrl: '',
       });
       const devService = new LicensingService(
-        mockPrisma as any,
-        mockConfigService as any,
+        mockPrisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
       );
       const result = await devService.isActive();
       expect(result).toBe(true);
@@ -206,8 +221,8 @@ describe('LicensingService', () => {
         licenseServerUrl: '',
       });
       const devService = new LicensingService(
-        mockPrisma as any,
-        mockConfigService as any,
+        mockPrisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
       );
 
       await devService.validateLicense();
@@ -223,8 +238,8 @@ describe('LicensingService', () => {
         licenseServerUrl: 'https://license.example.com',
       });
       const configuredService = new LicensingService(
-        mockPrisma as any,
-        mockConfigService as any,
+        mockPrisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
       );
       const spy = jest
         .spyOn(configuredService, 'validateLicense')
@@ -242,8 +257,8 @@ describe('LicensingService', () => {
         licenseServerUrl: '',
       });
       const devService = new LicensingService(
-        mockPrisma as any,
-        mockConfigService as any,
+        mockPrisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
       );
       const spy = jest
         .spyOn(devService, 'validateLicense')

@@ -11,8 +11,8 @@ export class LicenseGuard implements CanActivate {
   constructor(private readonly licensingService: LicensingService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const url: string = request.url;
+    const request = context.switchToHttp().getRequest<{ url: string }>();
+    const url = request.url;
 
     if (url.startsWith('/api/health')) return true;
 

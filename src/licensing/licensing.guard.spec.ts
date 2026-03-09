@@ -18,7 +18,7 @@ describe('LicenseGuard', () => {
       switchToHttp: () => ({
         getRequest: () => ({ url }),
       }),
-    }) as any;
+    }) as unknown as ExecutionContext;
 
   it('should allow request when license is active', async () => {
     (licensingService.isActive as jest.Mock).mockResolvedValue(true);
