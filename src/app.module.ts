@@ -19,6 +19,7 @@ import { SalaryModule } from './salary/salary.module';
 import { SentryUserModule } from './sentry/sentry.module';
 import { EmailModule } from './email/email.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BillingModule } from './billing/billing.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -31,6 +32,7 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
       throttlers: [{ ttl: 60000, limit: 30 }],
     }),
     ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     SentryModule.forRoot(),
     SentryUserModule,
     EmailModule,
