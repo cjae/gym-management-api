@@ -10,6 +10,9 @@ const safeUserSelect = {
   phone: true,
   role: true,
   status: true,
+  gender: true,
+  displayPicture: true,
+  mustChangePassword: true,
   createdAt: true,
   updatedAt: true,
 };

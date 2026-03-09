@@ -22,6 +22,15 @@ export class UserResponseDto {
   @ApiProperty({ enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'] })
   status: string;
 
+  @ApiPropertyOptional({ enum: ['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY'] })
+  gender?: string;
+
+  @ApiPropertyOptional({ example: 'https://res.cloudinary.com/example/image/upload/v1/avatar.jpg' })
+  displayPicture?: string;
+
+  @ApiProperty()
+  mustChangePassword: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

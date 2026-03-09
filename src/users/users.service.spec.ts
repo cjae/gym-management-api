@@ -15,6 +15,9 @@ describe('UsersService', () => {
     phone: null,
     role: 'MEMBER',
     status: 'ACTIVE',
+    gender: null,
+    displayPicture: null,
+    mustChangePassword: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
