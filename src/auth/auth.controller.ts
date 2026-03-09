@@ -3,6 +3,8 @@ import {
   ApiTags,
   ApiBasicAuth,
   ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
   ApiConflictResponse,
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
@@ -14,9 +16,11 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { TokenResponseDto } from './dto/token-response.dto';
 import { BasicAuthGuard } from './guards/basic-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { MessageResponseDto } from '../common/dto/message-response.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -26,6 +30,10 @@ export class AuthController {
   @Post('register')
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
+  @ApiCreatedResponse({
+    type: TokenResponseDto,
+    description: 'User registered successfully',
+  })
   @ApiConflictResponse({ description: 'Email already registered' })
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   register(@Body() dto: RegisterDto) {
@@ -35,6 +43,7 @@ export class AuthController {
   @Post('login')
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
+  @ApiOkResponse({ type: TokenResponseDto, description: 'Login successful' })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   login(@Body() dto: LoginDto) {
@@ -44,6 +53,10 @@ export class AuthController {
   @Post('forgot-password')
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Reset email sent if account exists',
+  })
   @Throttle({ default: { limit: 3, ttl: 60000 } })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
@@ -52,6 +65,10 @@ export class AuthController {
   @Post('reset-password')
   @UseGuards(BasicAuthGuard)
   @ApiBasicAuth()
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Password reset successfully',
+  })
   @ApiBadRequestResponse({ description: 'Invalid or expired reset token' })
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   resetPassword(@Body() dto: ResetPasswordDto) {
@@ -61,6 +78,10 @@ export class AuthController {
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Password changed successfully',
+  })
   @ApiUnauthorizedResponse({ description: 'Current password is incorrect' })
   changePassword(
     @CurrentUser('id') userId: string,
@@ -72,6 +93,10 @@ export class AuthController {
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Logged out successfully',
+  })
   logout(@CurrentUser('jti') jti: string) {
     return this.authService.logout(jti);
   }

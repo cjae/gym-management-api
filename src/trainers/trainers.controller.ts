@@ -7,11 +7,20 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
 import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
+import { TrainerProfileResponseDto } from './dto/trainer-profile-response.dto';
+import { TrainerScheduleResponseDto } from './dto/trainer-schedule-response.dto';
+import { TrainerAssignmentResponseDto } from './dto/trainer-assignment-response.dto';
+import { PaginatedTrainersResponseDto } from './dto/paginated-trainers-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -28,21 +37,25 @@ export class TrainersController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiCreatedResponse({ type: TrainerProfileResponseDto })
   createProfile(@Body() dto: CreateTrainerProfileDto) {
     return this.trainersService.createProfile(dto);
   }
 
   @Get()
+  @ApiOkResponse({ type: PaginatedTrainersResponseDto })
   findAll(@Query() query: PaginationQueryDto) {
     return this.trainersService.findAll(query.page, query.limit);
   }
 
   @Get('my/trainer')
+  @ApiOkResponse({ type: TrainerAssignmentResponseDto })
   getMyTrainer(@CurrentUser('id') memberId: string) {
     return this.trainersService.getMemberTrainer(memberId);
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: TrainerProfileResponseDto })
   findOne(@Param('id') id: string) {
     return this.trainersService.findOne(id);
   }
@@ -50,11 +63,13 @@ export class TrainersController {
   @Post(':id/schedules')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiCreatedResponse({ type: TrainerScheduleResponseDto })
   addSchedule(@Param('id') trainerId: string, @Body() dto: CreateScheduleDto) {
     return this.trainersService.addSchedule(trainerId, dto);
   }
 
   @Get(':id/schedules')
+  @ApiOkResponse({ type: [TrainerScheduleResponseDto] })
   getSchedules(@Param('id') trainerId: string) {
     return this.trainersService.getSchedules(trainerId);
   }
@@ -62,6 +77,7 @@ export class TrainersController {
   @Post('assign')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiCreatedResponse({ type: TrainerAssignmentResponseDto })
   assignMember(@Body() dto: AssignMemberDto) {
     return this.trainersService.assignMember(dto);
   }

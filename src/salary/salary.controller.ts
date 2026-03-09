@@ -9,9 +9,16 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { SalaryService } from './salary.service';
 import { CreateSalaryRecordDto } from './dto/create-salary-record.dto';
+import { SalaryRecordResponseDto } from './dto/salary-record-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -25,11 +32,13 @@ export class SalaryController {
   constructor(private readonly salaryService: SalaryService) {}
 
   @Post()
+  @ApiCreatedResponse({ type: SalaryRecordResponseDto })
   create(@Body() dto: CreateSalaryRecordDto) {
     return this.salaryService.create(dto);
   }
 
   @Get()
+  @ApiOkResponse({ type: [SalaryRecordResponseDto] })
   @ApiQuery({ name: 'month', required: false, type: Number })
   @ApiQuery({ name: 'year', required: false, type: Number })
   findAll(@Query('month') month?: string, @Query('year') year?: string) {
@@ -40,16 +49,19 @@ export class SalaryController {
   }
 
   @Get('staff/:staffId')
+  @ApiOkResponse({ type: [SalaryRecordResponseDto] })
   findByStaff(@Param('staffId') staffId: string) {
     return this.salaryService.findByStaff(staffId);
   }
 
   @Patch(':id/pay')
+  @ApiOkResponse({ type: SalaryRecordResponseDto })
   markAsPaid(@Param('id') id: string) {
     return this.salaryService.markAsPaid(id);
   }
 
   @Delete(':id')
+  @ApiOkResponse({ type: SalaryRecordResponseDto })
   remove(@Param('id') id: string) {
     return this.salaryService.remove(id);
   }
