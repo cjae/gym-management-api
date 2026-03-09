@@ -19,7 +19,7 @@ import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
         return {
           global: true,
           secret: authConfig.jwtSecret,
-          signOptions: { expiresIn: '15m' },
+          signOptions: { expiresIn: '30m' },
         };
       },
       inject: [ConfigService],

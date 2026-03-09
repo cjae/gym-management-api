@@ -200,7 +200,7 @@ export class AuthService {
   }
 
   async logout(jti: string) {
-    // Calculate when the token expires (15m from now is the max for access tokens)
+    // Calculate when the token expires (30m from now is the max for access tokens)
     // We store until 7d to also cover refresh tokens that share the same jti pattern
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -227,13 +227,19 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
         { sub: userId, email, role, jti: accessJti },
-        { expiresIn: '15m' },
+        { expiresIn: '30m' },
       ),
       this.jwtService.signAsync(
         { sub: userId, email, role, jti: refreshJti },
         { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
       ),
     ]);
-    return { accessToken, refreshToken, mustChangePassword };
+    const ACCESS_TOKEN_EXPIRY_SECONDS = 1800; // 30m
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
+      mustChangePassword,
+    };
   }
 }
