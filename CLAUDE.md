@@ -41,8 +41,9 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `billing/` — Daily cron job for recurring subscription billing. Auto-charges card users via Paystack authorization codes, sends email reminders to M-Pesa users. Expires overdue subscriptions.
 - `common/config/` — Typed config factories (app, auth, mail, payment, sentry)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
+- `uploads/` — Image upload to Cloudinary (avatars), returns URL
 
-**Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`).
+**Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`). `GET /auth/me` and `PATCH /auth/me` available for any authenticated user to view/update their own profile (firstName, lastName, phone, gender, displayPicture). No role/email/status self-changes.
 
 **Roles hierarchy**: `SUPER_ADMIN > ADMIN > TRAINER > MEMBER`. The guards check exact role match (not hierarchical).
 
@@ -78,6 +79,9 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `MAILGUN_API_KEY` — Mailgun API key (emails logged to console when unset)
 - `MAILGUN_DOMAIN` — Mailgun sending domain
 - `MAIL_FROM` — Sender address (defaults to `noreply@{MAILGUN_DOMAIN}`)
+- `CLOUDINARY_CLOUD_NAME` — Cloudinary cloud name (optional in dev)
+- `CLOUDINARY_API_KEY` — Cloudinary API key (optional in dev)
+- `CLOUDINARY_API_SECRET` — Cloudinary API secret (optional in dev)
 
 ## Security
 
