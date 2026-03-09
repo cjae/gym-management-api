@@ -3,12 +3,16 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckInDto } from './dto/check-in.dto';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   async checkIn(memberId: string, dto: CheckInDto) {
     // 1. Validate QR code
@@ -54,7 +58,20 @@ export class AttendanceService {
       data: { memberId, checkInDate: today },
     });
 
-    // 4. Update streak
+    // 4. Emit activity event
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberId },
+      select: { firstName: true, lastName: true },
+    });
+
+    this.eventEmitter.emit('activity.check_in', {
+      type: 'check_in',
+      description: `${member?.firstName} ${member?.lastName} checked in`,
+      timestamp: new Date().toISOString(),
+      metadata: { memberId },
+    });
+
+    // 5. Update streak
     const streak = await this.updateStreak(memberId, today);
     return {
       alreadyCheckedIn: false,

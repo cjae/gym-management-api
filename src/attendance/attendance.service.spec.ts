@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
@@ -11,13 +12,17 @@ describe('AttendanceService', () => {
     subscriptionMember: { findFirst: jest.fn() },
     attendance: { findUnique: jest.fn(), create: jest.fn() },
     streak: { upsert: jest.fn(), findUnique: jest.fn() },
+    user: { findUnique: jest.fn() },
   };
+
+  const mockEventEmitter = { emit: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AttendanceService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
     service = module.get<AttendanceService>(AttendanceService);
