@@ -52,16 +52,17 @@ enum SalaryStatus {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
-  password  String
-  phone     String?
-  firstName String
-  lastName  String
-  role      Role       @default(MEMBER)
-  status    UserStatus @default(ACTIVE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  password           String
+  phone              String?
+  firstName          String
+  lastName           String
+  role               Role       @default(MEMBER)
+  status             UserStatus @default(ACTIVE)
+  mustChangePassword Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
   subscriptionsOwned  MemberSubscription[] @relation("SubscriptionOwner")
   subscriptionMembers SubscriptionMember[]
