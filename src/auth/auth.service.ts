@@ -65,11 +65,27 @@ export class AuthService {
     );
   }
 
-  async refreshToken(userId: string) {
+  async refreshToken(userId: string, oldRefreshJti: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-    if (!user) throw new UnauthorizedException('User not found');
+    if (!user || user.status !== 'ACTIVE')
+      throw new UnauthorizedException('User not found or inactive');
+
+    // Invalidate old refresh token (rotation)
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    try {
+      await this.prisma.invalidatedToken.create({
+        data: { jti: oldRefreshJti, expiresAt },
+      });
+    } catch (error: any) {
+      // Unique constraint violation = token replay
+      if (error.code === 'P2002') {
+        throw new UnauthorizedException('Refresh token has already been used');
+      }
+      throw error;
+    }
+
     return this.generateTokens(
       user.id,
       user.email,

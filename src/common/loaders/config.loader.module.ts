@@ -7,7 +7,14 @@ import sentryConfig from '../config/sentry.config';
 import cloudinaryConfig from '../config/cloudinary.config';
 
 export const ConfigLoaderModule = ConfigModule.forRoot({
-  load: [appConfig, authConfig, mailConfig, paymentConfig, sentryConfig, cloudinaryConfig],
+  load: [
+    appConfig,
+    authConfig,
+    mailConfig,
+    paymentConfig,
+    sentryConfig,
+    cloudinaryConfig,
+  ],
   isGlobal: true,
   cache: true,
 });

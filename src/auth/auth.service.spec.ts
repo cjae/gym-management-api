@@ -301,18 +301,91 @@ describe('AuthService', () => {
   });
 
   describe('refreshToken', () => {
+    it('should invalidate old JTI and return new tokens', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      });
+      mockPrisma.invalidatedToken.create.mockResolvedValue({});
+
+      const result = await service.refreshToken('1', 'old-refresh-jti');
+
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(mockPrisma.invalidatedToken.create).toHaveBeenCalledWith({
+        data: {
+          jti: 'old-refresh-jti',
+          expiresAt: expect.any(Date) as Date,
+        },
+      });
+    });
+
+    it('should throw UnauthorizedException if user not found', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.refreshToken('nonexistent', 'some-jti'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is suspended', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'SUSPENDED',
+        mustChangePassword: false,
+      });
+
+      await expect(
+        service.refreshToken('1', 'some-jti'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is inactive', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'INACTIVE',
+        mustChangePassword: false,
+      });
+
+      await expect(
+        service.refreshToken('1', 'some-jti'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
     it('should return mustChangePassword from user record', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: '1',
         email: 'admin@gym.co.ke',
         role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
         mustChangePassword: true,
       });
+      mockPrisma.invalidatedToken.create.mockResolvedValue({});
 
-      const result = await service.refreshToken('1');
-      expect(result).toHaveProperty('accessToken');
-      expect(result).toHaveProperty('refreshToken');
+      const result = await service.refreshToken('1', 'old-jti');
       expect(result.mustChangePassword).toBe(true);
+    });
+
+    it('should throw UnauthorizedException on token replay (duplicate JTI)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      });
+      mockPrisma.invalidatedToken.create.mockRejectedValue({ code: 'P2002' });
+
+      await expect(
+        service.refreshToken('1', 'already-used-jti'),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

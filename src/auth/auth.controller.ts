@@ -11,6 +11,7 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -19,6 +20,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { BasicAuthGuard } from './guards/basic-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { JwtRefreshAuthGuard } from './guards/jwt-refresh-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserResponseDto } from '../users/dto/user-response.dto';
@@ -50,6 +52,25 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  @UseGuards(BasicAuthGuard, JwtRefreshAuthGuard)
+  @ApiBasicAuth()
+  @ApiOkResponse({
+    type: TokenResponseDto,
+    description: 'Tokens refreshed successfully',
+  })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired refresh token' })
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  refresh(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('jti') jti: string,
+    // Body parsed by ValidationPipe; token extracted by Passport strategy
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    @Body() dto: RefreshTokenDto,
+  ) {
+    return this.authService.refreshToken(userId, jti);
   }
 
   @Post('forgot-password')
