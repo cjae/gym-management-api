@@ -42,6 +42,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `common/config/` — Typed config factories (app, auth, mail, payment, sentry)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
 - `uploads/` — Image upload to Cloudinary (avatars), returns URL
+- `licensing/` — SaaS license validation. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset.
 
 **Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`). `GET /auth/me` and `PATCH /auth/me` available for any authenticated user to view/update their own profile (firstName, lastName, phone, gender, displayPicture). No role/email/status self-changes.
 
@@ -82,6 +83,8 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `CLOUDINARY_CLOUD_NAME` — Cloudinary cloud name (optional in dev)
 - `CLOUDINARY_API_KEY` — Cloudinary API key (optional in dev)
 - `CLOUDINARY_API_SECRET` — Cloudinary API secret (optional in dev)
+- `LICENSE_KEY` — Unique license key per gym instance (optional in dev — unlicensed mode when unset)
+- `LICENSE_SERVER_URL` — Control plane base URL for license validation (optional in dev)
 
 ## Security
 
@@ -97,6 +100,7 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - **Password reset tokens**: SHA-256 hashed before storing in DB (raw token sent via email)
 - **Encryption at rest**: `paystackAuthorizationCode` encrypted with AES-256-GCM when `ENCRYPTION_KEY` is set
 - **Pagination**: All `findAll` endpoints paginated via `PaginationQueryDto` (default 20, max 100 per page)
+- **License enforcement**: Global `LicenseGuard` checks cached license on every request. 7-day grace period on network failures. `GET /api/health` bypasses guard. Member registration capped by license tier.
 
 ## Testing
 
