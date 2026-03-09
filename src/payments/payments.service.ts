@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   PaymentConfig,
@@ -56,6 +57,7 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     const paymentConfig = this.configService.get<PaymentConfig>(
       getPaymentConfigName(),
@@ -138,11 +140,29 @@ export class PaymentsService {
       }
 
       if (paymentId) {
-        await this.prisma.payment.update({
+        const updatedPayment = await this.prisma.payment.update({
           where: { id: paymentId },
           data: {
             status: 'PAID',
             paystackReference: reference,
+          },
+          include: {
+            subscription: {
+              include: { primaryMember: true },
+            },
+          },
+        });
+
+        const member = updatedPayment.subscription.primaryMember;
+        const memberName = `${member.firstName} ${member.lastName}`;
+        this.eventEmitter.emit('activity.payment', {
+          type: 'payment',
+          description: `${memberName} made a payment of ${updatedPayment.amount} ${updatedPayment.currency}`,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            paymentId,
+            amount: updatedPayment.amount,
+            status: 'PAID',
           },
         });
       }
@@ -190,11 +210,29 @@ export class PaymentsService {
       const paymentId: string | undefined = metadata?.paymentId;
 
       if (paymentId) {
-        await this.prisma.payment.update({
+        const updatedPayment = await this.prisma.payment.update({
           where: { id: paymentId },
           data: {
             status: 'FAILED',
             failureReason: gateway_response || 'Payment failed',
+          },
+          include: {
+            subscription: {
+              include: { primaryMember: true },
+            },
+          },
+        });
+
+        const member = updatedPayment.subscription.primaryMember;
+        const memberName = `${member.firstName} ${member.lastName}`;
+        this.eventEmitter.emit('activity.payment', {
+          type: 'payment',
+          description: `Payment of ${updatedPayment.amount} ${updatedPayment.currency} by ${memberName} failed`,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            paymentId,
+            amount: updatedPayment.amount,
+            status: 'FAILED',
           },
         });
       }
