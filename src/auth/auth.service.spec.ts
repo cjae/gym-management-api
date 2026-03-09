@@ -316,6 +316,93 @@ describe('AuthService', () => {
     });
   });
 
+  describe('getProfile', () => {
+    it('should return user profile without password', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        firstName: 'Test',
+        lastName: 'User',
+        phone: null,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        gender: null,
+        displayPicture: null,
+        mustChangePassword: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.getProfile('1');
+      expect(result).toHaveProperty('email', 'test@test.com');
+      expect(result).not.toHaveProperty('password');
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+        select: expect.objectContaining({
+          id: true,
+          email: true,
+          gender: true,
+          displayPicture: true,
+        }),
+      });
+    });
+
+    it('should throw UnauthorizedException if user not found', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.getProfile('nonexistent')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('should update user profile fields', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        firstName: 'Test',
+        lastName: 'User',
+        phone: null,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        gender: 'MALE',
+        displayPicture: null,
+        mustChangePassword: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockPrisma.user.update.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        firstName: 'Updated',
+        lastName: 'User',
+        phone: null,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        gender: 'MALE',
+        displayPicture: null,
+        mustChangePassword: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.updateProfile('1', {
+        firstName: 'Updated',
+        gender: 'MALE' as any,
+      });
+      expect(result.firstName).toBe('Updated');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: { firstName: 'Updated', gender: 'MALE' },
+        select: expect.objectContaining({
+          id: true,
+          gender: true,
+          displayPicture: true,
+        }),
+      });
+    });
+  });
+
   describe('logout', () => {
     it('should invalidate token and return success', async () => {
       mockPrisma.invalidatedToken.create.mockResolvedValue({});

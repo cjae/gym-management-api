@@ -14,6 +14,8 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { safeUserSelect } from '../common/constants/safe-user-select';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 
@@ -161,6 +163,24 @@ export class AuthService {
     });
 
     return { message: 'Password changed successfully.' };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: safeUserSelect,
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+    return user;
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    await this.getProfile(userId);
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: dto,
+      select: safeUserSelect,
+    });
   }
 
   async logout(jti: string) {

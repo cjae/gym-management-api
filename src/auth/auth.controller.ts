@@ -1,4 +1,4 @@
-import { Controller, Post, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiBasicAuth,
@@ -20,6 +20,8 @@ import { TokenResponseDto } from './dto/token-response.dto';
 import { BasicAuthGuard } from './guards/basic-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 import { MessageResponseDto } from '../common/dto/message-response.dto';
 
 @ApiTags('Auth')
@@ -73,6 +75,25 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: UserResponseDto, description: 'Current user profile' })
+  getProfile(@CurrentUser('id') userId: string) {
+    return this.authService.getProfile(userId);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: UserResponseDto, description: 'Updated user profile' })
+  updateProfile(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(userId, dto);
   }
 
   @Patch('change-password')

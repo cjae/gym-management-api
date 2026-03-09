@@ -1,0 +1,14 @@
+export const safeUserSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  phone: true,
+  role: true,
+  status: true,
+  gender: true,
+  displayPicture: true,
+  mustChangePassword: true,
+  createdAt: true,
+  updatedAt: true,
+};
