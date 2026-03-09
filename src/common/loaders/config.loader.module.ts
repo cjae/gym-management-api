@@ -4,9 +4,10 @@ import authConfig from '../config/auth.config';
 import mailConfig from '../config/mail.config';
 import paymentConfig from '../config/payment.config';
 import sentryConfig from '../config/sentry.config';
+import cloudinaryConfig from '../config/cloudinary.config';
 
 export const ConfigLoaderModule = ConfigModule.forRoot({
-  load: [appConfig, authConfig, mailConfig, paymentConfig, sentryConfig],
+  load: [appConfig, authConfig, mailConfig, paymentConfig, sentryConfig, cloudinaryConfig],
   isGlobal: true,
   cache: true,
 });
