@@ -51,6 +51,13 @@ enum SalaryStatus {
   PAID
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -61,6 +68,8 @@ model User {
   role               Role       @default(MEMBER)
   status             UserStatus @default(ACTIVE)
   mustChangePassword Boolean    @default(false)
+  gender             Gender?
+  displayPicture     String?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
