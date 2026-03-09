@@ -5,6 +5,7 @@ import mailConfig from '../config/mail.config';
 import paymentConfig from '../config/payment.config';
 import sentryConfig from '../config/sentry.config';
 import cloudinaryConfig from '../config/cloudinary.config';
+import licensingConfig from '../../licensing/licensing.config';
 
 export const ConfigLoaderModule = ConfigModule.forRoot({
   load: [
@@ -14,6 +15,7 @@ export const ConfigLoaderModule = ConfigModule.forRoot({
     paymentConfig,
     sentryConfig,
     cloudinaryConfig,
+    licensingConfig,
   ],
   isGlobal: true,
   cache: true,
