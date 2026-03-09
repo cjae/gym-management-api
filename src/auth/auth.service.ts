@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
@@ -26,6 +27,7 @@ export class AuthService {
     private jwtService: JwtService,
     private emailService: EmailService,
     private configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -43,6 +45,13 @@ export class AuthService {
         lastName: dto.lastName,
         phone: dto.phone,
       },
+    });
+
+    this.eventEmitter.emit('activity.registration', {
+      type: 'registration',
+      description: `${user.firstName} ${user.lastName} registered as a new member`,
+      timestamp: new Date().toISOString(),
+      metadata: { memberId: user.id },
     });
 
     return this.generateTokens(user.id, user.email, user.role, false);
