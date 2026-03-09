@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { LicensingService } from '../licensing/licensing.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -20,6 +21,7 @@ describe('AuthService', () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
     passwordResetToken: {
       create: jest.fn(),
@@ -51,6 +53,10 @@ describe('AuthService', () => {
 
   const mockEventEmitter = { emit: jest.fn() };
 
+  const mockLicensingService = {
+    getMemberLimit: jest.fn().mockResolvedValue(null),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -60,6 +66,7 @@ describe('AuthService', () => {
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: LicensingService, useValue: mockLicensingService },
       ],
     }).compile();
 

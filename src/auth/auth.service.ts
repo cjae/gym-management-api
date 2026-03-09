@@ -3,12 +3,14 @@ import {
   ConflictException,
   UnauthorizedException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { LicensingService } from '../licensing/licensing.service';
 import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -28,6 +30,7 @@ export class AuthService {
     private emailService: EmailService,
     private configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly licensingService: LicensingService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -35,6 +38,18 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (existing) throw new ConflictException('Email already registered');
+
+    const maxMembers = await this.licensingService.getMemberLimit();
+    if (maxMembers !== null) {
+      const currentCount = await this.prisma.user.count({
+        where: { role: 'MEMBER' },
+      });
+      if (currentCount >= maxMembers) {
+        throw new ForbiddenException(
+          'Member limit reached for your subscription tier.',
+        );
+      }
+    }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
