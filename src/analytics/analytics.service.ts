@@ -18,13 +18,13 @@ export interface DashboardResult {
     byPlan: Record<string, number>;
   };
   attendance: {
-    today: number;
-    thisWeek: number;
-    avgDailyLast30Days: number;
+    todayCheckIns: number;
+    thisWeekCheckIns: number;
+    avgDaily30Days: number;
   };
   payments: {
-    pendingLast30Days: number;
-    failedLast30Days: number;
+    pendingCount30Days: number;
+    failedCount30Days: number;
   };
   financials?: {
     revenueThisMonth: number;
@@ -162,7 +162,7 @@ export class AnalyticsService {
     const attendanceLast30 = await this.prisma.attendance.count({
       where: { checkInDate: { gte: thirtyDaysAgo } },
     });
-    const avgDailyLast30Days =
+    const avgDaily30Days =
       Math.round((attendanceLast30 / daysInRange) * 100) / 100;
 
     const dashboard: DashboardResult = {
@@ -180,13 +180,13 @@ export class AnalyticsService {
         byPlan,
       },
       attendance: {
-        today: attendanceToday,
-        thisWeek: attendanceThisWeek,
-        avgDailyLast30Days,
+        todayCheckIns: attendanceToday,
+        thisWeekCheckIns: attendanceThisWeek,
+        avgDaily30Days,
       },
       payments: {
-        pendingLast30Days: pendingPayments,
-        failedLast30Days: failedPayments,
+        pendingCount30Days: pendingPayments,
+        failedCount30Days: failedPayments,
       },
       recentActivity,
     };

@@ -41,21 +41,21 @@ class SubscriptionStatsDto {
 
 class AttendanceStatsDto {
   @ApiProperty({ example: 45 })
-  today: number;
+  todayCheckIns: number;
 
   @ApiProperty({ example: 280 })
-  thisWeek: number;
+  thisWeekCheckIns: number;
 
   @ApiProperty({ example: 42.5 })
-  avgDailyLast30Days: number;
+  avgDaily30Days: number;
 }
 
 class PaymentStatsDto {
   @ApiProperty({ example: 3 })
-  pendingLast30Days: number;
+  pendingCount30Days: number;
 
   @ApiProperty({ example: 1 })
-  failedLast30Days: number;
+  failedCount30Days: number;
 }
 
 class FinancialStatsDto {
