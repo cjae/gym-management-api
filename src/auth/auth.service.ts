@@ -87,9 +87,13 @@ export class AuthService {
       await this.prisma.invalidatedToken.create({
         data: { jti: oldRefreshJti, expiresAt },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Unique constraint violation = token replay
-      if (error.code === 'P2002') {
+      if (
+        error instanceof Object &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
         throw new UnauthorizedException('Refresh token has already been used');
       }
       throw error;

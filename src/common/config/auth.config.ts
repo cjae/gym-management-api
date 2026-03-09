@@ -22,8 +22,16 @@ const requireInProduction = (
 };
 
 export const getAuthConfig = (): AuthConfig => ({
-  jwtSecret: requireInProduction(process.env.JWT_SECRET, 'JWT_SECRET', 'dev-secret'),
-  jwtRefreshSecret: requireInProduction(process.env.JWT_REFRESH_SECRET, 'JWT_REFRESH_SECRET', 'dev-refresh-secret'),
+  jwtSecret: requireInProduction(
+    process.env.JWT_SECRET,
+    'JWT_SECRET',
+    'dev-secret',
+  ),
+  jwtRefreshSecret: requireInProduction(
+    process.env.JWT_REFRESH_SECRET,
+    'JWT_REFRESH_SECRET',
+    'dev-refresh-secret',
+  ),
   basicAuthUser: process.env.BASIC_AUTH_USER ?? '',
   basicAuthPassword: process.env.BASIC_AUTH_PASSWORD ?? '',
 });

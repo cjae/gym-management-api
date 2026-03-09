@@ -51,7 +51,7 @@ describe('UploadsService', () => {
         size: 1024,
         fieldname: 'file',
         encoding: '7bit',
-        stream: null as any,
+        stream: null as unknown as Express.Multer.File['stream'],
         destination: '',
         filename: '',
         path: '',
@@ -63,7 +63,7 @@ describe('UploadsService', () => {
       };
 
       (cloudinary.uploader.upload_stream as jest.Mock).mockImplementation(
-        (_options: any, callback: Function) => {
+        (_options: unknown, callback: (...args: unknown[]) => void) => {
           callback(null, mockResult);
           return { end: jest.fn() };
         },
@@ -81,14 +81,14 @@ describe('UploadsService', () => {
         size: 1024,
         fieldname: 'file',
         encoding: '7bit',
-        stream: null as any,
+        stream: null as unknown as Express.Multer.File['stream'],
         destination: '',
         filename: '',
         path: '',
       };
 
       (cloudinary.uploader.upload_stream as jest.Mock).mockImplementation(
-        (_options: any, callback: Function) => {
+        (_options: unknown, callback: (...args: unknown[]) => void) => {
           callback(new Error('Upload failed'), null);
           return { end: jest.fn() };
         },

@@ -214,7 +214,7 @@ describe('AuthService', () => {
         where: { id: '1' },
         data: expect.objectContaining({
           mustChangePassword: false,
-        }),
+        }) as Record<string, unknown>,
       });
     });
 
@@ -284,7 +284,7 @@ describe('AuthService', () => {
         where: { id: '1' },
         data: expect.objectContaining({
           mustChangePassword: false,
-        }),
+        }) as Record<string, unknown>,
       });
     });
 
@@ -344,9 +344,9 @@ describe('AuthService', () => {
         mustChangePassword: false,
       });
 
-      await expect(
-        service.refreshToken('1', 'some-jti'),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(service.refreshToken('1', 'some-jti')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should throw UnauthorizedException if user is inactive', async () => {
@@ -358,9 +358,9 @@ describe('AuthService', () => {
         mustChangePassword: false,
       });
 
-      await expect(
-        service.refreshToken('1', 'some-jti'),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(service.refreshToken('1', 'some-jti')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should return mustChangePassword from user record', async () => {
@@ -420,7 +420,7 @@ describe('AuthService', () => {
           email: true,
           gender: true,
           displayPicture: true,
-        }),
+        }) as Record<string, unknown>,
       });
     });
 
@@ -465,7 +465,7 @@ describe('AuthService', () => {
 
       const result = await service.updateProfile('1', {
         firstName: 'Updated',
-        gender: 'MALE' as any,
+        gender: 'MALE' as unknown as undefined,
       });
       expect(result.firstName).toBe('Updated');
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
@@ -475,7 +475,7 @@ describe('AuthService', () => {
           id: true,
           gender: true,
           displayPicture: true,
-        }),
+        }) as Record<string, unknown>,
       });
     });
   });
