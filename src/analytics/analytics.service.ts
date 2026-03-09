@@ -33,7 +33,6 @@ export interface DashboardResult {
     pendingSalaries: number;
     netPositionThisMonth: number;
   };
-  recentActivity: ActivityItem[];
 }
 
 export interface ActivityItem {
@@ -83,7 +82,6 @@ export class AnalyticsService {
       attendanceThisWeek,
       pendingPayments,
       failedPayments,
-      recentActivity,
     ] = await Promise.all([
       this.prisma.user.count({ where: memberWhere }),
       this.prisma.user.count({
@@ -132,7 +130,6 @@ export class AnalyticsService {
       this.prisma.payment.count({
         where: { status: 'FAILED', createdAt: { gte: thirtyDaysAgo } },
       }),
-      this.getRecentActivity(),
     ]);
 
     // Resolve plan names for byPlan
@@ -188,7 +185,6 @@ export class AnalyticsService {
         pendingCount30Days: pendingPayments,
         failedCount30Days: failedPayments,
       },
-      recentActivity,
     };
 
     if (role === 'SUPER_ADMIN') {

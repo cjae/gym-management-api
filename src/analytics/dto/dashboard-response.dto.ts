@@ -75,17 +75,6 @@ class FinancialStatsDto {
   netPositionThisMonth: number;
 }
 
-class ActivityItemDto {
-  @ApiProperty({ example: 'subscription_created' })
-  type: string;
-
-  @ApiProperty({ example: 'New subscription by John Doe' })
-  description: string;
-
-  @ApiProperty()
-  timestamp: Date;
-}
-
 export class DashboardResponseDto {
   @ApiProperty({ type: MemberStatsDto })
   members: MemberStatsDto;
@@ -104,7 +93,4 @@ export class DashboardResponseDto {
     description: 'SUPER_ADMIN only',
   })
   financials?: FinancialStatsDto;
-
-  @ApiProperty({ type: [ActivityItemDto] })
-  recentActivity: ActivityItemDto[];
 }

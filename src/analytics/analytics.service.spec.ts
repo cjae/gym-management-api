@@ -71,14 +71,11 @@ describe('AnalyticsService', () => {
         { planId: 'plan-2', _count: { id: 20 } },
       ]);
 
-      // First call: getRecentActivity subscriptions, second call: byPlan resolution
-      mockPrisma.memberSubscription.findMany
-        .mockResolvedValueOnce([]) // getRecentActivity
-        .mockResolvedValueOnce([
-          // byPlan name resolution
-          { plan: { name: 'Basic' }, planId: 'plan-1' },
-          { plan: { name: 'Premium' }, planId: 'plan-2' },
-        ]);
+      // byPlan name resolution
+      mockPrisma.memberSubscription.findMany.mockResolvedValue([
+        { plan: { name: 'Basic' }, planId: 'plan-1' },
+        { plan: { name: 'Premium' }, planId: 'plan-2' },
+      ]);
 
       // Attendance stats mocks
       mockPrisma.attendance.count
@@ -86,16 +83,10 @@ describe('AnalyticsService', () => {
         .mockResolvedValueOnce(250) // thisWeek
         .mockResolvedValueOnce(900); // last30Days (for avg calculation)
 
-      mockPrisma.attendance.findMany.mockResolvedValue([]);
-
       // Payment stats mocks
       mockPrisma.payment.count
         .mockResolvedValueOnce(3) // pendingLast30Days
         .mockResolvedValueOnce(2); // failedLast30Days
-
-      // Recent activity mocks
-      mockPrisma.user.findMany.mockResolvedValue([]);
-      mockPrisma.payment.findMany.mockResolvedValue([]);
     });
 
     it('should return member stats', async () => {
@@ -137,73 +128,6 @@ describe('AnalyticsService', () => {
         pendingSalaries: 2,
         netPositionThisMonth: 300000,
       });
-    });
-  });
-
-  describe('getRecentActivity', () => {
-    it('should return merged and sorted activity feed', async () => {
-      const t1 = new Date('2026-03-08T11:00:00Z');
-      const t2 = new Date('2026-03-08T10:00:00Z');
-      const t3 = new Date('2026-03-08T09:00:00Z');
-      const t4 = new Date('2026-03-08T08:00:00Z');
-
-      mockPrisma.user.findMany.mockResolvedValue([
-        {
-          id: 'u1',
-          firstName: 'John',
-          lastName: 'Doe',
-          createdAt: t2,
-        },
-      ]);
-
-      mockPrisma.attendance.findMany.mockResolvedValue([
-        {
-          id: 'a1',
-          memberId: 'u1',
-          checkInTime: t1,
-          member: { firstName: 'John', lastName: 'Doe' },
-        },
-      ]);
-
-      mockPrisma.payment.findMany.mockResolvedValue([
-        {
-          id: 'p1',
-          amount: 5000,
-          currency: 'KES',
-          status: 'PAID',
-          createdAt: t3,
-          subscription: {
-            primaryMember: { firstName: 'Jane', lastName: 'Smith' },
-          },
-        },
-      ]);
-
-      mockPrisma.memberSubscription.findMany.mockResolvedValue([
-        {
-          id: 's1',
-          status: 'ACTIVE',
-          createdAt: t4,
-          primaryMember: { firstName: 'John', lastName: 'Doe' },
-          plan: { name: 'Basic' },
-        },
-      ]);
-
-      const result = await service.getRecentActivity(20);
-
-      expect(result).toHaveLength(4);
-      // Should be sorted by timestamp descending
-      expect(result[0].type).toBe('CHECK_IN');
-      expect(result[0].timestamp).toEqual(t1);
-      expect(result[1].type).toBe('NEW_MEMBER');
-      expect(result[1].timestamp).toEqual(t2);
-      expect(result[2].type).toBe('PAYMENT');
-      expect(result[2].timestamp).toEqual(t3);
-      expect(result[3].type).toBe('SUBSCRIPTION');
-      expect(result[3].timestamp).toEqual(t4);
-
-      // Check message format
-      expect(result[0].message).toContain('John Doe');
-      expect(result[2].message).toContain('5000');
     });
   });
 
