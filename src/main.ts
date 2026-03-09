@@ -38,7 +38,28 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('Gym Management API')
     .setDescription(
-      'API for gym management platform — subscriptions, attendance, payments, trainers, and more.',
+      `API for gym management platform — subscriptions, attendance, payments, trainers, and more.
+
+## WebSocket: Activity Feed
+
+Real-time activity events are available via Socket.IO at the \`/activity\` namespace.
+
+**Connection:**
+\`\`\`
+const socket = io("/activity", { auth: { token: "<JWT>" } });
+\`\`\`
+
+**Authentication:** Pass a valid JWT in \`auth.token\`. Only ADMIN and SUPER_ADMIN roles are accepted. Invalidated tokens are rejected.
+
+**Event:** \`activity\`
+
+**Payload:**
+| Field | Type | Description |
+|-------|------|-------------|
+| type | \`"registration" \\| "check_in" \\| "payment" \\| "subscription"\` | Event type |
+| description | string | Human-readable description |
+| timestamp | string (ISO 8601) | When the event occurred |
+| metadata | object (optional) | Additional context (memberId, amount, etc.) |`,
     )
     .setVersion('0.0.1')
     .addBearerAuth()

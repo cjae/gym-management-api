@@ -35,7 +35,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Get dashboard summary',
     description:
-      'Returns member, subscription, attendance, and payment stats with recent activity feed. SUPER_ADMIN also receives financial metrics (revenue, expenses, net position).',
+      'Returns member, subscription, attendance, and payment stats. SUPER_ADMIN also receives financial metrics (revenue, expenses, net position). Real-time activity feed is available via WebSocket at /activity namespace.',
   })
   @ApiOkResponse({ type: DashboardResponseDto })
   getDashboard(@CurrentUser('role') role: string) {
