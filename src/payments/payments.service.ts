@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -288,6 +289,23 @@ export class PaymentsService {
     }
 
     return payment;
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async expireStalePendingPayments() {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const { count } = await this.prisma.payment.updateMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: twentyFourHoursAgo },
+      },
+      data: { status: 'EXPIRED' },
+    });
+
+    if (count > 0) {
+      this.logger.log(`Expired ${count} stale pending payment(s)`);
+    }
   }
 
   async getPaymentHistory(memberId: string, page = 1, limit = 20) {

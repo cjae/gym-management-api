@@ -30,6 +30,7 @@ enum PaymentStatus {
   PENDING
   PAID
   FAILED
+  EXPIRED
 }
 
 enum BillingInterval {
