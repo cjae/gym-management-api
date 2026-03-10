@@ -28,6 +28,7 @@ export interface CheckInResultEvent {
   };
   success: boolean;
   message: string;
+  entranceId?: string;
   timestamp: string;
 }
 
@@ -79,6 +80,15 @@ export class ActivityGateway implements OnGatewayConnection {
         return;
       }
 
+      // Join entrance-specific room if entranceId provided
+      const entranceId = client.handshake.query?.entranceId as
+        | string
+        | undefined;
+      if (entranceId) {
+        await client.join(`entrance:${entranceId}`);
+        this.logger.log(`Screen joined entrance room: ${entranceId}`);
+      }
+
       this.logger.log(`Admin connected: ${payload.sub}`);
     } catch {
       client.disconnect();
@@ -107,7 +117,15 @@ export class ActivityGateway implements OnGatewayConnection {
 
   @OnEvent('check_in.result')
   handleCheckInResult(payload: CheckInResultEvent) {
+    // Always broadcast to all admins
     this.server.emit('check_in_result', payload);
+
+    // Also emit to entrance-specific room
+    if (payload.entranceId) {
+      this.server
+        .to(`entrance:${payload.entranceId}`)
+        .emit('check_in_result_entrance', payload);
+    }
   }
 
   @OnEvent('qr.rotated')
