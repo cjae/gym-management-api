@@ -222,7 +222,10 @@ export class AuthService {
     await this.getProfile(userId);
     return this.prisma.user.update({
       where: { id: userId },
-      data: dto,
+      data: {
+        ...dto,
+        birthday: dto.birthday ? new Date(dto.birthday) : undefined,
+      },
       select: safeUserSelect,
     });
   }

@@ -8,6 +8,7 @@ export const safeUserSelect = {
   status: true,
   gender: true,
   displayPicture: true,
+  birthday: true,
   mustChangePassword: true,
   createdAt: true,
   updatedAt: true,

@@ -35,7 +35,10 @@ export class UsersService {
     await this.findOne(id);
     return this.prisma.user.update({
       where: { id },
-      data: dto,
+      data: {
+        ...dto,
+        birthday: dto.birthday ? new Date(dto.birthday) : undefined,
+      },
       select: safeUserSelect,
     });
   }

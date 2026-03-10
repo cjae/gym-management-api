@@ -32,6 +32,9 @@ export class UserResponseDto {
   })
   displayPicture?: string;
 
+  @ApiPropertyOptional({ example: '2000-03-10', description: 'Birthday' })
+  birthday?: Date;
+
   @ApiProperty()
   mustChangePassword: boolean;
 

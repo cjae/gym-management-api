@@ -51,15 +51,34 @@ const socket = io("/activity", { auth: { token: "<JWT>" } });
 
 **Authentication:** Pass a valid JWT in \`auth.token\`. Only ADMIN and SUPER_ADMIN roles are accepted. Invalidated tokens are rejected.
 
-**Event:** \`activity\`
+### Event: \`activity\`
+Emitted for general gym activity (admin dashboard feed).
 
-**Payload:**
 | Field | Type | Description |
 |-------|------|-------------|
 | type | \`"registration" \\| "check_in" \\| "payment" \\| "subscription"\` | Event type |
 | description | string | Human-readable description |
 | timestamp | string (ISO 8601) | When the event occurred |
-| metadata | object (optional) | Additional context (memberId, amount, etc.) |`,
+| metadata | object (optional) | Additional context (memberId, amount, etc.) |
+
+### Event: \`check_in_result\`
+Emitted after a member scans the QR code at the entrance. Used by the entrance screen to show check-in feedback.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| type | \`"check_in_result"\` | Always \`"check_in_result"\` |
+| member | object | \`{ id, firstName, lastName, displayPicture }\` |
+| success | boolean | Whether the check-in was accepted |
+| message | string | Human-readable result message |
+| timestamp | string (ISO 8601) | When the event occurred |
+
+### Event: \`qr_rotated\`
+Emitted when the gym entrance QR code is rotated. Clients displaying the QR should refresh.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| type | \`"qr_rotated"\` | Always \`"qr_rotated"\` |
+| timestamp | string (ISO 8601) | When the rotation occurred |`,
     )
     .setVersion('0.0.1')
     .addBearerAuth()

@@ -3,6 +3,7 @@ import {
   IsString,
   IsEnum,
   IsUrl,
+  IsDateString,
   MaxLength,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -55,4 +56,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsUrl()
   displayPicture?: string;
+
+  @ApiPropertyOptional({
+    example: '2000-03-10',
+    description: 'Birthday (only month and day are used, year is ignored)',
+  })
+  @IsOptional()
+  @IsDateString()
+  birthday?: string;
 }
