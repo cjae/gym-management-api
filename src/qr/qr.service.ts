@@ -9,8 +9,8 @@ export class QrService {
   private readonly logger = new Logger(QrService.name);
 
   constructor(
-    private prisma: PrismaService,
-    private eventEmitter: EventEmitter2,
+    private readonly prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async generateCode() {
