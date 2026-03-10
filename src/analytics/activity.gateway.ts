@@ -18,6 +18,24 @@ export interface ActivityEvent {
   metadata?: Record<string, unknown>;
 }
 
+export interface CheckInResultEvent {
+  type: 'check_in_result';
+  member: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    displayPicture: string | null;
+  };
+  success: boolean;
+  message: string;
+  timestamp: string;
+}
+
+export interface QrRotatedEvent {
+  type: 'qr_rotated';
+  timestamp: string;
+}
+
 @WebSocketGateway({ namespace: '/activity', cors: true })
 export class ActivityGateway implements OnGatewayConnection {
   @WebSocketServer()
@@ -85,5 +103,15 @@ export class ActivityGateway implements OnGatewayConnection {
   @OnEvent('activity.subscription')
   handleSubscription(payload: ActivityEvent) {
     this.server.emit('activity', payload);
+  }
+
+  @OnEvent('check_in.result')
+  handleCheckInResult(payload: CheckInResultEvent) {
+    this.server.emit('check_in_result', payload);
+  }
+
+  @OnEvent('qr.rotated')
+  handleQrRotated(payload: QrRotatedEvent) {
+    this.server.emit('qr_rotated', payload);
   }
 }
