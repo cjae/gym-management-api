@@ -81,6 +81,9 @@ export class UserResponseDto {
   @ApiProperty()
   mustChangePassword: boolean;
 
+  @ApiPropertyOptional({ nullable: true, description: 'Soft-delete timestamp' })
+  deletedAt?: Date | null;
+
   @ApiPropertyOptional({
     type: UserSubscriptionDto,
     nullable: true,

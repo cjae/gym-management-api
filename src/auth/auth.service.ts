@@ -40,12 +40,13 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existing) throw new ConflictException('Email already registered');
+    if (existing && !existing.deletedAt)
+      throw new ConflictException('Email already registered');
 
     const maxMembers = await this.licensingService.getMemberLimit();
     if (maxMembers !== null) {
       const currentCount = await this.prisma.user.count({
-        where: { role: 'MEMBER' },
+        where: { role: 'MEMBER', deletedAt: null },
       });
       if (currentCount >= maxMembers) {
         throw new ForbiddenException(
@@ -80,40 +81,46 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (!user || user.deletedAt) {
-      this.auditLogService.log({
-        userId: null,
-        action: AuditAction.LOGIN_FAILED,
-        resource: 'Auth',
-        ipAddress,
-        userAgent,
-        route: 'POST /api/v1/auth/login',
-        metadata: { email: dto.email },
-      }).catch(() => {});
+      this.auditLogService
+        .log({
+          userId: null,
+          action: AuditAction.LOGIN_FAILED,
+          resource: 'Auth',
+          ipAddress,
+          userAgent,
+          route: 'POST /api/v1/auth/login',
+          metadata: { email: dto.email },
+        })
+        .catch(() => {});
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.password);
     if (!passwordValid) {
-      this.auditLogService.log({
+      this.auditLogService
+        .log({
+          userId: user.id,
+          action: AuditAction.LOGIN_FAILED,
+          resource: 'Auth',
+          ipAddress,
+          userAgent,
+          route: 'POST /api/v1/auth/login',
+          metadata: { email: dto.email },
+        })
+        .catch(() => {});
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    this.auditLogService
+      .log({
         userId: user.id,
-        action: AuditAction.LOGIN_FAILED,
+        action: AuditAction.LOGIN,
         resource: 'Auth',
         ipAddress,
         userAgent,
         route: 'POST /api/v1/auth/login',
-        metadata: { email: dto.email },
-      }).catch(() => {});
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    this.auditLogService.log({
-      userId: user.id,
-      action: AuditAction.LOGIN,
-      resource: 'Auth',
-      ipAddress,
-      userAgent,
-      route: 'POST /api/v1/auth/login',
-    }).catch(() => {});
+      })
+      .catch(() => {});
 
     return this.generateTokens(
       user.id,
@@ -186,13 +193,15 @@ export class AuthService {
       token,
     );
 
-    this.auditLogService.log({
-      userId: user.id,
-      action: AuditAction.PASSWORD_RESET_REQUEST,
-      resource: 'Auth',
-      route: 'POST /api/v1/auth/forgot-password',
-      metadata: { email: dto.email },
-    }).catch(() => {});
+    this.auditLogService
+      .log({
+        userId: user.id,
+        action: AuditAction.PASSWORD_RESET_REQUEST,
+        resource: 'Auth',
+        route: 'POST /api/v1/auth/forgot-password',
+        metadata: { email: dto.email },
+      })
+      .catch(() => {});
 
     return {
       message:
@@ -226,12 +235,14 @@ export class AuthService {
       }),
     ]);
 
-    this.auditLogService.log({
-      userId: resetToken.userId,
-      action: AuditAction.PASSWORD_RESET,
-      resource: 'Auth',
-      route: 'POST /api/v1/auth/reset-password',
-    }).catch(() => {});
+    this.auditLogService
+      .log({
+        userId: resetToken.userId,
+        action: AuditAction.PASSWORD_RESET,
+        resource: 'Auth',
+        route: 'POST /api/v1/auth/reset-password',
+      })
+      .catch(() => {});
 
     return { message: 'Password has been reset successfully.' };
   }
@@ -255,12 +266,14 @@ export class AuthService {
       data: { password: hashedPassword, mustChangePassword: false },
     });
 
-    this.auditLogService.log({
-      userId,
-      action: AuditAction.PASSWORD_CHANGE,
-      resource: 'Auth',
-      route: 'PATCH /api/v1/auth/change-password',
-    }).catch(() => {});
+    this.auditLogService
+      .log({
+        userId,
+        action: AuditAction.PASSWORD_CHANGE,
+        resource: 'Auth',
+        route: 'PATCH /api/v1/auth/change-password',
+      })
+      .catch(() => {});
 
     return { message: 'Password changed successfully.' };
   }
@@ -286,7 +299,12 @@ export class AuthService {
     });
   }
 
-  async logout(jti: string, userId?: string, ipAddress?: string, userAgent?: string) {
+  async logout(
+    jti: string,
+    userId?: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
     // Calculate when the token expires (30m from now is the max for access tokens)
     // We store until 7d to also cover refresh tokens that share the same jti pattern
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -296,14 +314,16 @@ export class AuthService {
     });
 
     if (userId) {
-      this.auditLogService.log({
-        userId,
-        action: AuditAction.LOGOUT,
-        resource: 'Auth',
-        ipAddress,
-        userAgent,
-        route: 'POST /api/v1/auth/logout',
-      }).catch(() => {});
+      this.auditLogService
+        .log({
+          userId,
+          action: AuditAction.LOGOUT,
+          resource: 'Auth',
+          ipAddress,
+          userAgent,
+          route: 'POST /api/v1/auth/logout',
+        })
+        .catch(() => {});
     }
 
     return { message: 'Logged out successfully.' };

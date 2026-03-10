@@ -59,7 +59,7 @@ export class AnalyticsService {
     const sevenDaysFromNow = new Date(now);
     sevenDaysFromNow.setDate(now.getDate() + 7);
 
-    const memberWhere = { role: 'MEMBER' as const };
+    const memberWhere = { role: 'MEMBER' as const, deletedAt: null };
 
     const [
       totalMembers,
@@ -521,12 +521,14 @@ export class AnalyticsService {
     const { from, to } = this.getDateRange(query);
     const granularity = query.granularity || Granularity.MONTHLY;
 
+    const memberWhere = { role: 'MEMBER' as const, deletedAt: null };
+
     const users = await this.prisma.user.findMany({
       where: {
+        ...memberWhere,
         createdAt: { gte: from, lte: to },
       },
       select: {
-        role: true,
         status: true,
         createdAt: true,
       },
@@ -534,17 +536,12 @@ export class AnalyticsService {
 
     const priorCount = await this.prisma.user.count({
       where: {
+        ...memberWhere,
         createdAt: { lt: from },
       },
     });
 
     const buckets = new Map<string, number>();
-    const byRole: Record<string, number> = {
-      MEMBER: 0,
-      TRAINER: 0,
-      ADMIN: 0,
-      SUPER_ADMIN: 0,
-    };
     const byStatus: Record<string, number> = {
       ACTIVE: 0,
       INACTIVE: 0,
@@ -555,7 +552,6 @@ export class AnalyticsService {
       const period = this.getPeriodKey(user.createdAt, granularity);
       buckets.set(period, (buckets.get(period) || 0) + 1);
 
-      if (user.role in byRole) byRole[user.role]++;
       if (user.status in byStatus) byStatus[user.status]++;
     }
 
@@ -569,7 +565,6 @@ export class AnalyticsService {
 
     return {
       series,
-      byRole,
       byStatus,
     };
   }

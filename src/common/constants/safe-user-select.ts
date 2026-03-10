@@ -10,6 +10,7 @@ export const safeUserSelect = {
   displayPicture: true,
   birthday: true,
   mustChangePassword: true,
+  deletedAt: true,
   createdAt: true,
   updatedAt: true,
 };

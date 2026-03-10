@@ -325,31 +325,23 @@ describe('AnalyticsService', () => {
   });
 
   describe('getMemberTrends', () => {
-    it('should return member series with running totals and breakdowns', async () => {
+    it('should return member series with running totals and status breakdown', async () => {
       mockPrisma.user.findMany.mockResolvedValue([
         {
-          role: 'MEMBER',
           status: 'ACTIVE',
           createdAt: new Date('2026-03-01T10:00:00Z'),
         },
         {
-          role: 'MEMBER',
           status: 'ACTIVE',
           createdAt: new Date('2026-03-05T10:00:00Z'),
         },
         {
-          role: 'TRAINER',
-          status: 'ACTIVE',
-          createdAt: new Date('2026-03-10T10:00:00Z'),
-        },
-        {
-          role: 'MEMBER',
           status: 'INACTIVE',
           createdAt: new Date('2026-02-15T10:00:00Z'),
         },
       ]);
 
-      // 10 users created before the from date
+      // 10 members created before the from date
       mockPrisma.user.count.mockResolvedValue(10);
 
       const result = await service.getMemberTrends({
@@ -363,19 +355,13 @@ describe('AnalyticsService', () => {
       expect(result.series[0].period).toBe('2026-02');
       expect(result.series[0].newMembers).toBe(1);
       expect(result.series[0].totalMembers).toBe(11);
-      // March: 3 new, running total = 11 + 3 = 14
+      // March: 2 new, running total = 11 + 2 = 13
       expect(result.series[1].period).toBe('2026-03');
-      expect(result.series[1].newMembers).toBe(3);
-      expect(result.series[1].totalMembers).toBe(14);
+      expect(result.series[1].newMembers).toBe(2);
+      expect(result.series[1].totalMembers).toBe(13);
 
-      expect(result.byRole).toEqual({
-        MEMBER: 3,
-        TRAINER: 1,
-        ADMIN: 0,
-        SUPER_ADMIN: 0,
-      });
       expect(result.byStatus).toEqual({
-        ACTIVE: 3,
+        ACTIVE: 2,
         INACTIVE: 1,
         SUSPENDED: 0,
       });

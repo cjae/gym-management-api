@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Patch, Body, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { Request } from 'express';
 import {
   ApiTags,
@@ -145,6 +153,11 @@ export class AuthController {
     @CurrentUser('id') userId: string,
     @Req() req: Request,
   ) {
-    return this.authService.logout(jti, userId, req.ip, req.headers['user-agent']);
+    return this.authService.logout(
+      jti,
+      userId,
+      req.ip,
+      req.headers['user-agent'],
+    );
   }
 }

@@ -104,8 +104,17 @@ export class AuditLogService {
   }
 
   async findAll(params: FindAllParams) {
-    const { page, limit, userId, action, resource, resourceId, startDate, endDate, ipAddress } =
-      params;
+    const {
+      page,
+      limit,
+      userId,
+      action,
+      resource,
+      resourceId,
+      startDate,
+      endDate,
+      ipAddress,
+    } = params;
 
     const where: Record<string, unknown> = {};
     if (userId) where.userId = userId;

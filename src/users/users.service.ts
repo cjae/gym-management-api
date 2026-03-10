@@ -12,7 +12,10 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(page: number = 1, limit: number = 20, role?: Role) {
-    const where = role ? { role } : {};
+    const where = {
+      deletedAt: null,
+      ...(role ? { role } : {}),
+    };
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
@@ -32,7 +35,7 @@ export class UsersService {
       where: { id },
       select: safeUserWithSubscriptionSelect,
     });
-    if (!user) {
+    if (!user || user.deletedAt) {
       throw new NotFoundException(`User with id ${id} not found`);
     }
     return this.flattenSubscription(user);
@@ -52,8 +55,9 @@ export class UsersService {
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.user.delete({
+    return this.prisma.user.update({
       where: { id },
+      data: { deletedAt: new Date() },
       select: safeUserSelect,
     });
   }

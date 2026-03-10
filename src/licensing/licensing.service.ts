@@ -56,7 +56,7 @@ export class LicensingService implements OnModuleInit {
 
     const now = new Date();
     const memberCount = await this.prisma.user.count({
-      where: { role: 'MEMBER' },
+      where: { role: 'MEMBER', deletedAt: null },
     });
 
     try {

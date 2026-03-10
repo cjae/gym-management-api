@@ -56,6 +56,8 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Roles('SUPER_ADMIN')
+  @ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiNotFoundResponse({ description: 'User not found' })
   remove(@Param('id') id: string) {

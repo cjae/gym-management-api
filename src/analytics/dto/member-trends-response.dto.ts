@@ -16,12 +16,6 @@ export class MemberTrendsResponseDto {
   series: MemberPeriodDto[];
 
   @ApiProperty({
-    example: { MEMBER: 120, TRAINER: 5, ADMIN: 2, SUPER_ADMIN: 1 },
-    description: 'User count by role',
-  })
-  byRole: Record<string, number>;
-
-  @ApiProperty({
     example: { ACTIVE: 130, INACTIVE: 5, SUSPENDED: 2 },
     description: 'User count by status',
   })
