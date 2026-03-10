@@ -158,6 +158,18 @@ describe('AuditLogService', () => {
       const call = mockPrisma.auditLog.create.mock.calls[0][0];
       expect(call.data.metadata).toEqual({ reason: 'test' });
     });
+
+    it('should not throw when database create fails', async () => {
+      mockPrisma.auditLog.create.mockRejectedValue(new Error('DB down'));
+
+      await expect(
+        service.log({
+          userId: null,
+          action: AuditAction.LOGIN,
+          resource: 'Auth',
+        }),
+      ).resolves.not.toThrow();
+    });
   });
 
   describe('fetchOldData', () => {
@@ -252,6 +264,14 @@ describe('AuditLogService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
       const result = await service.fetchOldData('User', 'nonexistent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when database query fails', async () => {
+      mockPrisma.user.findUnique.mockRejectedValue(new Error('DB connection lost'));
+
+      const result = await service.fetchOldData('User', 'user-1');
 
       expect(result).toBeNull();
     });

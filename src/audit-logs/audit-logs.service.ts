@@ -9,7 +9,7 @@ const SENSITIVE_FIELDS = [
   'signatureData',
 ];
 
-interface LogEntry {
+export interface LogEntry {
   userId: string | null;
   action: AuditAction;
   resource: string;
@@ -22,7 +22,7 @@ interface LogEntry {
   metadata?: Record<string, unknown>;
 }
 
-interface FindAllParams {
+export interface FindAllParams {
   page: number;
   limit: number;
   userId?: string;
@@ -91,8 +91,16 @@ export class AuditLogService {
       return null;
     }
 
-    const record = await model.findUnique({ where: { id } });
-    return (record as Record<string, unknown>) ?? null;
+    try {
+      const record = await model.findUnique({ where: { id } });
+      return (record as Record<string, unknown>) ?? null;
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch old data for ${resource}:${id}: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+      return null;
+    }
   }
 
   async findAll(params: FindAllParams) {
