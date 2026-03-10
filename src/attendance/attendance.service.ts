@@ -32,8 +32,25 @@ export class AttendanceService {
         subscription: { status: 'ACTIVE', endDate: { gte: new Date() } },
       },
     });
-    if (!activeMembership)
+    if (!activeMembership) {
+      const failedMember = await this.prisma.user.findUnique({
+        where: { id: memberId },
+        select: { id: true, firstName: true, lastName: true, displayPicture: true },
+      });
+      this.eventEmitter.emit('check_in.result', {
+        type: 'check_in_result',
+        member: {
+          id: memberId,
+          firstName: failedMember?.firstName ?? null,
+          lastName: failedMember?.lastName ?? null,
+          displayPicture: failedMember?.displayPicture ?? null,
+        },
+        success: false,
+        message: 'No active subscription',
+        timestamp: new Date().toISOString(),
+      });
       throw new ForbiddenException('No active subscription');
+    }
 
     // 3. Record attendance (idempotent per day)
     const today = new Date();
@@ -46,6 +63,22 @@ export class AttendanceService {
     if (existing) {
       const streak = await this.prisma.streak.findUnique({
         where: { memberId },
+      });
+      const existingMember = await this.prisma.user.findUnique({
+        where: { id: memberId },
+        select: { id: true, firstName: true, lastName: true, displayPicture: true },
+      });
+      this.eventEmitter.emit('check_in.result', {
+        type: 'check_in_result',
+        member: {
+          id: memberId,
+          firstName: existingMember?.firstName ?? null,
+          lastName: existingMember?.lastName ?? null,
+          displayPicture: existingMember?.displayPicture ?? null,
+        },
+        success: true,
+        message: 'Already checked in today',
+        timestamp: new Date().toISOString(),
       });
       return {
         alreadyCheckedIn: true,
@@ -61,7 +94,7 @@ export class AttendanceService {
     // 4. Emit activity event
     const member = await this.prisma.user.findUnique({
       where: { id: memberId },
-      select: { firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, displayPicture: true },
     });
 
     this.eventEmitter.emit('activity.check_in', {
@@ -73,6 +106,20 @@ export class AttendanceService {
 
     // 5. Update streak
     const streak = await this.updateStreak(memberId, today);
+
+    this.eventEmitter.emit('check_in.result', {
+      type: 'check_in_result',
+      member: {
+        id: memberId,
+        firstName: member?.firstName ?? null,
+        lastName: member?.lastName ?? null,
+        displayPicture: member?.displayPicture ?? null,
+      },
+      success: true,
+      message: 'Check-in successful',
+      timestamp: new Date().toISOString(),
+    });
+
     return {
       alreadyCheckedIn: false,
       message: 'Check-in successful',
