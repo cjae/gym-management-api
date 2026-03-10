@@ -59,6 +59,18 @@ enum Gender {
   PREFER_NOT_TO_SAY
 }
 
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET
+  PASSWORD_CHANGE
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -84,6 +96,7 @@ model User {
   documentSignatures  DocumentSignature[]
   salaryRecords       StaffSalaryRecord[]
   passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
 }
 
 model SubscriptionPlan {
@@ -305,4 +318,26 @@ model LicenseCache {
   rawResponse   Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?
+  action     AuditAction
+  resource   String
+  resourceId String?
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+  userAgent  String?
+  route      String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([resource, resourceId])
+  @@index([action])
+  @@index([createdAt])
 }
