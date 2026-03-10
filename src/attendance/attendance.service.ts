@@ -234,6 +234,9 @@ export class AttendanceService {
             email: true,
           },
         },
+        entrance: {
+          select: { id: true, name: true },
+        },
       },
     });
   }

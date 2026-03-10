@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AttendanceResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -12,4 +12,7 @@ export class AttendanceResponseDto {
 
   @ApiProperty()
   checkInTime: Date;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  entranceId?: string;
 }
