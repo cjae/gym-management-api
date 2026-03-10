@@ -35,7 +35,12 @@ export class AttendanceService {
     if (!activeMembership) {
       const failedMember = await this.prisma.user.findUnique({
         where: { id: memberId },
-        select: { id: true, firstName: true, lastName: true, displayPicture: true },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          displayPicture: true,
+        },
       });
       this.eventEmitter.emit('check_in.result', {
         type: 'check_in_result',
@@ -66,7 +71,12 @@ export class AttendanceService {
       });
       const existingMember = await this.prisma.user.findUnique({
         where: { id: memberId },
-        select: { id: true, firstName: true, lastName: true, displayPicture: true },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          displayPicture: true,
+        },
       });
       this.eventEmitter.emit('check_in.result', {
         type: 'check_in_result',
@@ -94,7 +104,12 @@ export class AttendanceService {
     // 4. Emit activity event
     const member = await this.prisma.user.findUnique({
       where: { id: memberId },
-      select: { id: true, firstName: true, lastName: true, displayPicture: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        displayPicture: true,
+      },
     });
 
     this.eventEmitter.emit('activity.check_in', {
