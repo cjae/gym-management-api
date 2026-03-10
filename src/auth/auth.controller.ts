@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import {
   ApiTags,
   ApiBasicAuth,
@@ -50,8 +51,8 @@ export class AuthController {
   @ApiOkResponse({ type: TokenResponseDto, description: 'Login successful' })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.authService.login(dto, req.ip, req.headers['user-agent']);
   }
 
   @Post('refresh')
@@ -139,7 +140,11 @@ export class AuthController {
     type: MessageResponseDto,
     description: 'Logged out successfully',
   })
-  logout(@CurrentUser('jti') jti: string) {
-    return this.authService.logout(jti);
+  logout(
+    @CurrentUser('jti') jti: string,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.authService.logout(jti, userId, req.ip, req.headers['user-agent']);
   }
 }

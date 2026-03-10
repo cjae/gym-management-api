@@ -6,6 +6,7 @@ import { LicensingService } from '../licensing/licensing.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditLogService } from '../audit-logs/audit-logs.service';
 import {
   ConflictException,
   UnauthorizedException,
@@ -57,6 +58,10 @@ describe('AuthService', () => {
     getMemberLimit: jest.fn().mockResolvedValue(null),
   };
 
+  const mockAuditLogService = {
+    log: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -67,6 +72,7 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: LicensingService, useValue: mockLicensingService },
+        { provide: AuditLogService, useValue: mockAuditLogService },
       ],
     }).compile();
 
