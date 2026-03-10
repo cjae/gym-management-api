@@ -23,6 +23,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BillingModule } from './billing/billing.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { EntrancesModule } from './entrances/entrances.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 import { LicensingModule } from './licensing/licensing.module';
 import { LicenseGuard } from './licensing/licensing.guard';
@@ -46,6 +47,7 @@ import { LicenseGuard } from './licensing/licensing.guard';
     SubscriptionsModule,
     PaymentsModule,
     AttendanceModule,
+    EntrancesModule,
     QrModule,
     TrainersModule,
     LegalModule,
