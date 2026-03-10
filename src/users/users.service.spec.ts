@@ -22,6 +22,7 @@ describe('UsersService', () => {
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    attendances: [{ checkInDate: new Date('2026-03-10') }],
     subscriptionMembers: [
       {
         subscription: {
@@ -57,6 +58,7 @@ describe('UsersService', () => {
     createdAt: mockUserFromDb.createdAt,
     updatedAt: mockUserFromDb.updatedAt,
     subscription: mockUserFromDb.subscriptionMembers[0].subscription,
+    lastAttendance: mockUserFromDb.attendances[0].checkInDate,
   };
 
   const mockPrisma = {

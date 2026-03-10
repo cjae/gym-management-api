@@ -65,10 +65,12 @@ export class UsersService {
   private flattenSubscription(
     user: Record<string, unknown> & {
       subscriptionMembers?: { subscription: Record<string, unknown> }[];
+      attendances?: { checkInDate: Date }[];
     },
   ) {
-    const { subscriptionMembers, ...rest } = user;
+    const { subscriptionMembers, attendances, ...rest } = user;
     const active = subscriptionMembers?.[0]?.subscription ?? null;
-    return { ...rest, subscription: active };
+    const lastAttendance = attendances?.[0]?.checkInDate ?? null;
+    return { ...rest, subscription: active, lastAttendance };
   }
 }

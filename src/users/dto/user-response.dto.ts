@@ -91,6 +91,13 @@ export class UserResponseDto {
   })
   subscription: UserSubscriptionDto | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '2026-03-10',
+    description: 'Date of most recent gym check-in, or null if never attended',
+  })
+  lastAttendance: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 

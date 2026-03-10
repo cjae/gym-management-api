@@ -21,6 +21,11 @@ import { Prisma } from '@prisma/client';
 export const safeUserWithSubscriptionSelect =
   Prisma.validator<Prisma.UserSelect>()({
     ...safeUserSelect,
+    attendances: {
+      orderBy: { checkInDate: 'desc' as const },
+      take: 1,
+      select: { checkInDate: true },
+    },
     subscriptionMembers: {
       where: {
         subscription: { status: SubscriptionStatus.ACTIVE },
