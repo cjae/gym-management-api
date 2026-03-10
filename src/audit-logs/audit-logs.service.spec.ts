@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuditLogService } from './audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -269,7 +269,9 @@ describe('AuditLogService', () => {
     });
 
     it('should return null when database query fails', async () => {
-      mockPrisma.user.findUnique.mockRejectedValue(new Error('DB connection lost'));
+      mockPrisma.user.findUnique.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
 
       const result = await service.fetchOldData('User', 'user-1');
 
@@ -314,7 +316,9 @@ describe('AuditLogService', () => {
       expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith({
         where: {},
         include: {
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+          user: {
+            select: { id: true, email: true, firstName: true, lastName: true },
+          },
         },
         skip: 0,
         take: 20,
@@ -414,7 +418,12 @@ describe('AuditLogService', () => {
       expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ skip: 20, take: 10 }),
       );
-      expect(result.meta).toEqual({ page: 3, limit: 10, total: 50, totalPages: 5 });
+      expect(result.meta).toEqual({
+        page: 3,
+        limit: 10,
+        total: 50,
+        totalPages: 5,
+      });
     });
 
     it('should apply multiple filters simultaneously', async () => {

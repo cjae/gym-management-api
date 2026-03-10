@@ -19,6 +19,7 @@ describe('UsersService', () => {
     displayPicture: null,
     birthday: null,
     mustChangePassword: false,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     subscriptionMembers: [
@@ -52,6 +53,7 @@ describe('UsersService', () => {
     displayPicture: null,
     birthday: null,
     mustChangePassword: false,
+    deletedAt: null,
     createdAt: mockUserFromDb.createdAt,
     updatedAt: mockUserFromDb.updatedAt,
     subscription: mockUserFromDb.subscriptionMembers[0].subscription,
@@ -95,7 +97,7 @@ describe('UsersService', () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {},
+          where: { deletedAt: null },
           skip: 0,
           take: 20,
         }),
@@ -107,12 +109,12 @@ describe('UsersService', () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { role: 'MEMBER' },
+          where: { deletedAt: null, role: 'MEMBER' },
         }),
       );
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.count).toHaveBeenCalledWith({
-        where: { role: 'MEMBER' },
+        where: { deletedAt: null, role: 'MEMBER' },
       });
     });
   });
@@ -132,6 +134,36 @@ describe('UsersService', () => {
     it('should throw NotFoundException if user not found', async () => {
       mockPrisma.user.findUnique.mockResolvedValueOnce(null);
       await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw NotFoundException if user is soft-deleted', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        ...mockUserFromDb,
+        deletedAt: new Date(),
+      });
+      await expect(service.findOne('user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('remove', () => {
+    it('should soft-delete a user by setting deletedAt', async () => {
+      await service.remove('user-1');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: { deletedAt: expect.any(Date) as Date },
+        }),
+      );
+    });
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+      await expect(service.remove('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
     });

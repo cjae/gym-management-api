@@ -43,6 +43,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
 - `uploads/` — Image upload to Cloudinary (avatars), returns URL
 - `licensing/` — SaaS license validation. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset.
+- `audit-logs/` — Audit logging for admin actions and auth events. Global interceptor auto-logs POST/PUT/PATCH/DELETE by ADMIN/SUPER_ADMIN with before/after JSON diffs. Auth events (login, logout, password reset/change) logged explicitly. `@NoAudit()` decorator to opt out. SUPER_ADMIN-only `GET /audit-logs` endpoint with filters.
 
 **Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`). `GET /auth/me` and `PATCH /auth/me` available for any authenticated user to view/update their own profile (firstName, lastName, phone, gender, displayPicture). No role/email/status self-changes.
 
