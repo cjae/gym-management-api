@@ -137,8 +137,10 @@ model Attendance {
   memberId    String
   checkInDate DateTime @db.Date
   checkInTime DateTime @default(now())
+  entranceId  String?
 
-  member User @relation(fields: [memberId], references: [id])
+  member   User      @relation(fields: [memberId], references: [id])
+  entrance Entrance? @relation(fields: [entranceId], references: [id])
 
   @@unique([memberId, checkInDate])
 }
@@ -272,6 +274,16 @@ model GymQrCode {
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   expiresAt DateTime?
+}
+
+model Entrance {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendances Attendance[]
 }
 
 enum LicenseStatus {
