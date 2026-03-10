@@ -15,6 +15,8 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiQuery,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { SalaryService } from './salary.service';
 import { CreateSalaryRecordDto } from './dto/create-salary-record.dto';
@@ -25,6 +27,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('Salary')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
 @Controller('salary')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN')

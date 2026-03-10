@@ -15,6 +15,7 @@ import {
   ApiNotFoundResponse,
   ApiForbiddenResponse,
   ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
@@ -28,6 +29,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Subscriptions')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('subscriptions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SubscriptionsController {

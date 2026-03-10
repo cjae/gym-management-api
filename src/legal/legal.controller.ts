@@ -15,6 +15,8 @@ import {
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiConflictResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { LegalService } from './legal.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
@@ -31,6 +33,10 @@ import type { Request } from 'express';
 
 @ApiTags('Legal Documents')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@ApiForbiddenResponse({
+  description: 'Insufficient role for admin-only endpoints',
+})
 @Controller('legal')
 @UseGuards(JwtAuthGuard)
 export class LegalController {

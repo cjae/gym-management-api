@@ -17,14 +17,6 @@ class MemberStatsDto {
   newThisMonth: number;
 }
 
-class SubscriptionByPlanDto {
-  @ApiProperty({ example: 'Premium Monthly' })
-  name: string;
-
-  @ApiProperty({ example: 45 })
-  count: number;
-}
-
 class SubscriptionStatsDto {
   @ApiProperty({ example: 100 })
   active: number;
@@ -35,8 +27,11 @@ class SubscriptionStatsDto {
   @ApiProperty({ example: 5 })
   expiredThisMonth: number;
 
-  @ApiProperty({ type: [SubscriptionByPlanDto] })
-  byPlan: SubscriptionByPlanDto[];
+  @ApiProperty({
+    example: { 'Premium Monthly': 45, 'Basic Weekly': 20 },
+    description: 'Active subscription count by plan name',
+  })
+  byPlan: Record<string, number>;
 }
 
 class AttendanceStatsDto {

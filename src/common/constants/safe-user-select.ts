@@ -13,3 +13,36 @@ export const safeUserSelect = {
   createdAt: true,
   updatedAt: true,
 };
+
+import { SubscriptionStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+
+export const safeUserWithSubscriptionSelect =
+  Prisma.validator<Prisma.UserSelect>()({
+    ...safeUserSelect,
+    subscriptionMembers: {
+      where: {
+        subscription: { status: SubscriptionStatus.ACTIVE },
+      },
+      take: 1,
+      select: {
+        subscription: {
+          select: {
+            id: true,
+            status: true,
+            startDate: true,
+            endDate: true,
+            plan: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                currency: true,
+                billingInterval: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  });

@@ -15,12 +15,14 @@ import {
   ApiConsumes,
   ApiBody,
   ApiCreatedResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UploadsService } from './uploads.service';
 
 @ApiTags('Uploads')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {

@@ -15,6 +15,8 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { EntrancesService } from './entrances.service';
 import { CreateEntranceDto } from './dto/create-entrance.dto';
@@ -27,6 +29,8 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Entrances')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
 @Controller('entrances')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN')

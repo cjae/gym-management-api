@@ -17,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiBadRequestResponse,
   ApiHeader,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 
@@ -32,6 +33,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Payments')
+@ApiUnauthorizedResponse({
+  description: 'Missing or invalid JWT (except webhook)',
+})
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}

@@ -14,32 +14,25 @@ class SubscriptionPeriodDto {
   expirations: number;
 }
 
-class SubscriptionBreakdownDto {
-  @ApiProperty({ example: 'Premium Monthly' })
-  name: string;
-
-  @ApiProperty({ example: 45 })
-  count: number;
-}
-
-class PaymentMethodBreakdownDto {
-  @ApiProperty({ example: 'MPESA' })
-  method: string;
-
-  @ApiProperty({ example: 60 })
-  count: number;
-}
-
 export class SubscriptionTrendsResponseDto {
   @ApiProperty({ type: [SubscriptionPeriodDto] })
   series: SubscriptionPeriodDto[];
 
-  @ApiProperty({ type: [SubscriptionBreakdownDto] })
-  byPlan: SubscriptionBreakdownDto[];
+  @ApiProperty({
+    example: { 'Premium Monthly': 45, 'Basic Weekly': 20 },
+    description: 'Active subscription count by plan name',
+  })
+  byPlan: Record<string, number>;
 
-  @ApiProperty({ type: [PaymentMethodBreakdownDto] })
-  byPaymentMethod: PaymentMethodBreakdownDto[];
+  @ApiProperty({
+    example: { MPESA: 60, CARD: 30 },
+    description: 'Active subscription count by payment method',
+  })
+  byPaymentMethod: Record<string, number>;
 
-  @ApiProperty({ example: 0.05, description: 'Monthly churn rate as decimal' })
+  @ApiProperty({
+    example: 5.2,
+    description: 'Churn rate as percentage',
+  })
   churnRate: number;
 }

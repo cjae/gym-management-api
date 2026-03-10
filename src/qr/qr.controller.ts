@@ -4,6 +4,8 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { QrService } from './qr.service';
 import { QrCodeResponseDto } from './dto/qr-code-response.dto';
@@ -13,6 +15,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('QR Codes')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
 @Controller('qr')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN')

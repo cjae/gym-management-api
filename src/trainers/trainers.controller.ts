@@ -12,6 +12,8 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiUnauthorizedResponse,
+  ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
@@ -29,6 +31,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Trainers')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('trainers')
 @UseGuards(JwtAuthGuard)
 export class TrainersController {
@@ -56,6 +59,7 @@ export class TrainersController {
 
   @Get(':id')
   @ApiOkResponse({ type: TrainerProfileResponseDto })
+  @ApiNotFoundResponse({ description: 'Trainer not found' })
   findOne(@Param('id') id: string) {
     return this.trainersService.findOne(id);
   }

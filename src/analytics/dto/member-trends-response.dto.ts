@@ -11,29 +11,19 @@ class MemberPeriodDto {
   totalMembers: number;
 }
 
-class RoleBreakdownDto {
-  @ApiProperty({ example: 'MEMBER' })
-  role: string;
-
-  @ApiProperty({ example: 120 })
-  count: number;
-}
-
-class StatusBreakdownDto {
-  @ApiProperty({ example: 'ACTIVE' })
-  status: string;
-
-  @ApiProperty({ example: 130 })
-  count: number;
-}
-
 export class MemberTrendsResponseDto {
   @ApiProperty({ type: [MemberPeriodDto] })
   series: MemberPeriodDto[];
 
-  @ApiProperty({ type: [RoleBreakdownDto] })
-  byRole: RoleBreakdownDto[];
+  @ApiProperty({
+    example: { MEMBER: 120, TRAINER: 5, ADMIN: 2, SUPER_ADMIN: 1 },
+    description: 'User count by role',
+  })
+  byRole: Record<string, number>;
 
-  @ApiProperty({ type: [StatusBreakdownDto] })
-  byStatus: StatusBreakdownDto[];
+  @ApiProperty({
+    example: { ACTIVE: 130, INACTIVE: 5, SUSPENDED: 2 },
+    description: 'User count by status',
+  })
+  byStatus: Record<string, number>;
 }

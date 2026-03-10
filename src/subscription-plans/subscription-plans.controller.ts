@@ -15,6 +15,8 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { SubscriptionPlansService } from './subscription-plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -28,6 +30,10 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Subscription Plans')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@ApiForbiddenResponse({
+  description: 'Insufficient role for restricted endpoints',
+})
 @Controller('subscription-plans')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SubscriptionPlansController {

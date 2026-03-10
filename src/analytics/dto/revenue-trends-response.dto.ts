@@ -1,11 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 class RevenueByMethodDto {
-  @ApiProperty({ example: 'CARD' })
-  method: string;
-
   @ApiProperty({ example: 250000 })
-  total: number;
+  card: number;
+
+  @ApiProperty({ example: 180000 })
+  mpesa: number;
 }
 
 class RevenuePeriodDto {
@@ -24,8 +24,8 @@ class RevenuePeriodDto {
   @ApiProperty({ example: 20000 })
   pending: number;
 
-  @ApiProperty({ type: [RevenueByMethodDto] })
-  byMethod: RevenueByMethodDto[];
+  @ApiProperty({ type: RevenueByMethodDto })
+  byMethod: RevenueByMethodDto;
 }
 
 export class RevenueTrendsResponseDto {

@@ -1,34 +1,41 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { safeUserSelect } from '../common/constants/safe-user-select';
+import {
+  safeUserSelect,
+  safeUserWithSubscriptionSelect,
+} from '../common/constants/safe-user-select';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(page: number = 1, limit: number = 20) {
-    const [data, total] = await Promise.all([
+  async findAll(page: number = 1, limit: number = 20, role?: Role) {
+    const where = role ? { role } : {};
+    const [users, total] = await Promise.all([
       this.prisma.user.findMany({
-        select: safeUserSelect,
+        where,
+        select: safeUserWithSubscriptionSelect,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
+    const data = users.map((user) => this.flattenSubscription(user));
     return { data, total, page, limit };
   }
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: safeUserSelect,
+      select: safeUserWithSubscriptionSelect,
     });
     if (!user) {
       throw new NotFoundException(`User with id ${id} not found`);
     }
-    return user;
+    return this.flattenSubscription(user);
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -49,5 +56,15 @@ export class UsersService {
       where: { id },
       select: safeUserSelect,
     });
+  }
+
+  private flattenSubscription(
+    user: Record<string, unknown> & {
+      subscriptionMembers?: { subscription: Record<string, unknown> }[];
+    },
+  ) {
+    const { subscriptionMembers, ...rest } = user;
+    const active = subscriptionMembers?.[0]?.subscription ?? null;
+    return { ...rest, subscription: active };
   }
 }

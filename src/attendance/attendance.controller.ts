@@ -6,6 +6,7 @@ import {
   ApiCreatedResponse,
   ApiBadRequestResponse,
   ApiForbiddenResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
@@ -20,6 +21,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Attendance')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('attendance')
 @UseGuards(JwtAuthGuard)
 export class AttendanceController {

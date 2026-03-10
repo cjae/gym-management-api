@@ -7,6 +7,39 @@ describe('UsersService', () => {
   let service: UsersService;
   let prisma: PrismaService;
 
+  const mockUserFromDb = {
+    id: 'user-1',
+    email: 'test@example.com',
+    firstName: 'John',
+    lastName: 'Doe',
+    phone: null,
+    role: 'MEMBER',
+    status: 'ACTIVE',
+    gender: null,
+    displayPicture: null,
+    birthday: null,
+    mustChangePassword: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    subscriptionMembers: [
+      {
+        subscription: {
+          id: 'sub-1',
+          status: 'ACTIVE',
+          startDate: new Date(),
+          endDate: new Date(),
+          plan: {
+            id: 'plan-1',
+            name: 'Monthly',
+            price: 2500,
+            currency: 'KES',
+            billingInterval: 'MONTHLY',
+          },
+        },
+      },
+    ],
+  };
+
   const mockUser = {
     id: 'user-1',
     email: 'test@example.com',
@@ -17,17 +50,19 @@ describe('UsersService', () => {
     status: 'ACTIVE',
     gender: null,
     displayPicture: null,
+    birthday: null,
     mustChangePassword: false,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: mockUserFromDb.createdAt,
+    updatedAt: mockUserFromDb.updatedAt,
+    subscription: mockUserFromDb.subscriptionMembers[0].subscription,
   };
 
   const mockPrisma = {
     user: {
-      findMany: jest.fn().mockResolvedValue([mockUser]),
-      findUnique: jest.fn().mockResolvedValue(mockUser),
-      update: jest.fn().mockResolvedValue(mockUser),
-      delete: jest.fn().mockResolvedValue(mockUser),
+      findMany: jest.fn().mockResolvedValue([mockUserFromDb]),
+      findUnique: jest.fn().mockResolvedValue(mockUserFromDb),
+      update: jest.fn().mockResolvedValue(mockUserFromDb),
+      delete: jest.fn().mockResolvedValue(mockUserFromDb),
       count: jest.fn().mockResolvedValue(1),
     },
   };
@@ -60,10 +95,25 @@ describe('UsersService', () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: {},
           skip: 0,
           take: 20,
         }),
       );
+    });
+
+    it('should filter users by role', async () => {
+      await service.findAll(1, 20, 'MEMBER');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { role: 'MEMBER' },
+        }),
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prisma.user.count).toHaveBeenCalledWith({
+        where: { role: 'MEMBER' },
+      });
     });
   });
 
