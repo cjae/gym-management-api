@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const SENSITIVE_FIELDS = [
@@ -23,14 +23,14 @@ export interface LogEntry {
 }
 
 export interface FindAllParams {
-  page: number;
-  limit: number;
+  page?: number;
+  limit?: number;
   userId?: string;
   action?: AuditAction;
   resource?: string;
   resourceId?: string;
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: string;
+  endDate?: string;
   ipAddress?: string;
 }
 
@@ -59,12 +59,12 @@ export class AuditLogService {
           action: entry.action,
           resource: entry.resource,
           resourceId: entry.resourceId,
-          oldData: this.stripSensitiveFields(entry.oldData),
-          newData: this.stripSensitiveFields(entry.newData),
+          oldData: this.stripSensitiveFields(entry.oldData) as Prisma.InputJsonValue | undefined,
+          newData: this.stripSensitiveFields(entry.newData) as Prisma.InputJsonValue | undefined,
           ipAddress: entry.ipAddress,
           userAgent: entry.userAgent,
           route: entry.route,
-          metadata: this.stripSensitiveFields(entry.metadata),
+          metadata: this.stripSensitiveFields(entry.metadata) as Prisma.InputJsonValue | undefined,
         },
       });
     } catch (error) {
@@ -104,17 +104,9 @@ export class AuditLogService {
   }
 
   async findAll(params: FindAllParams) {
-    const {
-      page,
-      limit,
-      userId,
-      action,
-      resource,
-      resourceId,
-      startDate,
-      endDate,
-      ipAddress,
-    } = params;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    const { userId, action, resource, resourceId, startDate, endDate, ipAddress } = params;
 
     const where: Record<string, unknown> = {};
     if (userId) where.userId = userId;
@@ -124,8 +116,8 @@ export class AuditLogService {
     if (ipAddress) where.ipAddress = ipAddress;
     if (startDate || endDate) {
       where.createdAt = {
-        ...(startDate && { gte: startDate }),
-        ...(endDate && { lte: endDate }),
+        ...(startDate && { gte: new Date(startDate) }),
+        ...(endDate && { lte: new Date(endDate) }),
       };
     }
 

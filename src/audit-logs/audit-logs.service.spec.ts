@@ -382,15 +382,15 @@ describe('AuditLogService', () => {
       mockPrisma.auditLog.findMany.mockResolvedValue([]);
       mockPrisma.auditLog.count.mockResolvedValue(0);
 
-      const startDate = new Date('2026-03-01');
-      const endDate = new Date('2026-03-10');
+      const startDate = '2026-03-01';
+      const endDate = '2026-03-10';
 
       await service.findAll({ page: 1, limit: 20, startDate, endDate });
 
       expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            createdAt: { gte: startDate, lte: endDate },
+            createdAt: { gte: new Date(startDate), lte: new Date(endDate) },
           }),
         }),
       );
