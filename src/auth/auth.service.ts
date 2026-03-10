@@ -79,7 +79,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user) {
+    if (!user || user.deletedAt) {
       this.auditLogService.log({
         userId: null,
         action: AuditAction.LOGIN_FAILED,
@@ -127,7 +127,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-    if (!user || user.status !== 'ACTIVE')
+    if (!user || user.status !== 'ACTIVE' || user.deletedAt)
       throw new UnauthorizedException('User not found or inactive');
 
     // Invalidate old refresh token (rotation)
