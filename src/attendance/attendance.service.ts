@@ -21,8 +21,15 @@ export class AttendanceService {
 
     const delimiterIndex = qrCode.lastIndexOf(':');
     if (delimiterIndex > 0) {
-      qrCode = dto.qrCode.substring(0, delimiterIndex);
-      entranceId = dto.qrCode.substring(delimiterIndex + 1);
+      const candidate = dto.qrCode.substring(delimiterIndex + 1);
+      if (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          candidate,
+        )
+      ) {
+        qrCode = dto.qrCode.substring(0, delimiterIndex);
+        entranceId = candidate;
+      }
     }
 
     // 2. Validate QR code

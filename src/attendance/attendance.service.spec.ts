@@ -153,7 +153,7 @@ describe('AttendanceService', () => {
   });
 
   it('should parse entranceId from QR payload and save on attendance', async () => {
-    const entranceId = 'entrance-1';
+    const entranceId = '550e8400-e29b-41d4-a716-446655440000';
     mockPrisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
@@ -197,14 +197,15 @@ describe('AttendanceService', () => {
       id: '1',
       code: 'valid',
     });
+    const inactiveEntranceId = '550e8400-e29b-41d4-a716-446655440001';
     mockPrisma.entrance.findUnique.mockResolvedValue({
-      id: 'e-1',
+      id: inactiveEntranceId,
       name: 'Closed Gate',
       isActive: false,
     });
 
     await expect(
-      service.checkIn('member-1', { qrCode: 'valid:e-1' }),
+      service.checkIn('member-1', { qrCode: `valid:${inactiveEntranceId}` }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -213,10 +214,11 @@ describe('AttendanceService', () => {
       id: '1',
       code: 'valid',
     });
+    const missingEntranceId = '550e8400-e29b-41d4-a716-446655440002';
     mockPrisma.entrance.findUnique.mockResolvedValue(null);
 
     await expect(
-      service.checkIn('member-1', { qrCode: 'valid:missing-id' }),
+      service.checkIn('member-1', { qrCode: `valid:${missingEntranceId}` }),
     ).rejects.toThrow(BadRequestException);
   });
 
