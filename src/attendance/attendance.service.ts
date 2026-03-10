@@ -15,15 +15,35 @@ export class AttendanceService {
   ) {}
 
   async checkIn(memberId: string, dto: CheckInDto) {
-    // 1. Validate QR code
+    // 1. Parse QR payload — format: "code" or "code:entranceId"
+    let qrCode = dto.qrCode;
+    let entranceId: string | undefined;
+
+    const delimiterIndex = qrCode.lastIndexOf(':');
+    if (delimiterIndex > 0) {
+      qrCode = dto.qrCode.substring(0, delimiterIndex);
+      entranceId = dto.qrCode.substring(delimiterIndex + 1);
+    }
+
+    // 2. Validate QR code
     const qr = await this.prisma.gymQrCode.findFirst({
       where: {
-        code: dto.qrCode,
+        code: qrCode,
         isActive: true,
         OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
       },
     });
     if (!qr) throw new BadRequestException('Invalid or expired QR code');
+
+    // 3. Validate entrance (if provided)
+    if (entranceId) {
+      const entrance = await this.prisma.entrance.findUnique({
+        where: { id: entranceId },
+      });
+      if (!entrance || !entrance.isActive) {
+        throw new BadRequestException('Invalid or inactive entrance');
+      }
+    }
 
     // 2. Check active subscription (direct or duo)
     const activeMembership = await this.prisma.subscriptionMember.findFirst({
@@ -52,6 +72,7 @@ export class AttendanceService {
         },
         success: false,
         message: 'No active subscription',
+        entranceId,
         timestamp: new Date().toISOString(),
       });
       throw new ForbiddenException('No active subscription');
@@ -88,6 +109,7 @@ export class AttendanceService {
         },
         success: true,
         message: 'Already checked in today',
+        entranceId,
         timestamp: new Date().toISOString(),
       });
       return {
@@ -98,7 +120,7 @@ export class AttendanceService {
     }
 
     await this.prisma.attendance.create({
-      data: { memberId, checkInDate: today },
+      data: { memberId, checkInDate: today, entranceId },
     });
 
     // 4. Emit activity event
@@ -132,6 +154,7 @@ export class AttendanceService {
       },
       success: true,
       message: 'Check-in successful',
+      entranceId,
       timestamp: new Date().toISOString(),
     });
 

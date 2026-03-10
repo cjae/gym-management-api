@@ -14,6 +14,7 @@ describe('AttendanceService', () => {
     attendance: { findUnique: jest.fn(), create: jest.fn() },
     streak: { upsert: jest.fn(), findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
+    entrance: { findUnique: jest.fn() },
   };
 
   const mockEventEmitter = { emit: jest.fn() };
@@ -62,6 +63,7 @@ describe('AttendanceService', () => {
       },
       success: false,
       message: 'No active subscription',
+      entranceId: undefined,
       timestamp: expect.any(String),
     });
   });
@@ -102,6 +104,7 @@ describe('AttendanceService', () => {
       },
       success: true,
       message: 'Check-in successful',
+      entranceId: undefined,
       timestamp: expect.any(String),
     });
   });
@@ -144,7 +147,107 @@ describe('AttendanceService', () => {
       },
       success: true,
       message: 'Already checked in today',
+      entranceId: undefined,
       timestamp: expect.any(String),
+    });
+  });
+
+  it('should parse entranceId from QR payload and save on attendance', async () => {
+    const entranceId = 'entrance-1';
+    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    });
+    mockPrisma.entrance.findUnique.mockResolvedValue({
+      id: entranceId,
+      name: 'Front Door',
+      isActive: true,
+    });
+    mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+      id: 'sm-1',
+      memberId: 'member-1',
+    });
+    mockPrisma.attendance.findUnique.mockResolvedValue(null);
+    mockPrisma.attendance.create.mockResolvedValue({});
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Smith',
+      displayPicture: null,
+    });
+    mockPrisma.streak.findUnique.mockResolvedValue(null);
+    mockPrisma.streak.upsert.mockResolvedValue({
+      currentStreak: 1,
+      longestStreak: 1,
+    });
+
+    await service.checkIn('member-1', { qrCode: `valid:${entranceId}` });
+
+    expect(mockPrisma.attendance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ entranceId }),
+    });
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+      'check_in.result',
+      expect.objectContaining({ entranceId }),
+    );
+  });
+
+  it('should reject check-in with inactive entrance', async () => {
+    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    });
+    mockPrisma.entrance.findUnique.mockResolvedValue({
+      id: 'e-1',
+      name: 'Closed Gate',
+      isActive: false,
+    });
+
+    await expect(
+      service.checkIn('member-1', { qrCode: 'valid:e-1' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject check-in with non-existent entrance', async () => {
+    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    });
+    mockPrisma.entrance.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.checkIn('member-1', { qrCode: 'valid:missing-id' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should work without entranceId for backwards compatibility', async () => {
+    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    });
+    mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+      id: 'sm-1',
+      memberId: 'member-1',
+    });
+    mockPrisma.attendance.findUnique.mockResolvedValue(null);
+    mockPrisma.attendance.create.mockResolvedValue({});
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Smith',
+      displayPicture: null,
+    });
+    mockPrisma.streak.findUnique.mockResolvedValue(null);
+    mockPrisma.streak.upsert.mockResolvedValue({
+      currentStreak: 1,
+      longestStreak: 1,
+    });
+
+    await service.checkIn('member-1', { qrCode: 'valid' });
+
+    expect(mockPrisma.entrance.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.attendance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ entranceId: undefined }),
     });
   });
 });
