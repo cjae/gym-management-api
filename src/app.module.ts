@@ -27,6 +27,7 @@ import { EntrancesModule } from './entrances/entrances.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 import { LicensingModule } from './licensing/licensing.module';
 import { LicenseGuard } from './licensing/licensing.guard';
+import { AuditLogModule } from './audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { LicenseGuard } from './licensing/licensing.guard';
     BillingModule,
     AnalyticsModule,
     UploadsModule,
+    AuditLogModule,
   ],
   controllers: [AppController],
   providers: [
