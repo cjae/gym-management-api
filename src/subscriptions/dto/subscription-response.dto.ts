@@ -18,7 +18,7 @@ export class SubscriptionResponseDto {
   @ApiProperty()
   endDate: Date;
 
-  @ApiProperty({ enum: ['ACTIVE', 'EXPIRED', 'CANCELLED'] })
+  @ApiProperty({ enum: ['ACTIVE', 'FROZEN', 'EXPIRED', 'CANCELLED'] })
   status: string;
 
   @ApiProperty({ enum: ['CARD', 'MPESA'] })
@@ -29,6 +29,15 @@ export class SubscriptionResponseDto {
 
   @ApiPropertyOptional()
   nextBillingDate?: Date;
+
+  @ApiPropertyOptional()
+  freezeStartDate?: Date;
+
+  @ApiPropertyOptional()
+  freezeEndDate?: Date;
+
+  @ApiProperty({ example: 0 })
+  frozenDaysUsed: number;
 
   @ApiProperty()
   createdAt: Date;
