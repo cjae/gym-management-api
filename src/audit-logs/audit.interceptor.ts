@@ -45,7 +45,6 @@ const CONTROLLER_RESOURCE_MAP: Record<string, string> = {
   PaymentsController: 'Payment',
   AttendanceController: 'Attendance',
   TrainersController: 'Trainer',
-  LegalController: 'Legal',
   SalaryController: 'Salary',
   EntrancesController: 'Entrance',
   QrController: 'QrCode',

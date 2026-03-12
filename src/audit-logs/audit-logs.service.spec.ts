@@ -18,7 +18,6 @@ describe('AuditLogService', () => {
     memberSubscription: { findUnique: jest.fn() },
     staffSalaryRecord: { findUnique: jest.fn() },
     trainerProfile: { findUnique: jest.fn() },
-    legalDocument: { findUnique: jest.fn() },
     entrance: { findUnique: jest.fn() },
     gymQrCode: { findUnique: jest.fn() },
   };
@@ -225,15 +224,6 @@ describe('AuditLogService', () => {
       const result = await service.fetchOldData('Trainer', 'trainer-1');
 
       expect(result).toEqual(trainer);
-    });
-
-    it('should fetch Legal (legalDocument) record', async () => {
-      const doc = { id: 'legal-1', title: 'Waiver' };
-      mockPrisma.legalDocument.findUnique.mockResolvedValue(doc);
-
-      const result = await service.fetchOldData('Legal', 'legal-1');
-
-      expect(result).toEqual(doc);
     });
 
     it('should fetch Entrance record', async () => {

@@ -97,6 +97,8 @@ model User {
   gender             Gender?
   displayPicture     String?
   birthday           DateTime?  @db.Date
+  tosAcceptedAt      DateTime?
+  waiverAcceptedAt   DateTime?
   deletedAt          DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
@@ -107,7 +109,6 @@ model User {
   streak                     Streak?
   trainerProfile             TrainerProfile?
   trainerAssignmentsAsMember TrainerAssignment[]  @relation("MemberAssignments")
-  documentSignatures         DocumentSignature[]
   salaryRecords              StaffSalaryRecord[]
   passwordResetTokens        PasswordResetToken[]
   auditLogs                  AuditLog[]
@@ -228,32 +229,6 @@ model TrainerAssignment {
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id])
   member  User           @relation("MemberAssignments", fields: [memberId], references: [id])
-}
-
-model LegalDocument {
-  id         String   @id @default(uuid())
-  title      String
-  content    String
-  version    Int      @default(1)
-  isRequired Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  signatures DocumentSignature[]
-}
-
-model DocumentSignature {
-  id            String   @id @default(uuid())
-  memberId      String
-  documentId    String
-  signatureData String
-  signedAt      DateTime @default(now())
-  ipAddress     String?
-
-  member   User          @relation(fields: [memberId], references: [id])
-  document LegalDocument @relation(fields: [documentId], references: [id])
-
-  @@unique([memberId, documentId])
 }
 
 model StaffSalaryRecord {

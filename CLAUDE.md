@@ -27,7 +27,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 
 **Modules** (all in `src/`):
 - `prisma/` — Global PrismaService, injected everywhere
-- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints
+- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints. Registration requires `acceptTos` and `acceptWaiver` (both `true`), which sets `tosAcceptedAt` and `waiverAcceptedAt` timestamps on the User.
 - `users/` — CRUD with role-based access. Admin user creation (`POST /users`): ADMIN creates MEMBER/TRAINER, SUPER_ADMIN also creates ADMIN. Generates temp password, sets `mustChangePassword: true`, sends welcome email with credentials.
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members)
 - `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table). Member-created subscriptions start as `PENDING` until payment completes (webhook sets `ACTIVE`). Admin subscription creation (`POST /subscriptions/admin`): ADMIN/SUPER_ADMIN creates ACTIVE subscription for a MEMBER with offline payment (MPESA_OFFLINE/BANK_TRANSFER/COMPLIMENTARY), includes Payment record. Hourly cron cleans up PENDING subscriptions older than 1 hour. Freeze capability: members can freeze their subscription (up to plan's `maxFreezeDays` per billing cycle), blocking check-in and extending end date by actual frozen days on unfreeze. One freeze per billing cycle, auto-unfreeze via daily cron.
@@ -35,7 +35,6 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `attendance/` — QR-based check-in, idempotent per member per day (`@@unique([memberId, checkInDate])`)
 - `qr/` — GymQrCode generation and validation
 - `trainers/` — Profiles, schedules, member assignments
-- `legal/` — Documents with digital signature capture
 - `salary/` — Staff payroll, SUPER_ADMIN only
 - `email/` — Global EmailService using Mailgun + Handlebars templates (partials: header, footer, button). Logs emails when Mailgun is not configured.
 - `billing/` — Daily cron job for recurring subscription billing. Auto-charges card users via Paystack authorization codes, sends email reminders to M-Pesa users. Expires overdue subscriptions.
@@ -105,4 +104,4 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 12 spec files, 64 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 22 spec files, 195 tests total.

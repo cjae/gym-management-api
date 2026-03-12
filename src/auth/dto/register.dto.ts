@@ -5,6 +5,8 @@ import {
   MaxLength,
   IsOptional,
   IsDateString,
+  IsBoolean,
+  Equals,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -52,4 +54,20 @@ export class RegisterDto {
   @IsOptional()
   @IsDateString()
   birthday?: string;
+
+  @ApiProperty({
+    example: true,
+    description: 'Must accept Terms of Service',
+  })
+  @IsBoolean()
+  @Equals(true, { message: 'You must accept the Terms of Service' })
+  acceptTos: boolean;
+
+  @ApiProperty({
+    example: true,
+    description: 'Must accept the gym liability waiver',
+  })
+  @IsBoolean()
+  @Equals(true, { message: 'You must accept the liability waiver' })
+  acceptWaiver: boolean;
 }

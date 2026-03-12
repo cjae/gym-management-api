@@ -14,7 +14,6 @@ import { PaymentsModule } from './payments/payments.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { QrModule } from './qr/qr.module';
 import { TrainersModule } from './trainers/trainers.module';
-import { LegalModule } from './legal/legal.module';
 import { SalaryModule } from './salary/salary.module';
 import { SentryUserModule } from './sentry/sentry.module';
 import { EmailModule } from './email/email.module';
@@ -52,7 +51,6 @@ import { NotificationsModule } from './notifications/notifications.module';
     EntrancesModule,
     QrModule,
     TrainersModule,
-    LegalModule,
     SalaryModule,
     BillingModule,
     AnalyticsModule,

@@ -96,6 +96,8 @@ describe('AuthService', () => {
         password: 'password123',
         firstName: 'Test',
         lastName: 'User',
+        acceptTos: true,
+        acceptWaiver: true,
       });
 
       expect(result).toHaveProperty('accessToken');
@@ -112,6 +114,8 @@ describe('AuthService', () => {
           password: 'password123',
           firstName: 'Test',
           lastName: 'User',
+          acceptTos: true,
+          acceptWaiver: true,
         }),
       ).rejects.toThrow(ConflictException);
     });

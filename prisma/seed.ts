@@ -286,11 +286,6 @@ async function main() {
     data: { memberId: members[3].id, weeklyStreak: 8, longestStreak: 15, daysThisWeek: 4, weekStart: monday, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
   });
 
-  // Legal document
-  await prisma.legalDocument.create({
-    data: { title: 'Gym Membership Waiver', content: 'I hereby acknowledge that physical exercise involves risks...', version: 1, isRequired: true },
-  });
-
   // Active QR code
   await prisma.gymQrCode.create({
     data: { code: crypto.randomBytes(32).toString('hex'), isActive: true },

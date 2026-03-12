@@ -40,7 +40,6 @@ const RESOURCE_MODEL_MAP: Record<string, string> = {
   Subscription: 'memberSubscription',
   Salary: 'staffSalaryRecord',
   Trainer: 'trainerProfile',
-  Legal: 'legalDocument',
   Entrance: 'entrance',
   QrCode: 'gymQrCode',
 };
