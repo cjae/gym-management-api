@@ -9,6 +9,8 @@ import { CheckInDto } from './dto/check-in.dto';
 
 @Injectable()
 export class AttendanceService {
+  private readonly DAYS_REQUIRED_PER_WEEK = 4;
+
   constructor(
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
@@ -123,8 +125,9 @@ export class AttendanceService {
         alreadyCheckedIn: true,
         message: 'Already checked in today',
         weeklyStreak: streak?.weeklyStreak ?? 0,
+        longestStreak: streak?.longestStreak ?? 0,
         daysThisWeek: streak?.daysThisWeek ?? 0,
-        daysRequired: 4,
+        daysRequired: this.DAYS_REQUIRED_PER_WEEK,
       };
     }
 
@@ -173,7 +176,7 @@ export class AttendanceService {
       weeklyStreak: streak.weeklyStreak,
       longestStreak: streak.longestStreak,
       daysThisWeek: streak.daysThisWeek,
-      daysRequired: 4,
+      daysRequired: this.DAYS_REQUIRED_PER_WEEK,
     };
   }
 
@@ -208,7 +211,7 @@ export class AttendanceService {
         const diffMs = currentMonday.getTime() - prevWeekStart.getTime();
         const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
 
-        if (diffWeeks === 1 && existingStreak.daysThisWeek >= 4) {
+        if (diffWeeks === 1 && existingStreak.daysThisWeek >= this.DAYS_REQUIRED_PER_WEEK) {
           weeklyStreak = existingStreak.weeklyStreak + 1;
         } else {
           weeklyStreak = 0;
@@ -225,6 +228,7 @@ export class AttendanceService {
         longestStreak,
         daysThisWeek,
         weekStart,
+        lastCheckInDate: today,
       },
       update: {
         weeklyStreak,
