@@ -13,10 +13,10 @@ export class PaymentResponseDto {
   @ApiProperty({ example: 'KES' })
   currency: string;
 
-  @ApiProperty({ enum: ['PENDING', 'PAID', 'FAILED'] })
+  @ApiProperty({ enum: ['PENDING', 'PAID', 'FAILED', 'EXPIRED'] })
   status: string;
 
-  @ApiProperty({ enum: ['CARD', 'MPESA'] })
+  @ApiProperty({ enum: ['CARD', 'MPESA', 'CASH', 'COMPLIMENTARY'] })
   paymentMethod: string;
 
   @ApiPropertyOptional({ example: 'ref_abc123' })
@@ -24,6 +24,9 @@ export class PaymentResponseDto {
 
   @ApiPropertyOptional({ example: 'Insufficient funds' })
   failureReason?: string;
+
+  @ApiPropertyOptional({ example: 'Cash receipt #123' })
+  paymentNote?: string;
 
   @ApiProperty()
   createdAt: Date;

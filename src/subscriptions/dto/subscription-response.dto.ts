@@ -40,6 +40,15 @@ export class SubscriptionResponseDto {
   @ApiProperty({ example: 0 })
   frozenDaysUsed: number;
 
+  @ApiPropertyOptional({ example: 'Cash receipt #123' })
+  paymentNote?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Admin who created this subscription',
+  })
+  createdBy?: string;
+
   @ApiProperty()
   createdAt: Date;
 
