@@ -34,6 +34,9 @@ export class SubscriptionPlanResponseDto {
   @ApiProperty({ example: true })
   isActive: boolean;
 
+  @ApiProperty({ example: 20 })
+  maxFreezeDays: number;
+
   @ApiProperty()
   createdAt: Date;
 
