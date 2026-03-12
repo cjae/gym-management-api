@@ -41,6 +41,7 @@ export class SubscriptionsService {
         planId: dto.planId,
         startDate,
         endDate,
+        status: SubscriptionStatus.PENDING,
         paymentMethod: dto.paymentMethod,
         nextBillingDate: endDate,
         members: {
@@ -62,12 +63,12 @@ export class SubscriptionsService {
 
     this.eventEmitter.emit('activity.subscription', {
       type: 'subscription',
-      description: `${memberName} started a ${planName} subscription`,
+      description: `${memberName} started a ${planName} subscription (pending payment)`,
       timestamp: new Date().toISOString(),
       metadata: {
         subscriptionId: subscription.id,
         planName,
-        status: SubscriptionStatus.ACTIVE,
+        status: SubscriptionStatus.PENDING,
       },
     });
 

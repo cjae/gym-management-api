@@ -45,6 +45,51 @@ describe('SubscriptionsService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('create', () => {
+    const mockPlan = {
+      id: 'plan-1',
+      name: 'Monthly',
+      billingInterval: 'MONTHLY',
+      price: 5000,
+      maxMembers: 1,
+      maxFreezeDays: 0,
+      isActive: true,
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should create subscription with PENDING status', async () => {
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan);
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        firstName: 'Jane',
+        lastName: 'Doe',
+      });
+      mockPrisma.memberSubscription.create.mockResolvedValueOnce({
+        id: 'sub-1',
+        primaryMemberId: 'user-1',
+        planId: 'plan-1',
+        status: 'PENDING',
+        paymentMethod: 'MPESA',
+      });
+
+      const result = await service.create('user-1', {
+        planId: 'plan-1',
+        paymentMethod: 'MPESA' as any,
+      });
+
+      expect(result.status).toBe('PENDING');
+      expect(mockPrisma.memberSubscription.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PENDING',
+          }),
+        }),
+      );
+    });
+  });
+
   describe('hasActiveSubscription', () => {
     it('should return true when member has an active subscription', async () => {
       mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce({
