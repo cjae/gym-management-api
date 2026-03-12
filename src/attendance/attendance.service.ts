@@ -215,16 +215,21 @@ export class AttendanceService {
     return this.prisma.streak.findUnique({ where: { memberId } });
   }
 
-  async getLeaderboard() {
-    return this.prisma.streak.findMany({
-      orderBy: { currentStreak: 'desc' },
-      take: 50,
-      include: {
-        member: {
-          select: { id: true, firstName: true, lastName: true },
+  async getLeaderboard(page = 1, limit = 20) {
+    const [data, total] = await Promise.all([
+      this.prisma.streak.findMany({
+        orderBy: { currentStreak: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          member: {
+            select: { id: true, firstName: true, lastName: true },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.streak.count(),
+    ]);
+    return { data, total, page, limit };
   }
 
   async getTodayAttendance(page = 1, limit = 20) {

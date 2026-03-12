@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserResponseDto } from '../../users/dto/user-response.dto';
+import { LeaderboardMemberDto } from './leaderboard-member.dto';
 
 export class LeaderboardEntryResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -14,6 +14,6 @@ export class LeaderboardEntryResponseDto {
   @ApiProperty({ example: 20 })
   longestStreak: number;
 
-  @ApiProperty({ type: UserResponseDto })
-  member: UserResponseDto;
+  @ApiProperty({ type: LeaderboardMemberDto })
+  member: LeaderboardMemberDto;
 }

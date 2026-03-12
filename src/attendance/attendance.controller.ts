@@ -13,7 +13,7 @@ import { CheckInDto } from './dto/check-in.dto';
 import { CheckInResponseDto } from './dto/check-in-response.dto';
 import { AttendanceResponseDto } from './dto/attendance-response.dto';
 import { StreakResponseDto } from './dto/streak-response.dto';
-import { LeaderboardEntryResponseDto } from './dto/leaderboard-entry-response.dto';
+import { PaginatedLeaderboardResponseDto } from './dto/paginated-leaderboard-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -50,9 +50,9 @@ export class AttendanceController {
   }
 
   @Get('leaderboard')
-  @ApiOkResponse({ type: [LeaderboardEntryResponseDto] })
-  leaderboard() {
-    return this.attendanceService.getLeaderboard();
+  @ApiOkResponse({ type: PaginatedLeaderboardResponseDto })
+  leaderboard(@Query() query: PaginationQueryDto) {
+    return this.attendanceService.getLeaderboard(query.page, query.limit);
   }
 
   @Get('today')
