@@ -19,6 +19,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { TodayAttendanceQueryDto } from './dto/today-attendance-query.dto';
 import { PaginatedAttendanceResponseDto } from './dto/paginated-attendance-response.dto';
 
 @ApiTags('Attendance')
@@ -59,7 +60,11 @@ export class AttendanceController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: PaginatedAttendanceResponseDto })
-  todayAttendance(@Query() query: PaginationQueryDto) {
-    return this.attendanceService.getTodayAttendance(query.page, query.limit);
+  todayAttendance(@Query() query: TodayAttendanceQueryDto) {
+    return this.attendanceService.getTodayAttendance(
+      query.page,
+      query.limit,
+      query.search,
+    );
   }
 }

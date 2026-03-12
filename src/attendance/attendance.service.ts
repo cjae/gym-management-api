@@ -232,10 +232,20 @@ export class AttendanceService {
     return { data, total, page, limit };
   }
 
-  async getTodayAttendance(page = 1, limit = 20) {
+  async getTodayAttendance(page = 1, limit = 20, search?: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const where = { checkInDate: today };
+    const where: any = { checkInDate: today };
+
+    if (search) {
+      where.member = {
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      };
+    }
     const [data, total] = await Promise.all([
       this.prisma.attendance.findMany({
         where,
