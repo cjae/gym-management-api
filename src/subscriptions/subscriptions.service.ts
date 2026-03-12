@@ -138,6 +138,7 @@ export class SubscriptionsService {
         members: {
           some: { memberId },
         },
+        status: { not: 'PENDING' as SubscriptionStatus },
       },
       include: {
         plan: true,
@@ -160,6 +161,7 @@ export class SubscriptionsService {
   }
 
   async findAll(page: number = 1, limit: number = 20) {
+    const where = { status: { not: 'PENDING' as SubscriptionStatus } };
     const include = {
       primaryMember: {
         select: {
@@ -186,12 +188,13 @@ export class SubscriptionsService {
 
     const [subscriptions, total] = await Promise.all([
       this.prisma.memberSubscription.findMany({
+        where,
         include,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.memberSubscription.count(),
+      this.prisma.memberSubscription.count({ where }),
     ]);
 
     const data = subscriptions.map(

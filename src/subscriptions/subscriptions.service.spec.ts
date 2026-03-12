@@ -18,6 +18,7 @@ describe('SubscriptionsService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
     subscriptionMember: {
       create: jest.fn(),
@@ -118,6 +119,45 @@ describe('SubscriptionsService', () => {
 
       const result = await service.hasActiveSubscription('user-2');
       expect(result).toBe(false);
+    });
+  });
+
+  describe('findByMember', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should exclude PENDING subscriptions', async () => {
+      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([]);
+
+      await service.findByMember('user-1');
+
+      expect(mockPrisma.memberSubscription.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { not: 'PENDING' },
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('findAll', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should exclude PENDING subscriptions', async () => {
+      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([]);
+      mockPrisma.memberSubscription.count.mockResolvedValueOnce(0);
+
+      await service.findAll(1, 20);
+
+      const findManyCall =
+        mockPrisma.memberSubscription.findMany.mock.calls[0][0];
+      expect(findManyCall.where).toEqual(
+        expect.objectContaining({ status: { not: 'PENDING' } }),
+      );
     });
   });
 
