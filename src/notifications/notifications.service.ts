@@ -158,7 +158,7 @@ export class NotificationsService {
    * Poll Expo for push receipts and remove invalid tokens.
    * Runs every 30 minutes — Expo recommends waiting ~15min after sending.
    */
-  @Cron(CronExpression.EVERY_30_MINUTES)
+  @Cron(CronExpression.EVERY_30_MINUTES, { timeZone: 'Africa/Nairobi' })
   async handlePushReceipts() {
     if (this.pendingTickets.length === 0) return;
 

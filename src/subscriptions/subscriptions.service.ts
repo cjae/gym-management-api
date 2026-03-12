@@ -660,7 +660,7 @@ export class SubscriptionsService {
     return result;
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Africa/Nairobi' })
   async cleanupPendingSubscriptions() {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 

@@ -35,35 +35,35 @@ export class BillingService {
     )!.encryptionKey;
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_1AM)
+  @Cron(CronExpression.EVERY_DAY_AT_1AM, { timeZone: 'Africa/Nairobi' })
   async handleCardRenewals() {
     this.logger.log('Starting card renewals');
     await this.processCardRenewals();
     this.logger.log('Card renewals complete');
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: 'Africa/Nairobi' })
   async handleOverdueExpiry() {
     this.logger.log('Starting overdue subscription expiry');
     await this.expireOverdueSubscriptions();
     this.logger.log('Overdue subscription expiry complete');
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_6AM)
+  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Nairobi' })
   async handleMpesaReminders() {
     this.logger.log('Starting M-Pesa reminders');
     await this.processMpesaReminders();
     this.logger.log('M-Pesa reminders complete');
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Africa/Nairobi' })
   async handleBirthdayWishes() {
     this.logger.log('Starting birthday wishes');
     await this.sendBirthdayWishes();
     this.logger.log('Birthday wishes complete');
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Africa/Nairobi' })
   async handleAutoUnfreeze() {
     this.logger.log('Starting auto-unfreeze check');
     await this.autoUnfreezeSubscriptions();
@@ -232,10 +232,7 @@ export class BillingService {
 
     for (const user of birthdayUsers) {
       this.emailService
-        .sendBirthdayEmail(
-          user.email as string,
-          user.firstName as string,
-        )
+        .sendBirthdayEmail(user.email as string, user.firstName as string)
         .catch(() => {});
 
       this.notificationsService

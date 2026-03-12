@@ -8,7 +8,7 @@ export class LicenseCron {
 
   constructor(private readonly licensingService: LicensingService) {}
 
-  @Cron('0 3 * * *')
+  @Cron('0 3 * * *', { timeZone: 'Africa/Nairobi' })
   async handleLicenseValidation(): Promise<void> {
     this.logger.log('Running daily license validation...');
     await this.licensingService.validateLicense();

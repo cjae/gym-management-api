@@ -26,7 +26,7 @@ export class QrService {
     return this.prisma.gymQrCode.findFirst({ where: { isActive: true } });
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Africa/Nairobi' })
   async rotateDailyCode() {
     this.logger.log('Rotating daily QR code...');
     const code = await this.generateCode();
