@@ -515,7 +515,9 @@ export class AnalyticsService {
     ).length;
     const churnRate =
       totalBase > 0
-        ? Math.round(((totalCancelled + totalExpired) / totalBase) * 100 * 100) / 100
+        ? Math.round(
+            ((totalCancelled + totalExpired) / totalBase) * 100 * 100,
+          ) / 100
         : 0;
 
     const series = Array.from(buckets.entries())

@@ -158,34 +158,46 @@ export class SubscriptionsService {
     return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
-  async findAll() {
-    const subscriptions = await this.prisma.memberSubscription.findMany({
-      include: {
-        primaryMember: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
+  async findAll(page: number = 1, limit: number = 20) {
+    const include = {
+      primaryMember: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
         },
-        plan: true,
-        members: {
-          include: {
-            member: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-              },
+      },
+      plan: true,
+      members: {
+        include: {
+          member: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
             },
           },
         },
       },
-    });
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
+    };
+
+    const [subscriptions, total] = await Promise.all([
+      this.prisma.memberSubscription.findMany({
+        include,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.memberSubscription.count(),
+    ]);
+
+    const data = subscriptions.map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ paystackAuthorizationCode, ...sub }) => sub,
+    );
+    return { data, total, page, limit };
   }
 
   async findOne(subscriptionId: string) {
@@ -227,7 +239,11 @@ export class SubscriptionsService {
     return result;
   }
 
-  async cancel(subscriptionId: string, requesterId: string, requesterRole: string) {
+  async cancel(
+    subscriptionId: string,
+    requesterId: string,
+    requesterRole: string,
+  ) {
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
       include: {
@@ -245,7 +261,8 @@ export class SubscriptionsService {
     }
 
     const isOwner = subscription.primaryMemberId === requesterId;
-    const isAdmin = requesterRole === 'ADMIN' || requesterRole === 'SUPER_ADMIN';
+    const isAdmin =
+      requesterRole === 'ADMIN' || requesterRole === 'SUPER_ADMIN';
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException(
         'Only the subscription owner or an admin can cancel the subscription',
@@ -264,7 +281,11 @@ export class SubscriptionsService {
       type: 'subscription',
       description: `${memberName} cancelled their ${planName} subscription`,
       timestamp: new Date().toISOString(),
-      metadata: { subscriptionId, planName, status: SubscriptionStatus.CANCELLED },
+      metadata: {
+        subscriptionId,
+        planName,
+        status: SubscriptionStatus.CANCELLED,
+      },
     });
 
     return result;
