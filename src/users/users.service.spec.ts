@@ -85,6 +85,10 @@ describe('UsersService', () => {
     getMemberLimit: jest.fn().mockResolvedValue(null),
   };
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [

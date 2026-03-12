@@ -61,20 +61,32 @@ export class UsersService {
     const tempPassword = randomBytes(9).toString('base64url').slice(0, 12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        phone: dto.phone,
-        role: dto.role,
-        gender: dto.gender,
-        birthday: dto.birthday ? new Date(dto.birthday) : undefined,
-        mustChangePassword: true,
-      },
-      select: safeUserSelect,
-    });
+    let user;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          email: dto.email,
+          password: hashedPassword,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          phone: dto.phone,
+          role: dto.role,
+          gender: dto.gender,
+          birthday: dto.birthday ? new Date(dto.birthday) : undefined,
+          mustChangePassword: true,
+        },
+        select: safeUserSelect,
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof Object &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Email already registered');
+      }
+      throw error;
+    }
 
     // Send welcome email (fire-and-forget)
     this.emailService
