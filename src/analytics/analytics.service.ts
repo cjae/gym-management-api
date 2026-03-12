@@ -475,7 +475,7 @@ export class AnalyticsService {
       }
       const bucket = buckets.get(period)!;
 
-      if (sub.status === 'ACTIVE') {
+      if (sub.status === 'ACTIVE' || sub.status === 'FROZEN') {
         bucket.newSubscriptions++;
         byPlan[sub.plan.name] = (byPlan[sub.plan.name] || 0) + 1;
         byPaymentMethod[sub.paymentMethod] =
@@ -487,9 +487,25 @@ export class AnalyticsService {
       }
     }
 
-    const totalActive = await this.prisma.memberSubscription.count({
-      where: { status: 'ACTIVE' },
+    // Count subscribers that existed at the start of the period
+    // (created before period start, not yet expired/cancelled before period start)
+    const subscribersAtStart = await this.prisma.memberSubscription.count({
+      where: {
+        createdAt: { lt: from },
+        status: { in: ['ACTIVE', 'FROZEN', 'CANCELLED', 'EXPIRED'] },
+        OR: [
+          { endDate: { gte: from } },
+          { status: { in: ['CANCELLED', 'EXPIRED'] } },
+        ],
+      },
     });
+
+    // Also count new subscriptions created during the period
+    const newInPeriod = subscriptions.filter(
+      (s) => s.status === 'ACTIVE' || s.status === 'FROZEN',
+    ).length;
+
+    const totalBase = subscribersAtStart + newInPeriod;
 
     const totalCancelled = subscriptions.filter(
       (s) => s.status === 'CANCELLED',
@@ -498,8 +514,8 @@ export class AnalyticsService {
       (s) => s.status === 'EXPIRED',
     ).length;
     const churnRate =
-      totalActive > 0
-        ? ((totalCancelled + totalExpired) / totalActive) * 100
+      totalBase > 0
+        ? Math.round(((totalCancelled + totalExpired) / totalBase) * 100 * 100) / 100
         : 0;
 
     const series = Array.from(buckets.entries())

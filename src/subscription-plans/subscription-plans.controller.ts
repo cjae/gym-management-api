@@ -40,7 +40,7 @@ export class SubscriptionPlansController {
   constructor(private readonly plansService: SubscriptionPlansService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('SUPER_ADMIN')
   @ApiCreatedResponse({ type: SubscriptionPlanResponseDto })
   create(@Body() dto: CreatePlanDto) {
     return this.plansService.create(dto);
@@ -70,7 +70,7 @@ export class SubscriptionPlansController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('SUPER_ADMIN')
   @ApiOkResponse({ type: SubscriptionPlanResponseDto })
   @ApiNotFoundResponse({ description: 'Plan not found' })
   update(@Param('id') id: string, @Body() dto: UpdatePlanDto) {
@@ -78,7 +78,7 @@ export class SubscriptionPlansController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('SUPER_ADMIN')
   @ApiOkResponse({ type: SubscriptionPlanResponseDto })
   @ApiNotFoundResponse({ description: 'Plan not found' })
   remove(@Param('id') id: string) {

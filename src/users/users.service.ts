@@ -11,7 +11,12 @@ import {
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(page: number = 1, limit: number = 20, role?: Role, search?: string) {
+  async findAll(
+    page: number = 1,
+    limit: number = 20,
+    role?: Role,
+    search?: string,
+  ) {
     const where = {
       deletedAt: null,
       ...(role ? { role } : {}),

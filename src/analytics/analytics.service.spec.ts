@@ -269,7 +269,8 @@ describe('AnalyticsService', () => {
         },
       ]);
 
-      mockPrisma.memberSubscription.count.mockResolvedValue(50);
+      // subscribersAtStart = 48 (existing subs before period)
+      mockPrisma.memberSubscription.count.mockResolvedValue(48);
 
       const result = await service.getSubscriptionTrends({
         from: '2026-03-01',
@@ -283,7 +284,7 @@ describe('AnalyticsService', () => {
       expect(result.series[0].expirations).toBe(1);
       expect(result.byPlan).toEqual({ Basic: 1, Premium: 1 });
       expect(result.byPaymentMethod).toEqual({ CARD: 1, MPESA: 1 });
-      // churnRate = (1 + 1) / 50 * 100 = 4
+      // churnRate = (1 + 1) / (48 + 2) * 100 = 4
       expect(result.churnRate).toBe(4);
     });
   });

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SubscriptionStatus, PaymentMethod } from '@prisma/client';
 import { SubscriptionPlanResponseDto } from '../../subscription-plans/dto/subscription-plan-response.dto';
 import { SubscriptionMemberResponseDto } from './subscription-member-response.dto';
 
@@ -18,11 +19,11 @@ export class SubscriptionResponseDto {
   @ApiProperty()
   endDate: Date;
 
-  @ApiProperty({ enum: ['ACTIVE', 'FROZEN', 'EXPIRED', 'CANCELLED'] })
-  status: string;
+  @ApiProperty({ enum: SubscriptionStatus })
+  status: SubscriptionStatus;
 
-  @ApiProperty({ enum: ['CARD', 'MPESA'] })
-  paymentMethod: string;
+  @ApiProperty({ enum: PaymentMethod })
+  paymentMethod: PaymentMethod;
 
   @ApiProperty({ example: true })
   autoRenew: boolean;

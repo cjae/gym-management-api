@@ -38,7 +38,12 @@ export class UsersController {
   @Get()
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
   findAll(@Query() query: UsersQueryDto) {
-    return this.usersService.findAll(query.page, query.limit, query.role, query.search);
+    return this.usersService.findAll(
+      query.page,
+      query.limit,
+      query.role,
+      query.search,
+    );
   }
 
   @Get(':id')

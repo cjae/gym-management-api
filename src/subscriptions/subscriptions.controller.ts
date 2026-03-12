@@ -75,12 +75,24 @@ export class SubscriptionsController {
     return this.subscriptionsService.findAll();
   }
 
+  @Get(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: SubscriptionResponseDto })
+  @ApiNotFoundResponse({ description: 'Subscription not found' })
+  findOne(@Param('id') id: string) {
+    return this.subscriptionsService.findOne(id);
+  }
+
   @Patch(':id/cancel')
   @ApiOkResponse({ type: SubscriptionResponseDto })
   @ApiNotFoundResponse({ description: 'Subscription not found' })
-  @ApiForbiddenResponse({ description: 'Not subscription owner' })
-  cancel(@Param('id') id: string, @CurrentUser('id') requesterId: string) {
-    return this.subscriptionsService.cancel(id, requesterId);
+  @ApiForbiddenResponse({ description: 'Not subscription owner or admin' })
+  cancel(
+    @Param('id') id: string,
+    @CurrentUser('id') requesterId: string,
+    @CurrentUser('role') requesterRole: string,
+  ) {
+    return this.subscriptionsService.cancel(id, requesterId, requesterRole);
   }
 
   @Patch(':id/freeze')
@@ -94,7 +106,12 @@ export class SubscriptionsController {
     @CurrentUser('id') requesterId: string,
     @CurrentUser('role') requesterRole: string,
   ) {
-    return this.subscriptionsService.freeze(id, requesterId, requesterRole, dto.days);
+    return this.subscriptionsService.freeze(
+      id,
+      requesterId,
+      requesterRole,
+      dto.days,
+    );
   }
 
   @Patch(':id/unfreeze')

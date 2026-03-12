@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
@@ -66,7 +67,7 @@ export class SubscriptionsService {
       metadata: {
         subscriptionId: subscription.id,
         planName,
-        status: 'ACTIVE',
+        status: SubscriptionStatus.ACTIVE,
       },
     });
 
@@ -122,7 +123,7 @@ export class SubscriptionsService {
       where: {
         memberId,
         subscription: {
-          status: 'ACTIVE',
+          status: SubscriptionStatus.ACTIVE,
           endDate: { gte: now },
         },
       },
@@ -187,7 +188,46 @@ export class SubscriptionsService {
     return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
   }
 
-  async cancel(subscriptionId: string, requesterId: string) {
+  async findOne(subscriptionId: string) {
+    const subscription = await this.prisma.memberSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        primaryMember: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        plan: true,
+        members: {
+          include: {
+            member: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException(
+        `Subscription with id ${subscriptionId} not found`,
+      );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...result } = subscription;
+    return result;
+  }
+
+  async cancel(subscriptionId: string, requesterId: string, requesterRole: string) {
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
       include: {
@@ -204,9 +244,11 @@ export class SubscriptionsService {
       );
     }
 
-    if (subscription.primaryMemberId !== requesterId) {
+    const isOwner = subscription.primaryMemberId === requesterId;
+    const isAdmin = requesterRole === 'ADMIN' || requesterRole === 'SUPER_ADMIN';
+    if (!isOwner && !isAdmin) {
       throw new ForbiddenException(
-        'Only the subscription owner can cancel the subscription',
+        'Only the subscription owner or an admin can cancel the subscription',
       );
     }
 
@@ -222,7 +264,7 @@ export class SubscriptionsService {
       type: 'subscription',
       description: `${memberName} cancelled their ${planName} subscription`,
       timestamp: new Date().toISOString(),
-      metadata: { subscriptionId, planName, status: 'CANCELLED' },
+      metadata: { subscriptionId, planName, status: SubscriptionStatus.CANCELLED },
     });
 
     return result;
@@ -282,7 +324,7 @@ export class SubscriptionsService {
     const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
       data: {
-        status: 'FROZEN',
+        status: SubscriptionStatus.FROZEN,
         freezeStartDate,
         freezeEndDate,
       },
@@ -297,7 +339,7 @@ export class SubscriptionsService {
       metadata: {
         subscriptionId,
         planName: subscription.plan.name,
-        status: 'FROZEN',
+        status: SubscriptionStatus.FROZEN,
         days,
       },
     });
@@ -358,7 +400,7 @@ export class SubscriptionsService {
     const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
       data: {
-        status: 'ACTIVE',
+        status: SubscriptionStatus.ACTIVE,
         endDate: newEndDate,
         nextBillingDate: newNextBillingDate,
         freezeStartDate: null,
@@ -376,7 +418,7 @@ export class SubscriptionsService {
       metadata: {
         subscriptionId,
         planName: subscription.plan.name,
-        status: 'ACTIVE',
+        status: SubscriptionStatus.ACTIVE,
         frozenDays,
       },
     });
