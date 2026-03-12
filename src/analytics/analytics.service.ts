@@ -272,13 +272,13 @@ export class AnalyticsService {
 
   async getExpiringMemberships() {
     const now = new Date();
-    const fourteenDaysFromNow = new Date(now);
-    fourteenDaysFromNow.setDate(now.getDate() + 14);
+    const sevenDaysFromNow = new Date(now);
+    sevenDaysFromNow.setDate(now.getDate() + 7);
 
     const subscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         status: 'ACTIVE',
-        endDate: { gte: now, lte: fourteenDaysFromNow },
+        endDate: { gte: now, lte: sevenDaysFromNow },
       },
       select: {
         endDate: true,

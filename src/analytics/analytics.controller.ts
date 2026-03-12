@@ -47,7 +47,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: 'Get expiring memberships',
     description:
-      'Returns memberships expiring within 14 days, sorted by urgency.',
+      'Returns memberships expiring within 7 days, sorted by urgency.',
   })
   @ApiOkResponse({ type: ExpiringMembershipsResponseDto })
   getExpiringMemberships() {
