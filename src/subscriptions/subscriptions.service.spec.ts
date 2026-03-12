@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminPaymentMethod } from './dto/admin-create-subscription.dto';
 
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
@@ -27,6 +29,10 @@ describe('SubscriptionsService', () => {
     user: {
       findUnique: jest.fn(),
     },
+    payment: {
+      create: jest.fn(),
+    },
+    $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
 
   beforeEach(async () => {
@@ -307,6 +313,147 @@ describe('SubscriptionsService', () => {
       await expect(
         service.unfreeze('sub-1', 'user-1', 'MEMBER'),
       ).rejects.toThrow('Only frozen subscriptions can be unfrozen');
+    });
+  });
+
+  describe('adminCreate', () => {
+    const adminId = 'admin-1';
+    const mockMember = {
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'MEMBER',
+    };
+    const mockPlanActive = {
+      id: 'plan-1',
+      name: 'Monthly',
+      billingInterval: 'MONTHLY',
+      price: 5000,
+      maxMembers: 1,
+      maxFreezeDays: 0,
+      isActive: true,
+    };
+    const baseDto = {
+      memberId: 'member-1',
+      planId: 'plan-1',
+      paymentMethod: AdminPaymentMethod.CASH,
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should create ACTIVE subscription with PAID payment record', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive);
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null); // no active sub
+
+      const createdSub = {
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'CASH',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+      };
+      mockPrisma.memberSubscription.create.mockResolvedValueOnce(createdSub);
+      mockPrisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' });
+
+      const result = await service.adminCreate(adminId, baseDto);
+
+      expect(result.status).toBe('ACTIVE');
+      expect(mockPrisma.memberSubscription.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'ACTIVE',
+            primaryMemberId: 'member-1',
+            createdBy: adminId,
+            autoRenew: false,
+          }),
+        }),
+      );
+      expect(mockPrisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 5000,
+            status: 'PAID',
+            paymentMethod: 'CASH',
+          }),
+        }),
+      );
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'activity.subscription',
+        expect.objectContaining({
+          type: 'subscription',
+        }),
+      );
+    });
+
+    it('should reject if target user is not a MEMBER', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        ...mockMember,
+        role: 'TRAINER',
+      });
+
+      await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
+        'Can only create subscriptions for users with MEMBER role',
+      );
+    });
+
+    it('should reject if member already has an active subscription', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive);
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce({
+        id: 'sm-1',
+      }); // has active
+
+      await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
+        'Member already has an active subscription',
+      );
+    });
+
+    it('should reject if plan is not active', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce({
+        ...mockPlanActive,
+        isActive: false,
+      });
+
+      await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
+        'Subscription plan is not active',
+      );
+    });
+
+    it('should set amount to 0 for COMPLIMENTARY payment', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive);
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+
+      const createdSub = {
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'COMPLIMENTARY',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+      };
+      mockPrisma.memberSubscription.create.mockResolvedValueOnce(createdSub);
+      mockPrisma.payment.create.mockResolvedValueOnce({ id: 'pay-2' });
+
+      await service.adminCreate(adminId, {
+        ...baseDto,
+        paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
+      });
+
+      expect(mockPrisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 0,
+          }),
+        }),
+      );
     });
   });
 });

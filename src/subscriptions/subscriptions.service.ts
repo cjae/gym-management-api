@@ -5,9 +5,10 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { SubscriptionStatus } from '@prisma/client';
+import { Role, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
+import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
 
 @Injectable()
@@ -69,6 +70,100 @@ export class SubscriptionsService {
         subscriptionId: subscription.id,
         planName,
         status: SubscriptionStatus.PENDING,
+      },
+    });
+
+    return subscription;
+  }
+
+  async adminCreate(adminId: string, dto: AdminCreateSubscriptionDto) {
+    // Validate target user exists and is a MEMBER
+    const member = await this.prisma.user.findUnique({
+      where: { id: dto.memberId },
+      select: { id: true, firstName: true, lastName: true, role: true },
+    });
+    if (!member) {
+      throw new NotFoundException(`User with id ${dto.memberId} not found`);
+    }
+    if (member.role !== Role.MEMBER) {
+      throw new BadRequestException(
+        'Can only create subscriptions for users with MEMBER role',
+      );
+    }
+
+    // Validate plan exists and is active
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: dto.planId },
+    });
+    if (!plan) {
+      throw new NotFoundException(
+        `Subscription plan with id ${dto.planId} not found`,
+      );
+    }
+    if (!plan.isActive) {
+      throw new BadRequestException('Subscription plan is not active');
+    }
+
+    // Check member doesn't already have an active subscription
+    const hasActive = await this.hasActiveSubscription(dto.memberId);
+    if (hasActive) {
+      throw new BadRequestException(
+        'Member already has an active subscription',
+      );
+    }
+
+    const startDate = new Date();
+    const endDate = getNextBillingDate(startDate, plan.billingInterval);
+    const amount = dto.paymentMethod === 'COMPLIMENTARY' ? 0 : plan.price;
+
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      const sub = await tx.memberSubscription.create({
+        data: {
+          primaryMemberId: dto.memberId,
+          planId: dto.planId,
+          startDate,
+          endDate,
+          status: SubscriptionStatus.ACTIVE,
+          paymentMethod: dto.paymentMethod,
+          nextBillingDate: endDate,
+          autoRenew: false,
+          createdBy: adminId,
+          paymentNote: dto.paymentNote,
+          members: {
+            create: {
+              memberId: dto.memberId,
+            },
+          },
+        },
+        include: {
+          plan: true,
+          members: true,
+        },
+      });
+
+      await tx.payment.create({
+        data: {
+          subscriptionId: sub.id,
+          amount,
+          paymentMethod: dto.paymentMethod,
+          status: 'PAID',
+          paymentNote: dto.paymentNote,
+        },
+      });
+
+      return sub;
+    });
+
+    const memberName = `${member.firstName} ${member.lastName}`;
+    this.eventEmitter.emit('activity.subscription', {
+      type: 'subscription',
+      description: `Admin created a ${plan.name} subscription for ${memberName}`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        subscriptionId: subscription.id,
+        planName: plan.name,
+        status: SubscriptionStatus.ACTIVE,
+        createdBy: adminId,
       },
     });
 
