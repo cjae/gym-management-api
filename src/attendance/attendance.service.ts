@@ -130,7 +130,6 @@ export class AttendanceService {
       data: { memberId, checkInDate: today, entranceId },
     });
 
-
     // 4. Emit activity event
     const member = await this.prisma.user.findUnique({
       where: { id: memberId },

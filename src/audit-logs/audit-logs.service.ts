@@ -59,12 +59,18 @@ export class AuditLogService {
           action: entry.action,
           resource: entry.resource,
           resourceId: entry.resourceId,
-          oldData: this.stripSensitiveFields(entry.oldData) as Prisma.InputJsonValue | undefined,
-          newData: this.stripSensitiveFields(entry.newData) as Prisma.InputJsonValue | undefined,
+          oldData: this.stripSensitiveFields(entry.oldData) as
+            | Prisma.InputJsonValue
+            | undefined,
+          newData: this.stripSensitiveFields(entry.newData) as
+            | Prisma.InputJsonValue
+            | undefined,
           ipAddress: entry.ipAddress,
           userAgent: entry.userAgent,
           route: entry.route,
-          metadata: this.stripSensitiveFields(entry.metadata) as Prisma.InputJsonValue | undefined,
+          metadata: this.stripSensitiveFields(entry.metadata) as
+            | Prisma.InputJsonValue
+            | undefined,
         },
       });
     } catch (error) {
@@ -106,7 +112,15 @@ export class AuditLogService {
   async findAll(params: FindAllParams) {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
-    const { userId, action, resource, resourceId, startDate, endDate, ipAddress } = params;
+    const {
+      userId,
+      action,
+      resource,
+      resourceId,
+      startDate,
+      endDate,
+      ipAddress,
+    } = params;
 
     const where: Record<string, unknown> = {};
     if (userId) where.userId = userId;

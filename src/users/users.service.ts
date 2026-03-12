@@ -11,10 +11,19 @@ import {
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(page: number = 1, limit: number = 20, role?: Role) {
+  async findAll(page: number = 1, limit: number = 20, role?: Role, search?: string) {
     const where = {
       deletedAt: null,
       ...(role ? { role } : {}),
+      ...(search
+        ? {
+            OR: [
+              { firstName: { contains: search, mode: 'insensitive' as const } },
+              { lastName: { contains: search, mode: 'insensitive' as const } },
+              { email: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
     };
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({

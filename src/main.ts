@@ -47,9 +47,17 @@ Real-time activity events are available via Socket.IO at the \`/activity\` names
 **Connection:**
 \`\`\`
 const socket = io("/activity", { auth: { token: "<JWT>" } });
+// For entrance-specific events:
+const socket = io("/activity", { auth: { token: "<JWT>" }, query: { entranceId: "<UUID>" } });
 \`\`\`
 
 **Authentication:** Pass a valid JWT in \`auth.token\`. Only ADMIN and SUPER_ADMIN roles are accepted. Invalidated tokens are rejected.
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| entranceId | string (optional) | Join an entrance-specific room to receive targeted \`check_in_result_entrance\` events |
 
 ### Event: \`activity\`
 Emitted for general gym activity (admin dashboard feed).
@@ -70,7 +78,11 @@ Emitted after a member scans the QR code at the entrance. Used by the entrance s
 | member | object | \`{ id, firstName, lastName, displayPicture }\` |
 | success | boolean | Whether the check-in was accepted |
 | message | string | Human-readable result message |
+| entranceId | string (optional) | The entrance where the check-in occurred |
 | timestamp | string (ISO 8601) | When the event occurred |
+
+### Event: \`check_in_result_entrance\`
+Emitted only to clients in the entrance-specific room (joined via \`entranceId\` query param). Same payload as \`check_in_result\`, scoped to a single entrance. Use this for entrance display screens that only need their own check-ins.
 
 ### Event: \`qr_rotated\`
 Emitted when the gym entrance QR code is rotated. Clients displaying the QR should refresh.
