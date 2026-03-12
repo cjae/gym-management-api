@@ -21,16 +21,19 @@ describe('SubscriptionsService', () => {
       findMany: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
+      deleteMany: jest.fn(),
     },
     subscriptionMember: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      deleteMany: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
     },
     payment: {
       create: jest.fn(),
+      deleteMany: jest.fn(),
     },
     $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
@@ -462,6 +465,49 @@ describe('SubscriptionsService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('cleanupPendingSubscriptions', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should delete PENDING subscriptions older than 1 hour and their payments', async () => {
+      const staleSubscriptions = [{ id: 'sub-1' }, { id: 'sub-2' }];
+
+      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce(staleSubscriptions);
+      mockPrisma.payment.deleteMany.mockResolvedValueOnce({ count: 2 });
+      mockPrisma.subscriptionMember.deleteMany.mockResolvedValueOnce({ count: 2 });
+      mockPrisma.memberSubscription.deleteMany.mockResolvedValueOnce({ count: 2 });
+
+      await service.cleanupPendingSubscriptions();
+
+      expect(mockPrisma.memberSubscription.findMany).toHaveBeenCalledWith({
+        where: {
+          status: 'PENDING',
+          createdAt: { lt: expect.any(Date) },
+        },
+        select: { id: true },
+      });
+
+      expect(mockPrisma.payment.deleteMany).toHaveBeenCalledWith({
+        where: { subscriptionId: { in: ['sub-1', 'sub-2'] } },
+      });
+      expect(mockPrisma.subscriptionMember.deleteMany).toHaveBeenCalledWith({
+        where: { subscriptionId: { in: ['sub-1', 'sub-2'] } },
+      });
+      expect(mockPrisma.memberSubscription.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['sub-1', 'sub-2'] } },
+      });
+    });
+
+    it('should do nothing when no stale pending subscriptions exist', async () => {
+      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([]);
+
+      await service.cleanupPendingSubscriptions();
+
+      expect(mockPrisma.payment.deleteMany).not.toHaveBeenCalled();
     });
   });
 });

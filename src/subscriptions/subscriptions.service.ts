@@ -1,9 +1,11 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Role, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +15,8 @@ import { getNextBillingDate } from '../common/utils/billing.util';
 
 @Injectable()
 export class SubscriptionsService {
+  private readonly logger = new Logger(SubscriptionsService.name);
+
   constructor(
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
@@ -544,5 +548,37 @@ export class SubscriptionsService {
     });
 
     return result;
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupPendingSubscriptions() {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+    const staleSubscriptions = await this.prisma.memberSubscription.findMany({
+      where: {
+        status: 'PENDING' as SubscriptionStatus,
+        createdAt: { lt: oneHourAgo },
+      },
+      select: { id: true },
+    });
+
+    if (staleSubscriptions.length === 0) return;
+
+    const ids = staleSubscriptions.map((s) => s.id);
+
+    // Delete in order: payments → subscription members → subscriptions (FK constraints)
+    await this.prisma.payment.deleteMany({
+      where: { subscriptionId: { in: ids } },
+    });
+    await this.prisma.subscriptionMember.deleteMany({
+      where: { subscriptionId: { in: ids } },
+    });
+    await this.prisma.memberSubscription.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    this.logger.log(
+      `Cleaned up ${staleSubscriptions.length} stale pending subscription(s)`,
+    );
   }
 }
