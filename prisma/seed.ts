@@ -269,15 +269,21 @@ async function main() {
     }
   }
 
-  // Streaks for active members
+  // Streaks for active members (weekly consistency model)
+  const monday = new Date();
+  const day = monday.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  monday.setDate(monday.getDate() - diff);
+  monday.setHours(0, 0, 0, 0);
+
   await prisma.streak.create({
-    data: { memberId: members[0].id, currentStreak: 12, longestStreak: 18, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
+    data: { memberId: members[0].id, weeklyStreak: 12, longestStreak: 18, daysThisWeek: 3, weekStart: monday, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
   });
   await prisma.streak.create({
-    data: { memberId: members[1].id, currentStreak: 5, longestStreak: 10, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
+    data: { memberId: members[1].id, weeklyStreak: 5, longestStreak: 10, daysThisWeek: 2, weekStart: monday, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
   });
   await prisma.streak.create({
-    data: { memberId: members[3].id, currentStreak: 8, longestStreak: 15, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
+    data: { memberId: members[3].id, weeklyStreak: 8, longestStreak: 15, daysThisWeek: 4, weekStart: monday, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
   });
 
   // Legal document
