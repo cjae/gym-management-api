@@ -33,23 +33,25 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
 @Controller('entrances')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'SUPER_ADMIN')
 export class EntrancesController {
   constructor(private readonly entrancesService: EntrancesService) {}
 
   @Post()
+  @Roles('SUPER_ADMIN')
   @ApiCreatedResponse({ type: EntranceResponseDto })
   create(@Body() dto: CreateEntranceDto) {
     return this.entrancesService.create(dto);
   }
 
   @Get()
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: [EntranceResponseDto] })
   findAll(@Query() query: PaginationQueryDto) {
     return this.entrancesService.findAll(query.page, query.limit);
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: EntranceResponseDto })
   @ApiNotFoundResponse({ description: 'Entrance not found' })
   findOne(@Param('id') id: string) {
@@ -57,6 +59,7 @@ export class EntrancesController {
   }
 
   @Patch(':id')
+  @Roles('SUPER_ADMIN')
   @ApiOkResponse({ type: EntranceResponseDto })
   @ApiNotFoundResponse({ description: 'Entrance not found' })
   update(@Param('id') id: string, @Body() dto: UpdateEntranceDto) {
@@ -64,6 +67,7 @@ export class EntrancesController {
   }
 
   @Delete(':id')
+  @Roles('SUPER_ADMIN')
   @ApiOkResponse({ type: EntranceResponseDto })
   @ApiNotFoundResponse({ description: 'Entrance not found' })
   remove(@Param('id') id: string) {
