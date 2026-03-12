@@ -47,7 +47,8 @@ enum BillingInterval {
 enum PaymentMethod {
   CARD
   MPESA
-  CASH
+  MPESA_OFFLINE
+  BANK_TRANSFER
   COMPLIMENTARY
 }
 

@@ -17,6 +17,7 @@ describe('SubscriptionsService', () => {
     },
     memberSubscription: {
       create: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
@@ -35,7 +36,9 @@ describe('SubscriptionsService', () => {
       create: jest.fn(),
       deleteMany: jest.fn(),
     },
-    $transaction: jest.fn((fn) => fn(mockPrisma)),
+    $transaction: jest.fn((input) =>
+      typeof input === 'function' ? input(mockPrisma) : Promise.all(input),
+    ),
   };
 
   beforeEach(async () => {
@@ -72,10 +75,12 @@ describe('SubscriptionsService', () => {
 
     it('should create subscription with PENDING status', async () => {
       mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan);
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null); // no active sub
       mockPrisma.user.findUnique.mockResolvedValueOnce({
         firstName: 'Jane',
         lastName: 'Doe',
       });
+      mockPrisma.memberSubscription.findFirst.mockResolvedValueOnce(null); // no pending sub
       mockPrisma.memberSubscription.create.mockResolvedValueOnce({
         id: 'sub-1',
         primaryMemberId: 'user-1',
@@ -97,6 +102,63 @@ describe('SubscriptionsService', () => {
           }),
         }),
       );
+    });
+
+    it('should update existing PENDING subscription instead of creating new one', async () => {
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan);
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null); // no active sub
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        firstName: 'Jane',
+        lastName: 'Doe',
+      });
+      mockPrisma.memberSubscription.findFirst.mockResolvedValueOnce({
+        id: 'pending-sub-1',
+        primaryMemberId: 'user-1',
+        status: 'PENDING',
+      }); // existing pending sub
+      mockPrisma.memberSubscription.update.mockResolvedValueOnce({
+        id: 'pending-sub-1',
+        primaryMemberId: 'user-1',
+        planId: 'plan-1',
+        status: 'PENDING',
+        paymentMethod: 'MPESA',
+      });
+
+      const result = await service.create('user-1', {
+        planId: 'plan-1',
+        paymentMethod: 'MPESA' as any,
+      });
+
+      expect(result.id).toBe('pending-sub-1');
+      expect(mockPrisma.memberSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'pending-sub-1' },
+          data: expect.objectContaining({
+            planId: 'plan-1',
+          }),
+        }),
+      );
+      expect(mockPrisma.memberSubscription.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject if plan is not active', async () => {
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce({
+        ...mockPlan,
+        isActive: false,
+      });
+
+      await expect(
+        service.create('user-1', { planId: 'plan-1', paymentMethod: 'MPESA' as any }),
+      ).rejects.toThrow('Subscription plan is not active');
+    });
+
+    it('should reject if member already has an active subscription', async () => {
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan);
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce({ id: 'sm-1' }); // has active
+
+      await expect(
+        service.create('user-1', { planId: 'plan-1', paymentMethod: 'MPESA' as any }),
+      ).rejects.toThrow('Member already has an active subscription');
     });
   });
 
@@ -339,7 +401,8 @@ describe('SubscriptionsService', () => {
     const baseDto = {
       memberId: 'member-1',
       planId: 'plan-1',
-      paymentMethod: AdminPaymentMethod.CASH,
+      paymentMethod: AdminPaymentMethod.MPESA_OFFLINE,
+      paymentReference: 'MPESA-TXN-ABC123',
     };
 
     beforeEach(() => {
@@ -348,15 +411,18 @@ describe('SubscriptionsService', () => {
 
     it('should create ACTIVE subscription with PAID payment record', async () => {
       mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
-      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive,
+      );
       mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null); // no active sub
+      mockPrisma.memberSubscription.findFirst.mockResolvedValueOnce(null); // no pending sub
 
       const createdSub = {
         id: 'sub-1',
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'CASH',
+        paymentMethod: 'MPESA_OFFLINE',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -381,7 +447,8 @@ describe('SubscriptionsService', () => {
           data: expect.objectContaining({
             amount: 5000,
             status: 'PAID',
-            paymentMethod: 'CASH',
+            paymentMethod: 'MPESA_OFFLINE',
+            paystackReference: 'MPESA-TXN-ABC123',
           }),
         }),
       );
@@ -391,6 +458,47 @@ describe('SubscriptionsService', () => {
           type: 'subscription',
         }),
       );
+    });
+
+    it('should update existing PENDING subscription to ACTIVE instead of creating new one', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive,
+      );
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null); // no active sub
+      mockPrisma.memberSubscription.findFirst.mockResolvedValueOnce({
+        id: 'pending-sub-1',
+        primaryMemberId: 'member-1',
+        status: 'PENDING',
+      }); // existing pending sub
+
+      const updatedSub = {
+        id: 'pending-sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'MPESA_OFFLINE',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+      };
+      mockPrisma.memberSubscription.update.mockResolvedValueOnce(updatedSub);
+      mockPrisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' });
+
+      const result = await service.adminCreate(adminId, baseDto);
+
+      expect(result.id).toBe('pending-sub-1');
+      expect(result.status).toBe('ACTIVE');
+      expect(mockPrisma.memberSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'pending-sub-1' },
+          data: expect.objectContaining({
+            status: 'ACTIVE',
+            createdBy: adminId,
+          }),
+        }),
+      );
+      expect(mockPrisma.memberSubscription.create).not.toHaveBeenCalled();
+      expect(mockPrisma.payment.create).toHaveBeenCalled();
     });
 
     it('should reject if target user does not exist', async () => {
@@ -414,7 +522,9 @@ describe('SubscriptionsService', () => {
 
     it('should reject if member already has an active subscription', async () => {
       mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
-      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive,
+      );
       mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce({
         id: 'sm-1',
       }); // has active
@@ -438,7 +548,9 @@ describe('SubscriptionsService', () => {
 
     it('should set amount to 0 for COMPLIMENTARY payment', async () => {
       mockPrisma.user.findUnique.mockResolvedValueOnce(mockMember);
-      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive,
+      );
       mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
 
       const createdSub = {
@@ -476,10 +588,16 @@ describe('SubscriptionsService', () => {
     it('should delete PENDING subscriptions older than 1 hour and their payments', async () => {
       const staleSubscriptions = [{ id: 'sub-1' }, { id: 'sub-2' }];
 
-      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce(staleSubscriptions);
+      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce(
+        staleSubscriptions,
+      );
       mockPrisma.payment.deleteMany.mockResolvedValueOnce({ count: 2 });
-      mockPrisma.subscriptionMember.deleteMany.mockResolvedValueOnce({ count: 2 });
-      mockPrisma.memberSubscription.deleteMany.mockResolvedValueOnce({ count: 2 });
+      mockPrisma.subscriptionMember.deleteMany.mockResolvedValueOnce({
+        count: 2,
+      });
+      mockPrisma.memberSubscription.deleteMany.mockResolvedValueOnce({
+        count: 2,
+      });
 
       await service.cleanupPendingSubscriptions();
 

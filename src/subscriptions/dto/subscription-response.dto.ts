@@ -40,7 +40,7 @@ export class SubscriptionResponseDto {
   @ApiProperty({ example: 0 })
   frozenDaysUsed: number;
 
-  @ApiPropertyOptional({ example: 'Cash receipt #123' })
+  @ApiPropertyOptional({ example: 'M-Pesa confirmation code ABC123' })
   paymentNote?: string;
 
   @ApiPropertyOptional({

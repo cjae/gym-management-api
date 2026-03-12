@@ -31,6 +31,16 @@ export class SubscriptionsService {
         `Subscription plan with id ${dto.planId} not found`,
       );
     }
+    if (!plan.isActive) {
+      throw new BadRequestException('Subscription plan is not active');
+    }
+
+    const hasActive = await this.hasActiveSubscription(memberId);
+    if (hasActive) {
+      throw new BadRequestException(
+        'Member already has an active subscription',
+      );
+    }
 
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
@@ -40,26 +50,54 @@ export class SubscriptionsService {
       select: { firstName: true, lastName: true },
     });
 
-    const subscription = await this.prisma.memberSubscription.create({
-      data: {
-        primaryMemberId: memberId,
-        planId: dto.planId,
-        startDate,
-        endDate,
-        status: SubscriptionStatus.PENDING,
-        paymentMethod: dto.paymentMethod,
-        nextBillingDate: endDate,
-        members: {
-          create: {
-            memberId,
+    // Check for existing PENDING subscription — update it instead of creating a new one
+    const existingPending =
+      await this.prisma.memberSubscription.findFirst({
+        where: {
+          primaryMemberId: memberId,
+          status: SubscriptionStatus.PENDING,
+        },
+      });
+
+    let subscription;
+
+    if (existingPending) {
+      subscription = await this.prisma.memberSubscription.update({
+        where: { id: existingPending.id },
+        data: {
+          planId: dto.planId,
+          startDate,
+          endDate,
+          paymentMethod: dto.paymentMethod,
+          nextBillingDate: endDate,
+        },
+        include: {
+          plan: true,
+          members: true,
+        },
+      });
+    } else {
+      subscription = await this.prisma.memberSubscription.create({
+        data: {
+          primaryMemberId: memberId,
+          planId: dto.planId,
+          startDate,
+          endDate,
+          status: SubscriptionStatus.PENDING,
+          paymentMethod: dto.paymentMethod,
+          nextBillingDate: endDate,
+          members: {
+            create: {
+              memberId,
+            },
           },
         },
-      },
-      include: {
-        plan: true,
-        members: true,
-      },
-    });
+        include: {
+          plan: true,
+          members: true,
+        },
+      });
+    }
 
     const memberName = member
       ? `${member.firstName} ${member.lastName}`
@@ -120,30 +158,62 @@ export class SubscriptionsService {
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
     const amount = dto.paymentMethod === 'COMPLIMENTARY' ? 0 : plan.price;
 
-    const subscription = await this.prisma.$transaction(async (tx) => {
-      const sub = await tx.memberSubscription.create({
-        data: {
+    // Check for existing PENDING subscription — update it instead of creating a new one
+    const existingPending =
+      await this.prisma.memberSubscription.findFirst({
+        where: {
           primaryMemberId: dto.memberId,
-          planId: dto.planId,
-          startDate,
-          endDate,
-          status: SubscriptionStatus.ACTIVE,
-          paymentMethod: dto.paymentMethod,
-          nextBillingDate: endDate,
-          autoRenew: false,
-          createdBy: adminId,
-          paymentNote: dto.paymentNote,
-          members: {
-            create: {
-              memberId: dto.memberId,
-            },
-          },
-        },
-        include: {
-          plan: true,
-          members: true,
+          status: SubscriptionStatus.PENDING,
         },
       });
+
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      let sub;
+
+      if (existingPending) {
+        sub = await tx.memberSubscription.update({
+          where: { id: existingPending.id },
+          data: {
+            planId: dto.planId,
+            startDate,
+            endDate,
+            status: SubscriptionStatus.ACTIVE,
+            paymentMethod: dto.paymentMethod,
+            nextBillingDate: endDate,
+            autoRenew: false,
+            createdBy: adminId,
+            paymentNote: dto.paymentNote,
+          },
+          include: {
+            plan: true,
+            members: true,
+          },
+        });
+      } else {
+        sub = await tx.memberSubscription.create({
+          data: {
+            primaryMemberId: dto.memberId,
+            planId: dto.planId,
+            startDate,
+            endDate,
+            status: SubscriptionStatus.ACTIVE,
+            paymentMethod: dto.paymentMethod,
+            nextBillingDate: endDate,
+            autoRenew: false,
+            createdBy: adminId,
+            paymentNote: dto.paymentNote,
+            members: {
+              create: {
+                memberId: dto.memberId,
+              },
+            },
+          },
+          include: {
+            plan: true,
+            members: true,
+          },
+        });
+      }
 
       await tx.payment.create({
         data: {
@@ -151,6 +221,7 @@ export class SubscriptionsService {
           amount,
           paymentMethod: dto.paymentMethod,
           status: 'PAID',
+          paystackReference: dto.paymentReference,
           paymentNote: dto.paymentNote,
         },
       });
@@ -567,15 +638,17 @@ export class SubscriptionsService {
     const ids = staleSubscriptions.map((s) => s.id);
 
     // Delete in order: payments → subscription members → subscriptions (FK constraints)
-    await this.prisma.payment.deleteMany({
-      where: { subscriptionId: { in: ids } },
-    });
-    await this.prisma.subscriptionMember.deleteMany({
-      where: { subscriptionId: { in: ids } },
-    });
-    await this.prisma.memberSubscription.deleteMany({
-      where: { id: { in: ids } },
-    });
+    await this.prisma.$transaction([
+      this.prisma.payment.deleteMany({
+        where: { subscriptionId: { in: ids } },
+      }),
+      this.prisma.subscriptionMember.deleteMany({
+        where: { subscriptionId: { in: ids } },
+      }),
+      this.prisma.memberSubscription.deleteMany({
+        where: { id: { in: ids } },
+      }),
+    ]);
 
     this.logger.log(
       `Cleaned up ${staleSubscriptions.length} stale pending subscription(s)`,

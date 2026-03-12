@@ -6,7 +6,7 @@
 ## Problem
 
 1. Subscriptions are created as ACTIVE immediately, before payment. A member who abandons the Paystack checkout gets a free billing cycle.
-2. Admins have no way to create subscriptions for members who pay offline (cash, complimentary).
+2. Admins have no way to create subscriptions for members who pay offline (M-Pesa offline, bank transfer, complimentary).
 3. Members can spam `POST /payments/initialize`, creating multiple orphaned PENDING payment records.
 
 ## Design
@@ -18,13 +18,13 @@
 PENDING | ACTIVE | FROZEN | EXPIRED | CANCELLED
 ```
 
-**`PaymentMethod` enum** — add `CASH`, `COMPLIMENTARY`:
+**`PaymentMethod` enum** — add `MPESA_OFFLINE`, `BANK_TRANSFER`, `COMPLIMENTARY`:
 ```
-CARD | MPESA | CASH | COMPLIMENTARY
+CARD | MPESA | MPESA_OFFLINE | BANK_TRANSFER | COMPLIMENTARY
 ```
 
 **`MemberSubscription` new fields:**
-- `paymentNote: String?` — free-text for admin context (e.g., "Cash receipt #123")
+- `paymentNote: String?` — free-text for admin context (e.g., "M-Pesa confirmation code ABC123")
 - `createdBy: String?` (FK to User) — which admin created it. Null = member self-service.
 
 **`Payment` new fields:**
@@ -59,8 +59,8 @@ CARD | MPESA | CASH | COMPLIMENTARY
 |-------|------|----------|-------|
 | `memberId` | UUID string | Yes | Target member |
 | `planId` | UUID string | Yes | Subscription plan |
-| `paymentMethod` | `CASH \| COMPLIMENTARY` | Yes | Only offline methods |
-| `paymentNote` | string (max 500) | No | e.g., "Cash receipt #123" |
+| `paymentMethod` | `MPESA_OFFLINE \| BANK_TRANSFER \| COMPLIMENTARY` | Yes | Only offline methods |
+| `paymentNote` | string (max 500) | No | e.g., "M-Pesa confirmation code ABC123" |
 
 **Validations:**
 - Target user must exist with role `MEMBER`

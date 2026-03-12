@@ -16,7 +16,7 @@ export class PaymentResponseDto {
   @ApiProperty({ enum: ['PENDING', 'PAID', 'FAILED', 'EXPIRED'] })
   status: string;
 
-  @ApiProperty({ enum: ['CARD', 'MPESA', 'CASH', 'COMPLIMENTARY'] })
+  @ApiProperty({ enum: ['CARD', 'MPESA', 'MPESA_OFFLINE', 'BANK_TRANSFER', 'COMPLIMENTARY'] })
   paymentMethod: string;
 
   @ApiPropertyOptional({ example: 'ref_abc123' })
@@ -25,7 +25,7 @@ export class PaymentResponseDto {
   @ApiPropertyOptional({ example: 'Insufficient funds' })
   failureReason?: string;
 
-  @ApiPropertyOptional({ example: 'Cash receipt #123' })
+  @ApiPropertyOptional({ example: 'M-Pesa confirmation code ABC123' })
   paymentNote?: string;
 
   @ApiProperty()
