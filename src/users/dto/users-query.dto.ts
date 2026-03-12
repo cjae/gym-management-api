@@ -1,17 +1,21 @@
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { Role } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 export class UsersQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     enum: Role,
-    description: 'Filter users by role',
-    example: 'MEMBER',
+    isArray: true,
+    description:
+      'Filter users by role(s). Pass multiple: ?role=ADMIN&role=TRAINER',
+    example: ['ADMIN', 'TRAINER'],
   })
   @IsOptional()
-  @IsEnum(Role)
-  role?: Role;
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  @IsEnum(Role, { each: true })
+  role?: Role[];
 
   @ApiPropertyOptional({
     description: 'Search by first name, last name, or email',

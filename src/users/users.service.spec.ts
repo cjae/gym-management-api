@@ -127,16 +127,16 @@ describe('UsersService', () => {
     });
 
     it('should filter users by role', async () => {
-      await service.findAll(1, 20, 'MEMBER');
+      await service.findAll(1, 20, ['MEMBER']);
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { deletedAt: null, role: 'MEMBER' },
+          where: { deletedAt: null, role: { in: ['MEMBER'] } },
         }),
       );
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.count).toHaveBeenCalledWith({
-        where: { deletedAt: null, role: 'MEMBER' },
+        where: { deletedAt: null, role: { in: ['MEMBER'] } },
       });
     });
   });

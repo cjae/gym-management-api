@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AdminPaymentMethod } from './dto/admin-create-subscription.dto';
 
 describe('SubscriptionsService', () => {
@@ -10,6 +11,10 @@ describe('SubscriptionsService', () => {
   let prisma: PrismaService;
 
   const mockEventEmitter = { emit: jest.fn() };
+
+  const mockNotificationsService = {
+    create: jest.fn().mockResolvedValue({}),
+  };
 
   const mockPrisma = {
     subscriptionPlan: {
@@ -47,6 +52,7 @@ describe('SubscriptionsService', () => {
         SubscriptionsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
 

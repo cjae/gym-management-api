@@ -104,6 +104,8 @@ model User {
   passwordResetTokens        PasswordResetToken[]
   auditLogs                  AuditLog[]
   createdSubscriptions       MemberSubscription[] @relation("SubscriptionCreator")
+  notifications              Notification[]       @relation("UserNotifications")
+  pushTokens                 PushToken[]          @relation("UserPushTokens")
 }
 
 model SubscriptionPlan {
@@ -357,4 +359,31 @@ model AuditLog {
   @@index([resource, resourceId])
   @@index([action])
   @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  title     String
+  body      String
+  type      String   // SUBSCRIPTION_EXPIRING, PAYMENT_REMINDER, STREAK_NUDGE, STATUS_CHANGE, GENERAL
+  isRead    Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation("UserNotifications", fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String   // ios, android
+  createdAt DateTime @default(now())
+
+  user User @relation("UserPushTokens", fields: [userId], references: [id])
+
+  @@index([userId])
 }

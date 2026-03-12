@@ -28,6 +28,7 @@ import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 import { LicensingModule } from './licensing/licensing.module';
 import { LicenseGuard } from './licensing/licensing.guard';
 import { AuditLogModule } from './audit-logs/audit-logs.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { AuditLogModule } from './audit-logs/audit-logs.module';
     AnalyticsModule,
     UploadsModule,
     AuditLogModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

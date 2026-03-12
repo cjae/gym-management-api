@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 /** Return Monday 00:00 for the week containing `date`. */
@@ -29,6 +30,10 @@ describe('AttendanceService', () => {
 
   const mockEventEmitter = { emit: jest.fn() };
 
+  const mockNotificationsService = {
+    create: jest.fn().mockResolvedValue({}),
+  };
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const currentMonday = getMondayOfWeek(today);
@@ -39,6 +44,7 @@ describe('AttendanceService', () => {
         AttendanceService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
     service = module.get<AttendanceService>(AttendanceService);

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CheckInDto } from './dto/check-in.dto';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class AttendanceService {
   constructor(
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async checkIn(memberId: string, dto: CheckInDto) {
@@ -155,6 +157,22 @@ export class AttendanceService {
 
     // 5. Update streak
     const streak = await this.updateStreak(memberId, today);
+
+    // Streak nudge: "One more day this week!"
+    if (streak.daysThisWeek === this.DAYS_REQUIRED_PER_WEEK - 1) {
+      this.notificationsService
+        .create({
+          userId: memberId,
+          title: 'Almost there!',
+          body: `One more day this week to keep your ${streak.weeklyStreak}-week streak going!`,
+          type: 'STREAK_NUDGE',
+          metadata: {
+            weeklyStreak: streak.weeklyStreak,
+            daysThisWeek: streak.daysThisWeek,
+          },
+        })
+        .catch(() => {}); // Fire and forget
+    }
 
     this.eventEmitter.emit('check_in.result', {
       type: 'check_in_result',

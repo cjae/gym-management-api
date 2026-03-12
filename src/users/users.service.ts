@@ -99,12 +99,12 @@ export class UsersService {
   async findAll(
     page: number = 1,
     limit: number = 20,
-    role?: Role,
+    role?: Role[],
     search?: string,
   ) {
     const where = {
       deletedAt: null,
-      ...(role ? { role } : {}),
+      ...(role?.length ? { role: { in: role } } : {}),
       ...(search
         ? {
             OR: [

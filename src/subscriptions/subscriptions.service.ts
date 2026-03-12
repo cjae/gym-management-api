@@ -9,6 +9,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Role, SubscriptionStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
@@ -20,6 +21,7 @@ export class SubscriptionsService {
   constructor(
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(memberId: string, dto: CreateSubscriptionDto) {
@@ -474,6 +476,19 @@ export class SubscriptionsService {
       },
     });
 
+    this.notificationsService
+      .create({
+        userId: subscription.primaryMemberId,
+        title: 'Subscription Updated',
+        body: 'Your subscription has been cancelled',
+        type: 'STATUS_CHANGE',
+        metadata: {
+          subscriptionId: subscription.id,
+          status: 'CANCELLED',
+        },
+      })
+      .catch(() => {});
+
     return result;
   }
 
@@ -550,6 +565,19 @@ export class SubscriptionsService {
         days,
       },
     });
+
+    this.notificationsService
+      .create({
+        userId: subscription.primaryMemberId,
+        title: 'Subscription Updated',
+        body: 'Your subscription has been frozen',
+        type: 'STATUS_CHANGE',
+        metadata: {
+          subscriptionId: subscription.id,
+          status: 'FROZEN',
+        },
+      })
+      .catch(() => {});
 
     return result;
   }
@@ -629,6 +657,19 @@ export class SubscriptionsService {
         frozenDays,
       },
     });
+
+    this.notificationsService
+      .create({
+        userId: subscription.primaryMemberId,
+        title: 'Subscription Updated',
+        body: 'Your subscription has been unfrozen',
+        type: 'STATUS_CHANGE',
+        metadata: {
+          subscriptionId: subscription.id,
+          status: 'ACTIVE',
+        },
+      })
+      .catch(() => {});
 
     return result;
   }

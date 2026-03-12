@@ -10,6 +10,7 @@ import {
   getPaymentConfigName,
 } from '../common/config/payment.config';
 import { decrypt } from '../common/utils/encryption.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class BillingService {
@@ -22,6 +23,7 @@ export class BillingService {
     private readonly paymentsService: PaymentsService,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {
     this.adminUrl =
       this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
@@ -197,6 +199,17 @@ export class BillingService {
           daysUntil,
           `${this.adminUrl}/subscriptions`,
         );
+
+        this.notificationsService
+          .create({
+            userId: sub.primaryMemberId,
+            title: 'Payment Reminder',
+            body: `Payment due for your ${sub.plan.name} plan`,
+            type: 'PAYMENT_REMINDER',
+            metadata: { subscriptionId: sub.id },
+          })
+          .catch(() => {});
+
         this.logger.log(
           `Sent M-Pesa reminder to ${sub.primaryMember.email} — ${daysUntil} days until billing`,
         );
@@ -232,6 +245,16 @@ export class BillingService {
         sub.plan.name,
         `${this.adminUrl}/subscriptions`,
       );
+
+      this.notificationsService
+        .create({
+          userId: sub.primaryMemberId,
+          title: 'Subscription Expired',
+          body: `Your ${sub.plan.name} subscription has expired`,
+          type: 'SUBSCRIPTION_EXPIRING',
+          metadata: { subscriptionId: sub.id, daysLeft: 0 },
+        })
+        .catch(() => {});
 
       this.logger.log(`Expired overdue M-Pesa subscription ${sub.id}`);
     }
