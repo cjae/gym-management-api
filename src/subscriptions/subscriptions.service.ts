@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Role, SubscriptionStatus } from '@prisma/client';
+import { Role, SubscriptionStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
@@ -122,7 +122,7 @@ export class SubscriptionsService {
     // Validate target user exists and is a MEMBER
     const member = await this.prisma.user.findUnique({
       where: { id: dto.memberId },
-      select: { id: true, firstName: true, lastName: true, role: true },
+      select: { id: true, firstName: true, lastName: true, role: true, status: true },
     });
     if (!member) {
       throw new NotFoundException(`User with id ${dto.memberId} not found`);
@@ -130,6 +130,11 @@ export class SubscriptionsService {
     if (member.role !== Role.MEMBER) {
       throw new BadRequestException(
         'Can only create subscriptions for users with MEMBER role',
+      );
+    }
+    if (member.status === UserStatus.INACTIVE || member.status === UserStatus.SUSPENDED) {
+      throw new BadRequestException(
+        'Cannot create subscription for an inactive or suspended member',
       );
     }
 

@@ -388,6 +388,7 @@ describe('SubscriptionsService', () => {
       firstName: 'Jane',
       lastName: 'Doe',
       role: 'MEMBER',
+      status: 'ACTIVE',
     };
     const mockPlanActive = {
       id: 'plan-1',
@@ -517,6 +518,28 @@ describe('SubscriptionsService', () => {
 
       await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
         'Can only create subscriptions for users with MEMBER role',
+      );
+    });
+
+    it('should reject if member is INACTIVE', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        ...mockMember,
+        status: 'INACTIVE',
+      });
+
+      await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
+        'Cannot create subscription for an inactive or suspended member',
+      );
+    });
+
+    it('should reject if member is SUSPENDED', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        ...mockMember,
+        status: 'SUSPENDED',
+      });
+
+      await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
+        'Cannot create subscription for an inactive or suspended member',
       );
     });
 
