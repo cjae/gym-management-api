@@ -84,6 +84,20 @@ export class PaymentsService {
       );
     }
 
+    // Expire any existing PENDING payment for this subscription
+    const existingPending = await this.prisma.payment.findFirst({
+      where: {
+        subscriptionId,
+        status: 'PENDING',
+      },
+    });
+    if (existingPending) {
+      await this.prisma.payment.update({
+        where: { id: existingPending.id },
+        data: { status: 'EXPIRED' },
+      });
+    }
+
     const payment = await this.prisma.payment.create({
       data: {
         subscriptionId,
