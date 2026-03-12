@@ -148,16 +148,24 @@ describe('SubscriptionsService', () => {
       });
 
       await expect(
-        service.create('user-1', { planId: 'plan-1', paymentMethod: 'MPESA' as any }),
+        service.create('user-1', {
+          planId: 'plan-1',
+          paymentMethod: 'MPESA' as any,
+        }),
       ).rejects.toThrow('Subscription plan is not active');
     });
 
     it('should reject if member already has an active subscription', async () => {
       mockPrisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan);
-      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce({ id: 'sm-1' }); // has active
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValueOnce({
+        id: 'sm-1',
+      }); // has active
 
       await expect(
-        service.create('user-1', { planId: 'plan-1', paymentMethod: 'MPESA' as any }),
+        service.create('user-1', {
+          planId: 'plan-1',
+          paymentMethod: 'MPESA' as any,
+        }),
       ).rejects.toThrow('Member already has an active subscription');
     });
   });

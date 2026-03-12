@@ -51,13 +51,12 @@ export class SubscriptionsService {
     });
 
     // Check for existing PENDING subscription — update it instead of creating a new one
-    const existingPending =
-      await this.prisma.memberSubscription.findFirst({
-        where: {
-          primaryMemberId: memberId,
-          status: SubscriptionStatus.PENDING,
-        },
-      });
+    const existingPending = await this.prisma.memberSubscription.findFirst({
+      where: {
+        primaryMemberId: memberId,
+        status: SubscriptionStatus.PENDING,
+      },
+    });
 
     let subscription;
 
@@ -122,7 +121,13 @@ export class SubscriptionsService {
     // Validate target user exists and is a MEMBER
     const member = await this.prisma.user.findUnique({
       where: { id: dto.memberId },
-      select: { id: true, firstName: true, lastName: true, role: true, status: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        status: true,
+      },
     });
     if (!member) {
       throw new NotFoundException(`User with id ${dto.memberId} not found`);
@@ -132,7 +137,10 @@ export class SubscriptionsService {
         'Can only create subscriptions for users with MEMBER role',
       );
     }
-    if (member.status === UserStatus.INACTIVE || member.status === UserStatus.SUSPENDED) {
+    if (
+      member.status === UserStatus.INACTIVE ||
+      member.status === UserStatus.SUSPENDED
+    ) {
       throw new BadRequestException(
         'Cannot create subscription for an inactive or suspended member',
       );
@@ -164,13 +172,12 @@ export class SubscriptionsService {
     const amount = dto.paymentMethod === 'COMPLIMENTARY' ? 0 : plan.price;
 
     // Check for existing PENDING subscription — update it instead of creating a new one
-    const existingPending =
-      await this.prisma.memberSubscription.findFirst({
-        where: {
-          primaryMemberId: dto.memberId,
-          status: SubscriptionStatus.PENDING,
-        },
-      });
+    const existingPending = await this.prisma.memberSubscription.findFirst({
+      where: {
+        primaryMemberId: dto.memberId,
+        status: SubscriptionStatus.PENDING,
+      },
+    });
 
     const subscription = await this.prisma.$transaction(async (tx) => {
       let sub;

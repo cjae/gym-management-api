@@ -227,24 +227,32 @@ export class AttendanceService {
     });
   }
 
-  async getTodayAttendance() {
+  async getTodayAttendance(page = 1, limit = 20) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return this.prisma.attendance.findMany({
-      where: { checkInDate: today },
-      include: {
-        member: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+    const where = { checkInDate: today };
+    const [data, total] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where,
+        include: {
+          member: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          entrance: {
+            select: { id: true, name: true },
           },
         },
-        entrance: {
-          select: { id: true, name: true },
-        },
-      },
-    });
+        orderBy: { checkInTime: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.attendance.count({ where }),
+    ]);
+    return { data, total, page, limit };
   }
 }

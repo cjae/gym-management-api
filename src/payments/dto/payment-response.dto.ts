@@ -16,7 +16,9 @@ export class PaymentResponseDto {
   @ApiProperty({ enum: ['PENDING', 'PAID', 'FAILED', 'EXPIRED'] })
   status: string;
 
-  @ApiProperty({ enum: ['CARD', 'MPESA', 'MPESA_OFFLINE', 'BANK_TRANSFER', 'COMPLIMENTARY'] })
+  @ApiProperty({
+    enum: ['CARD', 'MPESA', 'MPESA_OFFLINE', 'BANK_TRANSFER', 'COMPLIMENTARY'],
+  })
   paymentMethod: string;
 
   @ApiPropertyOptional({ example: 'ref_abc123' })

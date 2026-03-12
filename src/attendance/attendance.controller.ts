@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -18,6 +18,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginatedAttendanceResponseDto } from './dto/paginated-attendance-response.dto';
 
 @ApiTags('Attendance')
 @ApiBearerAuth()
@@ -56,8 +58,8 @@ export class AttendanceController {
   @Get('today')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ type: [AttendanceResponseDto] })
-  todayAttendance() {
-    return this.attendanceService.getTodayAttendance();
+  @ApiOkResponse({ type: PaginatedAttendanceResponseDto })
+  todayAttendance(@Query() query: PaginationQueryDto) {
+    return this.attendanceService.getTodayAttendance(query.page, query.limit);
   }
 }

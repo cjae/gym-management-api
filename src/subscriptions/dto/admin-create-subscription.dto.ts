@@ -38,9 +38,7 @@ export class AdminCreateSubscriptionDto {
     description:
       'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Required for MPESA_OFFLINE and BANK_TRANSFER.',
   })
-  @ValidateIf(
-    (o) => o.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY,
-  )
+  @ValidateIf((o) => o.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY)
   @IsNotEmpty()
   @IsString()
   @MaxLength(200)
