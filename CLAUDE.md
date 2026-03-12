@@ -30,7 +30,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints
 - `users/` — CRUD with role-based access
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members)
-- `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table)
+- `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table). Freeze capability: members can freeze their subscription (up to plan's `maxFreezeDays` per billing cycle), blocking check-in and extending end date by actual frozen days on unfreeze. One freeze per billing cycle, auto-unfreeze via daily cron.
 - `payments/` — Paystack integration with webhook verification
 - `attendance/` — QR-based check-in, idempotent per member per day (`@@unique([memberId, checkInDate])`)
 - `qr/` — GymQrCode generation and validation
