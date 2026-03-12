@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
+import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { AddDuoMemberDto } from './dto/add-duo-member.dto';
 import { FreezeSubscriptionDto } from './dto/freeze-subscription.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
@@ -46,6 +47,22 @@ export class SubscriptionsController {
     @Body() dto: CreateSubscriptionDto,
   ) {
     return this.subscriptionsService.create(memberId, dto);
+  }
+
+  @Post('admin')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiCreatedResponse({ type: SubscriptionResponseDto })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid member, plan, or member already has active subscription',
+  })
+  @ApiNotFoundResponse({ description: 'Member or plan not found' })
+  adminCreate(
+    @CurrentUser('id') adminId: string,
+    @Body() dto: AdminCreateSubscriptionDto,
+  ) {
+    return this.subscriptionsService.adminCreate(adminId, dto);
   }
 
   @Post(':id/duo')
