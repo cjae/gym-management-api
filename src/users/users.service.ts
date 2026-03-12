@@ -61,7 +61,7 @@ export class UsersService {
     const tempPassword = randomBytes(9).toString('base64url').slice(0, 12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    let user;
+    let user: Record<string, unknown>;
     try {
       user = await this.prisma.user.create({
         data: {

@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -41,8 +41,10 @@ describe('SubscriptionsService', () => {
       create: jest.fn(),
       deleteMany: jest.fn(),
     },
-    $transaction: jest.fn((input) =>
-      typeof input === 'function' ? input(mockPrisma) : Promise.all(input),
+    $transaction: jest.fn((input: unknown) =>
+      typeof input === 'function'
+        ? (input as (tx: typeof mockPrisma) => unknown)(mockPrisma)
+        : Promise.all(input as Promise<unknown>[]),
     ),
   };
 
@@ -97,7 +99,7 @@ describe('SubscriptionsService', () => {
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: 'MPESA' as any,
+        paymentMethod: 'MPESA' as const,
       });
 
       expect(result.status).toBe('PENDING');
@@ -132,7 +134,7 @@ describe('SubscriptionsService', () => {
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: 'MPESA' as any,
+        paymentMethod: 'MPESA' as const,
       });
 
       expect(result.id).toBe('pending-sub-1');
@@ -156,7 +158,7 @@ describe('SubscriptionsService', () => {
       await expect(
         service.create('user-1', {
           planId: 'plan-1',
-          paymentMethod: 'MPESA' as any,
+          paymentMethod: 'MPESA' as const,
         }),
       ).rejects.toThrow('Subscription plan is not active');
     });
@@ -170,7 +172,7 @@ describe('SubscriptionsService', () => {
       await expect(
         service.create('user-1', {
           planId: 'plan-1',
-          paymentMethod: 'MPESA' as any,
+          paymentMethod: 'MPESA' as const,
         }),
       ).rejects.toThrow('Member already has an active subscription');
     });
@@ -192,7 +194,7 @@ describe('SubscriptionsService', () => {
           memberId: 'user-1',
           subscription: {
             status: 'ACTIVE',
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
             endDate: { gte: expect.any(Date) },
           },
         },

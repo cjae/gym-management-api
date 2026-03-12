@@ -13,7 +13,9 @@ export class UsersQueryDto extends PaginationQueryDto {
     example: ['ADMIN', 'TRAINER'],
   })
   @IsOptional()
-  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  @Transform(({ value }: { value: Role | Role[] }) =>
+    Array.isArray(value) ? value : [value],
+  )
   @IsEnum(Role, { each: true })
   role?: Role[];
 

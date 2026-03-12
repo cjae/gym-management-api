@@ -181,7 +181,10 @@ describe('UsersService', () => {
 
     it('should create a user with hashed password and mustChangePassword=true', async () => {
       mockPrisma.user.findUnique.mockResolvedValueOnce(null);
-      const result = await service.create(createDto, 'ADMIN');
+      const result: Record<string, unknown> = await service.create(
+        createDto,
+        'ADMIN',
+      );
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({

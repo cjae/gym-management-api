@@ -294,14 +294,19 @@ export class AttendanceService {
   async getTodayAttendance(page = 1, limit = 20, search?: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const where: any = { checkInDate: today };
+    const where: {
+      checkInDate: Date;
+      member?: {
+        OR: { firstName?: object; lastName?: object; email?: object }[];
+      };
+    } = { checkInDate: today };
 
     if (search) {
       where.member = {
         OR: [
-          { firstName: { contains: search, mode: 'insensitive' } },
-          { lastName: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search, mode: 'insensitive' } },
+          { firstName: { contains: search, mode: 'insensitive' as const } },
+          { lastName: { contains: search, mode: 'insensitive' as const } },
+          { email: { contains: search, mode: 'insensitive' as const } },
         ],
       };
     }

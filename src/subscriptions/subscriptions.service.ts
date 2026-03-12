@@ -16,7 +16,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
+import {
+  AdminCreateSubscriptionDto,
+  AdminPaymentMethod,
+} from './dto/admin-create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
 
 @Injectable()
@@ -65,45 +68,37 @@ export class SubscriptionsService {
       },
     });
 
-    let subscription;
+    const include = { plan: true, members: true } as const;
 
-    if (existingPending) {
-      subscription = await this.prisma.memberSubscription.update({
-        where: { id: existingPending.id },
-        data: {
-          planId: dto.planId,
-          startDate,
-          endDate,
-          paymentMethod: dto.paymentMethod,
-          nextBillingDate: endDate,
-        },
-        include: {
-          plan: true,
-          members: true,
-        },
-      });
-    } else {
-      subscription = await this.prisma.memberSubscription.create({
-        data: {
-          primaryMemberId: memberId,
-          planId: dto.planId,
-          startDate,
-          endDate,
-          status: SubscriptionStatus.PENDING,
-          paymentMethod: dto.paymentMethod,
-          nextBillingDate: endDate,
-          members: {
-            create: {
-              memberId,
+    const subscription = existingPending
+      ? await this.prisma.memberSubscription.update({
+          where: { id: existingPending.id },
+          data: {
+            planId: dto.planId,
+            startDate,
+            endDate,
+            paymentMethod: dto.paymentMethod,
+            nextBillingDate: endDate,
+          },
+          include,
+        })
+      : await this.prisma.memberSubscription.create({
+          data: {
+            primaryMemberId: memberId,
+            planId: dto.planId,
+            startDate,
+            endDate,
+            status: SubscriptionStatus.PENDING,
+            paymentMethod: dto.paymentMethod,
+            nextBillingDate: endDate,
+            members: {
+              create: {
+                memberId,
+              },
             },
           },
-        },
-        include: {
-          plan: true,
-          members: true,
-        },
-      });
-    }
+          include,
+        });
 
     const memberName = member
       ? `${member.firstName} ${member.lastName}`
@@ -176,7 +171,8 @@ export class SubscriptionsService {
 
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
-    const amount = dto.paymentMethod === 'COMPLIMENTARY' ? 0 : plan.price;
+    const amount =
+      dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY ? 0 : plan.price;
 
     // Check for existing PENDING subscription — update it instead of creating a new one
     const existingPending = await this.prisma.memberSubscription.findFirst({
@@ -186,53 +182,38 @@ export class SubscriptionsService {
       },
     });
 
-    const subscription = await this.prisma.$transaction(async (tx) => {
-      let sub;
+    const txInclude = { plan: true, members: true } as const;
+    const txData = {
+      planId: dto.planId,
+      startDate,
+      endDate,
+      status: SubscriptionStatus.ACTIVE,
+      paymentMethod: dto.paymentMethod,
+      nextBillingDate: endDate,
+      autoRenew: false,
+      createdBy: adminId,
+      paymentNote: dto.paymentNote,
+    };
 
-      if (existingPending) {
-        sub = await tx.memberSubscription.update({
-          where: { id: existingPending.id },
-          data: {
-            planId: dto.planId,
-            startDate,
-            endDate,
-            status: SubscriptionStatus.ACTIVE,
-            paymentMethod: dto.paymentMethod,
-            nextBillingDate: endDate,
-            autoRenew: false,
-            createdBy: adminId,
-            paymentNote: dto.paymentNote,
-          },
-          include: {
-            plan: true,
-            members: true,
-          },
-        });
-      } else {
-        sub = await tx.memberSubscription.create({
-          data: {
-            primaryMemberId: dto.memberId,
-            planId: dto.planId,
-            startDate,
-            endDate,
-            status: SubscriptionStatus.ACTIVE,
-            paymentMethod: dto.paymentMethod,
-            nextBillingDate: endDate,
-            autoRenew: false,
-            createdBy: adminId,
-            paymentNote: dto.paymentNote,
-            members: {
-              create: {
-                memberId: dto.memberId,
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      const sub = existingPending
+        ? await tx.memberSubscription.update({
+            where: { id: existingPending.id },
+            data: txData,
+            include: txInclude,
+          })
+        : await tx.memberSubscription.create({
+            data: {
+              ...txData,
+              primaryMemberId: dto.memberId,
+              members: {
+                create: {
+                  memberId: dto.memberId,
+                },
               },
             },
-          },
-          include: {
-            plan: true,
-            members: true,
-          },
-        });
-      }
+            include: txInclude,
+          });
 
       await tx.payment.create({
         data: {

@@ -53,9 +53,7 @@ export class NotificationsService {
     // broadcasts use the NotificationRead join table
     const data = notifications.map(({ reads, ...notification }) => ({
       ...notification,
-      isRead: notification.userId
-        ? notification.isRead
-        : reads.length > 0,
+      isRead: notification.userId ? notification.isRead : reads.length > 0,
     }));
 
     return { data, total, page, limit };
@@ -105,15 +103,16 @@ export class NotificationsService {
       select: { id: true },
     });
 
-    const broadcastReads = unreadBroadcasts.length > 0
-      ? this.prisma.notificationRead.createMany({
-          data: unreadBroadcasts.map((n) => ({
-            notificationId: n.id,
-            userId,
-          })),
-          skipDuplicates: true,
-        })
-      : Promise.resolve({ count: 0 });
+    const broadcastReads =
+      unreadBroadcasts.length > 0
+        ? this.prisma.notificationRead.createMany({
+            data: unreadBroadcasts.map((n) => ({
+              notificationId: n.id,
+              userId,
+            })),
+            skipDuplicates: true,
+          })
+        : Promise.resolve({ count: 0 });
 
     const [targetedResult, broadcastResult] = await Promise.all([
       targeted,
@@ -203,9 +202,7 @@ export class NotificationsService {
         const result = await this.prisma.pushToken.deleteMany({
           where: { token: { in: invalidTokens } },
         });
-        this.logger.log(
-          `Removed ${result.count} invalid push tokens`,
-        );
+        this.logger.log(`Removed ${result.count} invalid push tokens`);
       }
     } catch {
       // Re-queue tickets for next cycle if receipt check fails
@@ -239,14 +236,11 @@ export class NotificationsService {
       // Send via Expo Push API and collect ticket IDs
       const chunks = this.chunkArray(messages, 100);
       for (const chunk of chunks) {
-        const response = await fetch(
-          'https://exp.host/--/api/v2/push/send',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(chunk),
-          },
-        );
+        const response = await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chunk),
+        });
 
         const json = (await response.json()) as {
           data: { id?: string; status: string }[];
