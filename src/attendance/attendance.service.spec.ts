@@ -5,6 +5,16 @@ import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
+/** Return Monday 00:00 for the week containing `date`. */
+function getMondayOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 describe('AttendanceService', () => {
   let service: AttendanceService;
 
@@ -18,6 +28,10 @@ describe('AttendanceService', () => {
   };
 
   const mockEventEmitter = { emit: jest.fn() };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const currentMonday = getMondayOfWeek(today);
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -87,8 +101,10 @@ describe('AttendanceService', () => {
     });
     mockPrisma.streak.findUnique.mockResolvedValue(null);
     mockPrisma.streak.upsert.mockResolvedValue({
-      currentStreak: 1,
-      longestStreak: 1,
+      weeklyStreak: 0,
+      longestStreak: 0,
+      daysThisWeek: 1,
+      weekStart: currentMonday,
     });
 
     const result = await service.checkIn('member-1', { qrCode: 'valid' });
@@ -124,7 +140,9 @@ describe('AttendanceService', () => {
     });
     mockPrisma.streak.findUnique.mockResolvedValue({
       memberId: 'member-1',
-      currentStreak: 5,
+      weeklyStreak: 5,
+      daysThisWeek: 3,
+      weekStart: currentMonday,
     });
     mockPrisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
@@ -136,7 +154,9 @@ describe('AttendanceService', () => {
     const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
     expect(result.alreadyCheckedIn).toBe(true);
-    expect(result.streak).toBe(5);
+    expect(result.weeklyStreak).toBe(5);
+    expect(result.daysThisWeek).toBe(3);
+    expect(result.daysRequired).toBe(4);
     expect(mockEventEmitter.emit).toHaveBeenCalledWith('check_in.result', {
       type: 'check_in_result',
       member: {
@@ -177,8 +197,10 @@ describe('AttendanceService', () => {
     });
     mockPrisma.streak.findUnique.mockResolvedValue(null);
     mockPrisma.streak.upsert.mockResolvedValue({
-      currentStreak: 1,
-      longestStreak: 1,
+      weeklyStreak: 0,
+      longestStreak: 0,
+      daysThisWeek: 1,
+      weekStart: currentMonday,
     });
 
     await service.checkIn('member-1', { qrCode: `valid:${entranceId}` });
@@ -241,8 +263,10 @@ describe('AttendanceService', () => {
     });
     mockPrisma.streak.findUnique.mockResolvedValue(null);
     mockPrisma.streak.upsert.mockResolvedValue({
-      currentStreak: 1,
-      longestStreak: 1,
+      weeklyStreak: 0,
+      longestStreak: 0,
+      daysThisWeek: 1,
+      weekStart: currentMonday,
     });
 
     await service.checkIn('member-1', { qrCode: 'valid' });
@@ -250,6 +274,147 @@ describe('AttendanceService', () => {
     expect(mockPrisma.entrance.findUnique).not.toHaveBeenCalled();
     expect(mockPrisma.attendance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ entranceId: undefined }),
+    });
+  });
+
+  describe('weekly streak logic', () => {
+    /** Helper: set up mocks so checkIn reaches updateStreak. */
+    function setupCheckInMocks() {
+      mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+        id: '1',
+        code: 'valid',
+      });
+      mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+        id: 'sm-1',
+        memberId: 'member-1',
+      });
+      mockPrisma.attendance.findUnique.mockResolvedValue(null);
+      mockPrisma.attendance.create.mockResolvedValue({});
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'member-1',
+        firstName: 'Jane',
+        lastName: 'Smith',
+        displayPicture: null,
+      });
+    }
+
+    it('should increment daysThisWeek for same-week check-in', async () => {
+      setupCheckInMocks();
+      mockPrisma.streak.findUnique.mockResolvedValue({
+        memberId: 'member-1',
+        weeklyStreak: 3,
+        longestStreak: 5,
+        daysThisWeek: 2,
+        weekStart: currentMonday,
+        lastCheckInDate: today,
+      });
+      mockPrisma.streak.upsert.mockResolvedValue({
+        weeklyStreak: 3,
+        longestStreak: 5,
+        daysThisWeek: 3,
+        weekStart: currentMonday,
+      });
+
+      const result = await service.checkIn('member-1', { qrCode: 'valid' });
+
+      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ daysThisWeek: 3, weeklyStreak: 3 }),
+        }),
+      );
+      expect(result.daysThisWeek).toBe(3);
+      expect(result.weeklyStreak).toBe(3);
+    });
+
+    it('should increment weeklyStreak when previous week had 4+ days', async () => {
+      setupCheckInMocks();
+      const prevMonday = new Date(currentMonday);
+      prevMonday.setDate(prevMonday.getDate() - 7);
+
+      mockPrisma.streak.findUnique.mockResolvedValue({
+        memberId: 'member-1',
+        weeklyStreak: 2,
+        longestStreak: 5,
+        daysThisWeek: 4,
+        weekStart: prevMonday,
+        lastCheckInDate: prevMonday,
+      });
+      mockPrisma.streak.upsert.mockResolvedValue({
+        weeklyStreak: 3,
+        longestStreak: 5,
+        daysThisWeek: 1,
+        weekStart: currentMonday,
+      });
+
+      const result = await service.checkIn('member-1', { qrCode: 'valid' });
+
+      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ weeklyStreak: 3, daysThisWeek: 1 }),
+        }),
+      );
+      expect(result.weeklyStreak).toBe(3);
+    });
+
+    it('should reset weeklyStreak when previous week had <4 days', async () => {
+      setupCheckInMocks();
+      const prevMonday = new Date(currentMonday);
+      prevMonday.setDate(prevMonday.getDate() - 7);
+
+      mockPrisma.streak.findUnique.mockResolvedValue({
+        memberId: 'member-1',
+        weeklyStreak: 5,
+        longestStreak: 5,
+        daysThisWeek: 3,
+        weekStart: prevMonday,
+        lastCheckInDate: prevMonday,
+      });
+      mockPrisma.streak.upsert.mockResolvedValue({
+        weeklyStreak: 0,
+        longestStreak: 5,
+        daysThisWeek: 1,
+        weekStart: currentMonday,
+      });
+
+      const result = await service.checkIn('member-1', { qrCode: 'valid' });
+
+      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ weeklyStreak: 0, daysThisWeek: 1 }),
+        }),
+      );
+      expect(result.weeklyStreak).toBe(0);
+    });
+
+    it('should reset weeklyStreak when weeks are skipped', async () => {
+      setupCheckInMocks();
+      const twoWeeksAgo = new Date(currentMonday);
+      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+      mockPrisma.streak.findUnique.mockResolvedValue({
+        memberId: 'member-1',
+        weeklyStreak: 8,
+        longestStreak: 8,
+        daysThisWeek: 5,
+        weekStart: twoWeeksAgo,
+        lastCheckInDate: twoWeeksAgo,
+      });
+      mockPrisma.streak.upsert.mockResolvedValue({
+        weeklyStreak: 0,
+        longestStreak: 8,
+        daysThisWeek: 1,
+        weekStart: currentMonday,
+      });
+
+      const result = await service.checkIn('member-1', { qrCode: 'valid' });
+
+      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ weeklyStreak: 0, daysThisWeek: 1 }),
+        }),
+      );
+      expect(result.weeklyStreak).toBe(0);
+      expect(result.longestStreak).toBe(8);
     });
   });
 });

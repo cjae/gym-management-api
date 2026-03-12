@@ -7,9 +7,24 @@ export class CheckInResponseDto {
   @ApiProperty({ example: 'Check-in successful!' })
   message: string;
 
-  @ApiPropertyOptional({ example: 5 })
-  streak?: number;
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Consecutive weeks with 4+ check-ins',
+  })
+  weeklyStreak?: number;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({ example: 10, description: 'Best weekly streak ever' })
   longestStreak?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Check-ins so far this week (Mon-Sat)',
+  })
+  daysThisWeek?: number;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Check-ins required per week',
+  })
+  daysRequired?: number;
 }

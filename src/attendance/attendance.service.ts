@@ -122,7 +122,9 @@ export class AttendanceService {
       return {
         alreadyCheckedIn: true,
         message: 'Already checked in today',
-        streak: streak?.currentStreak ?? 0,
+        weeklyStreak: streak?.weeklyStreak ?? 0,
+        daysThisWeek: streak?.daysThisWeek ?? 0,
+        daysRequired: 4,
       };
     }
 
@@ -168,38 +170,69 @@ export class AttendanceService {
     return {
       alreadyCheckedIn: false,
       message: 'Check-in successful',
-      streak: streak.currentStreak,
+      weeklyStreak: streak.weeklyStreak,
       longestStreak: streak.longestStreak,
+      daysThisWeek: streak.daysThisWeek,
+      daysRequired: 4,
     };
   }
 
-  private async updateStreak(memberId: string, today: Date) {
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+  private getMondayOfWeek(date: Date): Date {
+    const d = new Date(date);
+    const day = d.getDay(); // 0=Sun, 1=Mon, ...
+    const diff = day === 0 ? 6 : day - 1; // days since Monday
+    d.setDate(d.getDate() - diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
 
+  private async updateStreak(memberId: string, today: Date) {
+    const currentMonday = this.getMondayOfWeek(today);
     const existingStreak = await this.prisma.streak.findUnique({
       where: { memberId },
     });
-    let currentStreak = 1;
-    let longestStreak = 1;
+
+    let weeklyStreak = 0;
+    let longestStreak = 0;
+    let daysThisWeek = 1;
+    const weekStart = currentMonday;
 
     if (existingStreak) {
-      const lastDate = existingStreak.lastCheckInDate;
-      if (lastDate && lastDate.getTime() === yesterday.getTime()) {
-        currentStreak = existingStreak.currentStreak + 1;
+      const prevWeekStart = existingStreak.weekStart;
+      const isSameWeek = prevWeekStart.getTime() === currentMonday.getTime();
+
+      if (isSameWeek) {
+        daysThisWeek = existingStreak.daysThisWeek + 1;
+        weeklyStreak = existingStreak.weeklyStreak;
+      } else {
+        const diffMs = currentMonday.getTime() - prevWeekStart.getTime();
+        const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+
+        if (diffWeeks === 1 && existingStreak.daysThisWeek >= 4) {
+          weeklyStreak = existingStreak.weeklyStreak + 1;
+        } else {
+          weeklyStreak = 0;
+        }
       }
-      longestStreak = Math.max(currentStreak, existingStreak.longestStreak);
+      longestStreak = Math.max(weeklyStreak, existingStreak.longestStreak);
     }
 
     return this.prisma.streak.upsert({
       where: { memberId },
       create: {
         memberId,
-        currentStreak,
+        weeklyStreak,
         longestStreak,
+        daysThisWeek,
+        weekStart,
+      },
+      update: {
+        weeklyStreak,
+        longestStreak,
+        daysThisWeek,
+        weekStart,
         lastCheckInDate: today,
       },
-      update: { currentStreak, longestStreak, lastCheckInDate: today },
     });
   }
 
@@ -218,7 +251,7 @@ export class AttendanceService {
   async getLeaderboard(page = 1, limit = 20) {
     const [data, total] = await Promise.all([
       this.prisma.streak.findMany({
-        orderBy: { currentStreak: 'desc' },
+        orderBy: { weeklyStreak: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
         include: {
