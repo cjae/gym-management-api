@@ -390,6 +390,14 @@ describe('SubscriptionsService', () => {
       );
     });
 
+    it('should reject if target user does not exist', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.adminCreate(adminId, baseDto)).rejects.toThrow(
+        `User with id ${baseDto.memberId} not found`,
+      );
+    });
+
     it('should reject if target user is not a MEMBER', async () => {
       mockPrisma.user.findUnique.mockResolvedValueOnce({
         ...mockMember,
