@@ -20,6 +20,7 @@ import {
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AddDuoMemberDto } from './dto/add-duo-member.dto';
+import { FreezeSubscriptionDto } from './dto/freeze-subscription.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
 import { SubscriptionMemberResponseDto } from './dto/subscription-member-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -80,5 +81,32 @@ export class SubscriptionsController {
   @ApiForbiddenResponse({ description: 'Not subscription owner' })
   cancel(@Param('id') id: string, @CurrentUser('id') requesterId: string) {
     return this.subscriptionsService.cancel(id, requesterId);
+  }
+
+  @Patch(':id/freeze')
+  @ApiOkResponse({ type: SubscriptionResponseDto })
+  @ApiNotFoundResponse({ description: 'Subscription not found' })
+  @ApiForbiddenResponse({ description: 'Not subscription owner or admin' })
+  @ApiBadRequestResponse({ description: 'Cannot freeze this subscription' })
+  freeze(
+    @Param('id') id: string,
+    @Body() dto: FreezeSubscriptionDto,
+    @CurrentUser('id') requesterId: string,
+    @CurrentUser('role') requesterRole: string,
+  ) {
+    return this.subscriptionsService.freeze(id, requesterId, requesterRole, dto.days);
+  }
+
+  @Patch(':id/unfreeze')
+  @ApiOkResponse({ type: SubscriptionResponseDto })
+  @ApiNotFoundResponse({ description: 'Subscription not found' })
+  @ApiForbiddenResponse({ description: 'Not subscription owner or admin' })
+  @ApiBadRequestResponse({ description: 'Subscription is not frozen' })
+  unfreeze(
+    @Param('id') id: string,
+    @CurrentUser('id') requesterId: string,
+    @CurrentUser('role') requesterRole: string,
+  ) {
+    return this.subscriptionsService.unfreeze(id, requesterId, requesterRole);
   }
 }
