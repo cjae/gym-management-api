@@ -51,6 +51,57 @@ export class BillingService {
     this.logger.log('M-Pesa reminders complete');
   }
 
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async handleAutoUnfreeze() {
+    this.logger.log('Starting auto-unfreeze check');
+    await this.autoUnfreezeSubscriptions();
+    this.logger.log('Auto-unfreeze check complete');
+  }
+
+  async autoUnfreezeSubscriptions() {
+    const now = new Date();
+
+    const expiredFreezes = await this.prisma.memberSubscription.findMany({
+      where: {
+        status: 'FROZEN',
+        freezeEndDate: { lte: now },
+      },
+    });
+
+    for (const sub of expiredFreezes) {
+      const frozenDays = Math.ceil(
+        (sub.freezeEndDate!.getTime() - sub.freezeStartDate!.getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
+
+      const newEndDate = new Date(sub.endDate);
+      newEndDate.setDate(newEndDate.getDate() + frozenDays);
+
+      const newNextBillingDate = sub.nextBillingDate
+        ? new Date(sub.nextBillingDate)
+        : null;
+      if (newNextBillingDate) {
+        newNextBillingDate.setDate(newNextBillingDate.getDate() + frozenDays);
+      }
+
+      await this.prisma.memberSubscription.update({
+        where: { id: sub.id },
+        data: {
+          status: 'ACTIVE',
+          endDate: newEndDate,
+          nextBillingDate: newNextBillingDate,
+          freezeStartDate: null,
+          freezeEndDate: null,
+          frozenDaysUsed: frozenDays,
+        },
+      });
+
+      this.logger.log(
+        `Auto-unfroze subscription ${sub.id} after ${frozenDays} frozen days`,
+      );
+    }
+  }
+
   async processCardRenewals() {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
