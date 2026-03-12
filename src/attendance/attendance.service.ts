@@ -211,7 +211,10 @@ export class AttendanceService {
         const diffMs = currentMonday.getTime() - prevWeekStart.getTime();
         const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
 
-        if (diffWeeks === 1 && existingStreak.daysThisWeek >= this.DAYS_REQUIRED_PER_WEEK) {
+        if (
+          diffWeeks === 1 &&
+          existingStreak.daysThisWeek >= this.DAYS_REQUIRED_PER_WEEK
+        ) {
           weeklyStreak = existingStreak.weeklyStreak + 1;
         } else {
           weeklyStreak = 0;
