@@ -70,6 +70,7 @@ enum NotificationType {
   STATUS_CHANGE
   PAYMENT_REMINDER
   SUBSCRIPTION_EXPIRING
+  BIRTHDAY
 }
 
 enum AuditAction {

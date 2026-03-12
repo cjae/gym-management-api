@@ -12,6 +12,7 @@ import {
 import { decrypt } from '../common/utils/encryption.util';
 import { NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class BillingService {
@@ -25,6 +26,7 @@ export class BillingService {
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    private readonly usersService: UsersService,
   ) {
     this.adminUrl =
       this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
@@ -52,6 +54,13 @@ export class BillingService {
     this.logger.log('Starting M-Pesa reminders');
     await this.processMpesaReminders();
     this.logger.log('M-Pesa reminders complete');
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async handleBirthdayWishes() {
+    this.logger.log('Starting birthday wishes');
+    await this.sendBirthdayWishes();
+    this.logger.log('Birthday wishes complete');
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -215,6 +224,30 @@ export class BillingService {
           `Sent M-Pesa reminder to ${sub.primaryMember.email} — ${daysUntil} days until billing`,
         );
       }
+    }
+  }
+
+  async sendBirthdayWishes() {
+    const birthdayUsers = await this.usersService.findBirthdays();
+
+    for (const user of birthdayUsers) {
+      this.emailService
+        .sendBirthdayEmail(
+          user.email as string,
+          user.firstName as string,
+        )
+        .catch(() => {});
+
+      this.notificationsService
+        .create({
+          userId: user.id as string,
+          title: 'Happy Birthday! 🎂',
+          body: `Happy Birthday, ${user.firstName as string}! Wishing you a fantastic day!`,
+          type: NotificationType.BIRTHDAY,
+        })
+        .catch(() => {});
+
+      this.logger.log(`Sent birthday wish to ${user.email as string}`);
     }
   }
 

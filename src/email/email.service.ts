@@ -156,6 +156,12 @@ export class EmailService {
     });
   }
 
+  async sendBirthdayEmail(to: string, firstName: string): Promise<void> {
+    await this.sendEmail(to, 'Happy Birthday! 🎂', 'birthday', {
+      firstName,
+    });
+  }
+
   async sendCardPaymentFailedEmail(
     to: string,
     firstName: string,

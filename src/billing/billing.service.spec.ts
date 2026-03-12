@@ -5,6 +5,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
 
 describe('BillingService', () => {
   let service: BillingService;
@@ -42,6 +43,10 @@ describe('BillingService', () => {
     create: jest.fn().mockResolvedValue({}),
   };
 
+  const mockUsersService = {
+    findBirthdays: jest.fn().mockResolvedValue([]),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -51,6 +56,7 @@ describe('BillingService', () => {
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: UsersService, useValue: mockUsersService },
       ],
     }).compile();
 

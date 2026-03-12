@@ -161,6 +161,25 @@ export class UsersService {
     });
   }
 
+  async findBirthdays() {
+    const today = new Date();
+    const month = today.getMonth() + 1;
+    const day = today.getDate();
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        birthday: { not: null },
+      },
+      select: safeUserSelect,
+    });
+
+    return users.filter((u) => {
+      const bday = u.birthday as Date;
+      return bday.getMonth() + 1 === month && bday.getDate() === day;
+    });
+  }
+
   private flattenSubscription(
     user: Record<string, unknown> & {
       subscriptionMembers?: { subscription: Record<string, unknown> }[];

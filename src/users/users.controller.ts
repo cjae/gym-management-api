@@ -61,6 +61,15 @@ export class UsersController {
     );
   }
 
+  @Get('birthdays/today')
+  @ApiOkResponse({
+    type: [UserResponseDto],
+    description: 'Users whose birthday is today',
+  })
+  findBirthdays() {
+    return this.usersService.findBirthdays();
+  }
+
   @Get(':id')
   @ApiOkResponse({ type: UserResponseDto })
   @ApiNotFoundResponse({ description: 'User not found' })
