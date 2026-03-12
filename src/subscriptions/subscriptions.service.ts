@@ -227,4 +227,160 @@ export class SubscriptionsService {
 
     return result;
   }
+
+  async freeze(
+    subscriptionId: string,
+    requesterId: string,
+    requesterRole: string,
+    days: number,
+  ) {
+    const subscription = await this.prisma.memberSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        plan: true,
+        primaryMember: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException(
+        `Subscription with id ${subscriptionId} not found`,
+      );
+    }
+
+    const isOwner = subscription.primaryMemberId === requesterId;
+    const isAdmin =
+      requesterRole === 'ADMIN' || requesterRole === 'SUPER_ADMIN';
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        'Only the subscription owner or an admin can freeze the subscription',
+      );
+    }
+
+    if (subscription.status !== 'ACTIVE') {
+      throw new BadRequestException('Only active subscriptions can be frozen');
+    }
+
+    if (subscription.plan.maxFreezeDays === 0) {
+      throw new BadRequestException('This plan does not support freezing');
+    }
+
+    if (days > subscription.plan.maxFreezeDays) {
+      throw new BadRequestException(
+        `Freeze duration cannot exceed ${subscription.plan.maxFreezeDays} days`,
+      );
+    }
+
+    if (subscription.frozenDaysUsed > 0) {
+      throw new BadRequestException('Freeze already used this billing cycle');
+    }
+
+    const freezeStartDate = new Date();
+    const freezeEndDate = new Date();
+    freezeEndDate.setDate(freezeEndDate.getDate() + days);
+
+    const result = await this.prisma.memberSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: 'FROZEN',
+        freezeStartDate,
+        freezeEndDate,
+      },
+      include: { plan: true },
+    });
+
+    const memberName = `${subscription.primaryMember.firstName} ${subscription.primaryMember.lastName}`;
+    this.eventEmitter.emit('activity.subscription', {
+      type: 'subscription',
+      description: `${memberName} froze their ${subscription.plan.name} subscription for ${days} days`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        subscriptionId,
+        planName: subscription.plan.name,
+        status: 'FROZEN',
+        days,
+      },
+    });
+
+    return result;
+  }
+
+  async unfreeze(
+    subscriptionId: string,
+    requesterId: string,
+    requesterRole: string,
+  ) {
+    const subscription = await this.prisma.memberSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        plan: true,
+        primaryMember: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException(
+        `Subscription with id ${subscriptionId} not found`,
+      );
+    }
+
+    const isOwner = subscription.primaryMemberId === requesterId;
+    const isAdmin =
+      requesterRole === 'ADMIN' || requesterRole === 'SUPER_ADMIN';
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        'Only the subscription owner or an admin can unfreeze the subscription',
+      );
+    }
+
+    if (subscription.status !== 'FROZEN') {
+      throw new BadRequestException(
+        'Only frozen subscriptions can be unfrozen',
+      );
+    }
+
+    const actualFrozenDays = Math.ceil(
+      (new Date().getTime() - subscription.freezeStartDate!.getTime()) /
+        (1000 * 60 * 60 * 24),
+    );
+    const frozenDays = Math.max(1, actualFrozenDays);
+
+    const newEndDate = new Date(subscription.endDate);
+    newEndDate.setDate(newEndDate.getDate() + frozenDays);
+
+    const newNextBillingDate = subscription.nextBillingDate
+      ? new Date(subscription.nextBillingDate)
+      : null;
+    if (newNextBillingDate) {
+      newNextBillingDate.setDate(newNextBillingDate.getDate() + frozenDays);
+    }
+
+    const result = await this.prisma.memberSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: 'ACTIVE',
+        endDate: newEndDate,
+        nextBillingDate: newNextBillingDate,
+        freezeStartDate: null,
+        freezeEndDate: null,
+        frozenDaysUsed: frozenDays,
+      },
+      include: { plan: true },
+    });
+
+    const memberName = `${subscription.primaryMember.firstName} ${subscription.primaryMember.lastName}`;
+    this.eventEmitter.emit('activity.subscription', {
+      type: 'subscription',
+      description: `${memberName} unfroze their ${subscription.plan.name} subscription (${frozenDays} days used)`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        subscriptionId,
+        planName: subscription.plan.name,
+        status: 'ACTIVE',
+        frozenDays,
+      },
+    });
+
+    return result;
+  }
 }
