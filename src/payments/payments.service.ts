@@ -184,6 +184,7 @@ export class PaymentsService {
             status: 'ACTIVE',
             endDate: nextBillingDate,
             nextBillingDate,
+            frozenDaysUsed: 0,
           };
 
           // Save card authorization for future recurring charges
