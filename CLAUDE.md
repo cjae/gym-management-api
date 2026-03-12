@@ -28,7 +28,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 **Modules** (all in `src/`):
 - `prisma/` — Global PrismaService, injected everywhere
 - `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints
-- `users/` — CRUD with role-based access
+- `users/` — CRUD with role-based access. Admin user creation (`POST /users`): ADMIN creates MEMBER/TRAINER, SUPER_ADMIN also creates ADMIN. Generates temp password, sets `mustChangePassword: true`, sends welcome email with credentials.
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members)
 - `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table). Freeze capability: members can freeze their subscription (up to plan's `maxFreezeDays` per billing cycle), blocking check-in and extending end date by actual frozen days on unfreeze. One freeze per billing cycle, auto-unfreeze via daily cron.
 - `payments/` — Paystack integration with webhook verification
