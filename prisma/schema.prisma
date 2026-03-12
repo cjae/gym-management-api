@@ -175,8 +175,10 @@ model Attendance {
 model Streak {
   id              String    @id @default(uuid())
   memberId        String    @unique
-  currentStreak   Int       @default(0)
+  weeklyStreak    Int       @default(0)
   longestStreak   Int       @default(0)
+  daysThisWeek    Int       @default(0)
+  weekStart       DateTime  @db.Date
   lastCheckInDate DateTime? @db.Date
 
   member User @relation(fields: [memberId], references: [id])
