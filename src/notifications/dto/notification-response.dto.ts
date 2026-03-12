@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { NotificationType } from '@prisma/client';
 
 export class NotificationResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -13,8 +14,8 @@ export class NotificationResponseDto {
   @ApiProperty()
   body: string;
 
-  @ApiProperty({ example: 'GENERAL' })
-  type: string;
+  @ApiProperty({ enum: NotificationType, example: 'GENERAL' })
+  type: NotificationType;
 
   @ApiProperty()
   isRead: boolean;

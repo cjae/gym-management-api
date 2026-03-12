@@ -17,6 +17,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const appConfig = configService.get<AppConfig>(getAppConfigName())!;
 
+  app.set('query parser', 'extended');
   app.useBodyParser('json', { limit: '1mb' });
   app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
 

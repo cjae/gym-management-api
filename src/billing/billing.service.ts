@@ -10,6 +10,7 @@ import {
   getPaymentConfigName,
 } from '../common/config/payment.config';
 import { decrypt } from '../common/utils/encryption.util';
+import { NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -205,7 +206,7 @@ export class BillingService {
             userId: sub.primaryMemberId,
             title: 'Payment Reminder',
             body: `Payment due for your ${sub.plan.name} plan`,
-            type: 'PAYMENT_REMINDER',
+            type: NotificationType.PAYMENT_REMINDER,
             metadata: { subscriptionId: sub.id },
           })
           .catch(() => {});
@@ -251,7 +252,7 @@ export class BillingService {
           userId: sub.primaryMemberId,
           title: 'Subscription Expired',
           body: `Your ${sub.plan.name} subscription has expired`,
-          type: 'SUBSCRIPTION_EXPIRING',
+          type: NotificationType.SUBSCRIPTION_EXPIRING,
           metadata: { subscriptionId: sub.id, daysLeft: 0 },
         })
         .catch(() => {});

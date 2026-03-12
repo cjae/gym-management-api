@@ -4,6 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CheckInDto } from './dto/check-in.dto';
@@ -165,7 +166,7 @@ export class AttendanceService {
           userId: memberId,
           title: 'Almost there!',
           body: `One more day this week to keep your ${streak.weeklyStreak}-week streak going!`,
-          type: 'STREAK_NUDGE',
+          type: NotificationType.STREAK_NUDGE,
           metadata: {
             weeklyStreak: streak.weeklyStreak,
             daysThisWeek: streak.daysThisWeek,

@@ -4,7 +4,9 @@ import {
   IsUUID,
   MaxLength,
   IsObject,
+  IsEnum,
 } from 'class-validator';
+import { NotificationType } from '@prisma/client';
 
 export class CreateNotificationDto {
   @IsOptional()
@@ -19,9 +21,8 @@ export class CreateNotificationDto {
   @MaxLength(1000)
   body: string;
 
-  @IsString()
-  @MaxLength(50)
-  type: string;
+  @IsEnum(NotificationType)
+  type: NotificationType;
 
   @IsOptional()
   @IsObject()

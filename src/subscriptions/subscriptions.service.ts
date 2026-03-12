@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Role, SubscriptionStatus, UserStatus } from '@prisma/client';
+import {
+  NotificationType,
+  Role,
+  SubscriptionStatus,
+  UserStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
@@ -481,7 +486,7 @@ export class SubscriptionsService {
         userId: subscription.primaryMemberId,
         title: 'Subscription Updated',
         body: 'Your subscription has been cancelled',
-        type: 'STATUS_CHANGE',
+        type: NotificationType.STATUS_CHANGE,
         metadata: {
           subscriptionId: subscription.id,
           status: 'CANCELLED',
@@ -571,7 +576,7 @@ export class SubscriptionsService {
         userId: subscription.primaryMemberId,
         title: 'Subscription Updated',
         body: 'Your subscription has been frozen',
-        type: 'STATUS_CHANGE',
+        type: NotificationType.STATUS_CHANGE,
         metadata: {
           subscriptionId: subscription.id,
           status: 'FROZEN',
@@ -663,7 +668,7 @@ export class SubscriptionsService {
         userId: subscription.primaryMemberId,
         title: 'Subscription Updated',
         body: 'Your subscription has been unfrozen',
-        type: 'STATUS_CHANGE',
+        type: NotificationType.STATUS_CHANGE,
         metadata: {
           subscriptionId: subscription.id,
           status: 'ACTIVE',
