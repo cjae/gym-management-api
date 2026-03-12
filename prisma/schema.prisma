@@ -21,6 +21,7 @@ enum UserStatus {
 }
 
 enum SubscriptionStatus {
+  PENDING
   ACTIVE
   FROZEN
   EXPIRED
@@ -46,6 +47,8 @@ enum BillingInterval {
 enum PaymentMethod {
   CARD
   MPESA
+  CASH
+  COMPLIMENTARY
 }
 
 enum SalaryStatus {
@@ -89,55 +92,59 @@ model User {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  subscriptionsOwned  MemberSubscription[] @relation("SubscriptionOwner")
-  subscriptionMembers SubscriptionMember[]
-  attendances         Attendance[]
-  streak              Streak?
-  trainerProfile      TrainerProfile?
-  trainerAssignmentsAsMember TrainerAssignment[] @relation("MemberAssignments")
-  documentSignatures  DocumentSignature[]
-  salaryRecords       StaffSalaryRecord[]
-  passwordResetTokens PasswordResetToken[]
-  auditLogs           AuditLog[]
+  subscriptionsOwned         MemberSubscription[] @relation("SubscriptionOwner")
+  subscriptionMembers        SubscriptionMember[]
+  attendances                Attendance[]
+  streak                     Streak?
+  trainerProfile             TrainerProfile?
+  trainerAssignmentsAsMember TrainerAssignment[]  @relation("MemberAssignments")
+  documentSignatures         DocumentSignature[]
+  salaryRecords              StaffSalaryRecord[]
+  passwordResetTokens        PasswordResetToken[]
+  auditLogs                  AuditLog[]
+  createdSubscriptions       MemberSubscription[] @relation("SubscriptionCreator")
 }
 
 model SubscriptionPlan {
-  id           String   @id @default(uuid())
-  name         String
-  price        Float
-  currency     String   @default("KES")
+  id              String          @id @default(uuid())
+  name            String
+  price           Float
+  currency        String          @default("KES")
   billingInterval BillingInterval @default(MONTHLY)
-  description  String?
-  maxMembers   Int      @default(1)
-  maxFreezeDays Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  description     String?
+  maxMembers      Int             @default(1)
+  maxFreezeDays   Int             @default(0)
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   subscriptions MemberSubscription[]
 }
 
 model MemberSubscription {
-  id                String             @id @default(uuid())
-  primaryMemberId   String
-  planId            String
-  startDate         DateTime
-  endDate           DateTime
+  id                        String             @id @default(uuid())
+  primaryMemberId           String
+  planId                    String
+  startDate                 DateTime
+  endDate                   DateTime
   status                    SubscriptionStatus @default(ACTIVE)
-  paymentMethod             PaymentMethod @default(MPESA)
+  paymentMethod             PaymentMethod      @default(MPESA)
   paystackAuthorizationCode String?
-  autoRenew                 Boolean       @default(true)
+  autoRenew                 Boolean            @default(true)
   nextBillingDate           DateTime?
   freezeStartDate           DateTime?
   freezeEndDate             DateTime?
-  frozenDaysUsed            Int           @default(0)
+  frozenDaysUsed            Int                @default(0)
+  paymentNote               String?
+  createdBy                 String?
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 
-  primaryMember User               @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
-  plan          SubscriptionPlan   @relation(fields: [planId], references: [id])
+  primaryMember User                 @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
+  plan          SubscriptionPlan     @relation(fields: [planId], references: [id])
   members       SubscriptionMember[]
   payments      Payment[]
+  createdByUser User?                @relation("SubscriptionCreator", fields: [createdBy], references: [id])
 }
 
 model SubscriptionMember {
@@ -175,13 +182,13 @@ model Streak {
 }
 
 model TrainerProfile {
-  id             String @id @default(uuid())
-  userId         String @unique
+  id             String  @id @default(uuid())
+  userId         String  @unique
   specialization String?
   bio            String?
   availability   Json?
 
-  user        User              @relation(fields: [userId], references: [id])
+  user        User                @relation(fields: [userId], references: [id])
   schedules   TrainerSchedule[]
   assignments TrainerAssignment[]
 }
@@ -281,6 +288,7 @@ model Payment {
   paymentMethod     PaymentMethod
   paystackReference String?       @unique
   failureReason     String?
+  paymentNote       String?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
