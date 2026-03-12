@@ -13,7 +13,7 @@ import { NO_AUDIT_KEY } from './decorators/no-audit.decorator';
 import type { AuditAction } from '@prisma/client';
 
 interface JwtUser {
-  sub: string;
+  id: string;
   email: string;
   role: string;
 }
@@ -111,7 +111,7 @@ export class AuditInterceptor implements NestInterceptor {
             next: (responseBody) => {
               this.auditLogService
                 .log({
-                  userId: user.sub,
+                  userId: user.id,
                   action,
                   resource,
                   resourceId,
@@ -120,6 +120,13 @@ export class AuditInterceptor implements NestInterceptor {
                   ipAddress: request.ip,
                   userAgent,
                   route,
+                  metadata:
+                    (method === 'POST' ||
+                      method === 'PUT' ||
+                      method === 'PATCH') &&
+                    request.body
+                      ? { requestBody: request.body }
+                      : undefined,
                 })
                 .catch((error: Error) => {
                   this.logger.error(

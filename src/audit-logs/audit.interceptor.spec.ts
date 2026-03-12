@@ -33,7 +33,7 @@ describe('AuditInterceptor', () => {
 
   function createMockContext(overrides: {
     method?: string;
-    user?: { sub: string; email: string; role: string } | undefined;
+    user?: { id: string; email: string; role: string } | undefined;
     params?: Record<string, string>;
     body?: Record<string, unknown>;
     ip?: string;
@@ -46,7 +46,7 @@ describe('AuditInterceptor', () => {
       user:
         'user' in overrides
           ? overrides.user
-          : { sub: 'user-1', email: 'admin@test.com', role: 'ADMIN' },
+          : { id: 'user-1', email: 'admin@test.com', role: 'ADMIN' },
       params: overrides.params ?? {},
       body: overrides.body ?? {},
       ip: overrides.ip ?? '127.0.0.1',
@@ -78,7 +78,7 @@ describe('AuditInterceptor', () => {
   it('should log POST requests by ADMIN users', async () => {
     const context = createMockContext({
       method: 'POST',
-      user: { sub: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
       body: { name: 'New User' },
       url: '/api/v1/users',
     });
@@ -96,6 +96,7 @@ describe('AuditInterceptor', () => {
         ipAddress: '127.0.0.1',
         userAgent: 'Jest',
         route: 'POST /api/v1/users',
+        metadata: { requestBody: { name: 'New User' } },
       }),
     );
   });
@@ -106,7 +107,7 @@ describe('AuditInterceptor', () => {
 
     const context = createMockContext({
       method: 'PATCH',
-      user: { sub: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
       params: { id: 'user-2' },
       body: { name: 'New Name' },
       url: '/api/v1/users/user-2',
@@ -127,6 +128,7 @@ describe('AuditInterceptor', () => {
         resourceId: 'user-2',
         oldData: oldRecord,
         newData: { id: 'user-2', name: 'New Name' },
+        metadata: { requestBody: { name: 'New Name' } },
       }),
     );
   });
@@ -137,7 +139,7 @@ describe('AuditInterceptor', () => {
 
     const context = createMockContext({
       method: 'DELETE',
-      user: { sub: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
       params: { id: 'user-3' },
       url: '/api/v1/users/user-3',
     });
@@ -163,7 +165,7 @@ describe('AuditInterceptor', () => {
   it('should skip GET requests', async () => {
     const context = createMockContext({
       method: 'GET',
-      user: { sub: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
     });
     const handler = createMockCallHandler();
 
@@ -176,7 +178,7 @@ describe('AuditInterceptor', () => {
   it('should skip MEMBER role users', async () => {
     const context = createMockContext({
       method: 'POST',
-      user: { sub: 'member-1', email: 'member@test.com', role: 'MEMBER' },
+      user: { id: 'member-1', email: 'member@test.com', role: 'MEMBER' },
     });
     const handler = createMockCallHandler();
 
@@ -189,7 +191,7 @@ describe('AuditInterceptor', () => {
   it('should skip TRAINER role users', async () => {
     const context = createMockContext({
       method: 'POST',
-      user: { sub: 'trainer-1', email: 'trainer@test.com', role: 'TRAINER' },
+      user: { id: 'trainer-1', email: 'trainer@test.com', role: 'TRAINER' },
     });
     const handler = createMockCallHandler();
 
@@ -217,7 +219,7 @@ describe('AuditInterceptor', () => {
 
     const context = createMockContext({
       method: 'POST',
-      user: { sub: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
     });
     const handler = createMockCallHandler();
 
@@ -230,7 +232,7 @@ describe('AuditInterceptor', () => {
   it('should log SUPER_ADMIN actions', async () => {
     const context = createMockContext({
       method: 'POST',
-      user: { sub: 'sa-1', email: 'superadmin@test.com', role: 'SUPER_ADMIN' },
+      user: { id: 'sa-1', email: 'superadmin@test.com', role: 'SUPER_ADMIN' },
       body: { amount: 50000 },
       url: '/api/v1/salary',
       controllerName: 'SalaryController',
@@ -254,7 +256,7 @@ describe('AuditInterceptor', () => {
 
     const context = createMockContext({
       method: 'POST',
-      user: { sub: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
     });
     const responseData = { id: 'created-1' };
     const handler = createMockCallHandler(responseData);
