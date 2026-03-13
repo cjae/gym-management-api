@@ -57,6 +57,15 @@ export class TrainersController {
     return this.trainersService.getMemberTrainer(memberId);
   }
 
+  @Get('user/:userId')
+  @ApiOkResponse({ type: TrainerProfileResponseDto })
+  @ApiNotFoundResponse({
+    description: 'Trainer profile not found for this user',
+  })
+  findByUserId(@Param('userId') userId: string) {
+    return this.trainersService.findByUserId(userId);
+  }
+
   @Get(':id')
   @ApiOkResponse({ type: TrainerProfileResponseDto })
   @ApiNotFoundResponse({ description: 'Trainer not found' })

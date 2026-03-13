@@ -60,6 +60,23 @@ export class TrainersService {
     });
   }
 
+  async findByUserId(userId: string) {
+    return this.prisma.trainerProfile.findUnique({
+      where: { userId },
+      include: {
+        user: { select: safeUserSelect },
+        schedules: true,
+        assignments: {
+          include: {
+            member: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
   async addSchedule(trainerId: string, dto: CreateScheduleDto) {
     return this.prisma.trainerSchedule.create({
       data: {
