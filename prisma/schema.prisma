@@ -116,6 +116,8 @@ model User {
   createdSubscriptions       MemberSubscription[] @relation("SubscriptionCreator")
   notifications              Notification[]       @relation("UserNotifications")
   pushTokens                 PushToken[]          @relation("UserPushTokens")
+  banners                    Banner[]              @relation("UserBanners")
+  bannerInteractions         BannerInteraction[]   @relation("UserBannerInteractions")
 }
 
 model SubscriptionPlan {
@@ -420,5 +422,55 @@ model PushToken {
 
   user User @relation("UserPushTokens", fields: [userId], references: [id])
 
+  @@index([userId])
+}
+
+enum BannerCtaType {
+  NONE
+  DEEP_LINK
+  EXTERNAL_URL
+}
+
+enum BannerInteractionType {
+  IMPRESSION
+  TAP
+}
+
+model Banner {
+  id            String        @id @default(uuid())
+  title         String
+  body          String?
+  imageUrl      String
+  ctaType       BannerCtaType @default(NONE)
+  ctaTarget     String?
+  ctaLabel      String?
+  discountCode  String?
+  displayOrder  Int           @default(0)
+  isPublished   Boolean       @default(false)
+  startDate     DateTime
+  endDate       DateTime
+  deletedAt     DateTime?
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  creator       User              @relation("UserBanners", fields: [createdBy], references: [id])
+  interactions  BannerInteraction[]
+
+  @@index([isPublished, startDate, endDate, deletedAt])
+  @@index([createdBy])
+}
+
+model BannerInteraction {
+  id        String                @id @default(uuid())
+  bannerId  String
+  userId    String
+  type      BannerInteractionType
+  createdAt DateTime              @default(now())
+
+  banner    Banner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  user      User   @relation("UserBannerInteractions", fields: [userId], references: [id])
+
+  @@index([bannerId, type])
   @@index([userId])
 }
