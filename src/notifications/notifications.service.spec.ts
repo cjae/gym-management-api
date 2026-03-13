@@ -333,4 +333,39 @@ describe('NotificationsService', () => {
       });
     });
   });
+
+  describe('cleanupOldNotifications', () => {
+    it('should delete old notifications, reads, tickets, and jobs', async () => {
+      mockPrisma.notificationRead.deleteMany.mockResolvedValue({ count: 5 });
+      mockPrisma.notification.deleteMany.mockResolvedValue({ count: 3 });
+      mockPrisma.pushTicket.deleteMany.mockResolvedValue({ count: 10 });
+      mockPrisma.pushJob.deleteMany.mockResolvedValue({ count: 2 });
+
+      await service.cleanupOldNotifications();
+
+      // Should delete reads for old notifications
+      expect(mockPrisma.notificationRead.deleteMany).toHaveBeenCalledWith({
+        where: {
+          notification: {
+            createdAt: { lt: expect.any(Date) },
+          },
+        },
+      });
+      // Should delete old notifications
+      expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({
+        where: { createdAt: { lt: expect.any(Date) } },
+      });
+      // Should delete stale push tickets
+      expect(mockPrisma.pushTicket.deleteMany).toHaveBeenCalledWith({
+        where: { createdAt: { lt: expect.any(Date) } },
+      });
+      // Should delete completed/failed push jobs
+      expect(mockPrisma.pushJob.deleteMany).toHaveBeenCalledWith({
+        where: {
+          status: { in: ['COMPLETED', 'FAILED'] },
+          updatedAt: { lt: expect.any(Date) },
+        },
+      });
+    });
+  });
 });

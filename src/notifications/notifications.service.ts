@@ -447,6 +447,50 @@ export class NotificationsService {
     return { sent, failed, tickets };
   }
 
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { timeZone: 'Africa/Nairobi' })
+  async cleanupOldNotifications() {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Delete read receipts for old notifications first (FK constraint)
+    const reads = await this.prisma.notificationRead.deleteMany({
+      where: {
+        notification: {
+          createdAt: { lt: ninetyDaysAgo },
+        },
+      },
+    });
+
+    // Delete old notifications
+    const notifications = await this.prisma.notification.deleteMany({
+      where: { createdAt: { lt: ninetyDaysAgo } },
+    });
+
+    // Delete stale push tickets (Expo won't have receipts after 7 days)
+    const tickets = await this.prisma.pushTicket.deleteMany({
+      where: { createdAt: { lt: sevenDaysAgo } },
+    });
+
+    // Delete completed/failed jobs older than 30 days
+    const jobs = await this.prisma.pushJob.deleteMany({
+      where: {
+        status: { in: ['COMPLETED', 'FAILED'] },
+        updatedAt: { lt: thirtyDaysAgo },
+      },
+    });
+
+    this.logger.log(
+      `Cleanup: ${reads.count} reads, ${notifications.count} notifications, ` +
+        `${tickets.count} tickets, ${jobs.count} jobs deleted`,
+    );
+  }
+
   private chunkArray<T>(arr: T[], size: number): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < arr.length; i += size) {
