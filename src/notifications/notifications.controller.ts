@@ -40,7 +40,8 @@ export class NotificationsController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({
-    description: 'Notification created and pushed',
+    description:
+      'Notification created. Push delivery is processed asynchronously — pushSentCount/pushFailedCount update once delivery completes.',
     type: NotificationResponseDto,
   })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
