@@ -346,18 +346,18 @@ model AuditLog {
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String?
-  title     String
-  body      String
+  id              String           @id @default(uuid())
+  userId          String?
+  title           String
+  body            String
   type            NotificationType @default(GENERAL)
-  isRead          Boolean  @default(false)
+  isRead          Boolean          @default(false)
   metadata        Json?
-  pushSentCount   Int      @default(0)
-  pushFailedCount Int      @default(0)
-  createdAt       DateTime @default(now())
+  pushSentCount   Int              @default(0)
+  pushFailedCount Int              @default(0)
+  createdAt       DateTime         @default(now())
 
-  user  User?              @relation("UserNotifications", fields: [userId], references: [id])
+  user    User?              @relation("UserNotifications", fields: [userId], references: [id])
   reads   NotificationRead[]
   pushJob PushJob?
 
@@ -415,7 +415,7 @@ model PushToken {
   id        String   @id @default(uuid())
   userId    String
   token     String   @unique
-  platform  String   // ios, android
+  platform  String // ios, android
   createdAt DateTime @default(now())
 
   user User @relation("UserPushTokens", fields: [userId], references: [id])
