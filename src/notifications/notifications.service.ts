@@ -116,37 +116,42 @@ export class NotificationsService {
 
   async markAllAsRead(userId: string) {
     // 1. Mark all targeted notifications as read
-    const targeted = this.prisma.notification.updateMany({
+    const targetedResult = await this.prisma.notification.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true },
     });
 
-    // 2. Create read receipts for unread broadcasts
-    const unreadBroadcasts = await this.prisma.notification.findMany({
-      where: {
-        userId: null,
-        reads: { none: { userId } },
-      },
-      select: { id: true },
-    });
+    // 2. Create read receipts for unread broadcasts in batches
+    let broadcastCount = 0;
+    const batchSize = 500;
 
-    const broadcastReads =
-      unreadBroadcasts.length > 0
-        ? this.prisma.notificationRead.createMany({
-            data: unreadBroadcasts.map((n) => ({
-              notificationId: n.id,
-              userId,
-            })),
-            skipDuplicates: true,
-          })
-        : Promise.resolve({ count: 0 });
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const unreadBroadcasts = await this.prisma.notification.findMany({
+        where: {
+          userId: null,
+          reads: { none: { userId } },
+        },
+        select: { id: true },
+        take: batchSize,
+      });
 
-    const [targetedResult, broadcastResult] = await Promise.all([
-      targeted,
-      broadcastReads,
-    ]);
+      if (unreadBroadcasts.length === 0) break;
 
-    return { count: targetedResult.count + broadcastResult.count };
+      const result = await this.prisma.notificationRead.createMany({
+        data: unreadBroadcasts.map((n) => ({
+          notificationId: n.id,
+          userId,
+        })),
+        skipDuplicates: true,
+      });
+
+      broadcastCount += result.count;
+
+      if (unreadBroadcasts.length < batchSize) break;
+    }
+
+    return { count: targetedResult.count + broadcastCount };
   }
 
   async registerPushToken(userId: string, token: string, platform: string) {

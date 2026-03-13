@@ -271,6 +271,28 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('markAllAsRead', () => {
+    it('should batch broadcast read receipts in pages of 500', async () => {
+      mockPrisma.notification.updateMany.mockResolvedValue({ count: 0 });
+      // First call: 500 results (full page — loop continues)
+      // Second call: 200 results (partial page — loop ends)
+      mockPrisma.notification.findMany
+        .mockResolvedValueOnce(
+          Array.from({ length: 500 }, (_, i) => ({ id: `notif-${i}` })),
+        )
+        .mockResolvedValueOnce(
+          Array.from({ length: 200 }, (_, i) => ({ id: `notif-${500 + i}` })),
+        );
+      mockPrisma.notificationRead.createMany.mockResolvedValue({ count: 0 });
+
+      await service.markAllAsRead('user-1');
+
+      // Should have been called twice for broadcast batching
+      expect(mockPrisma.notification.findMany).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.notificationRead.createMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('handlePushReceipts', () => {
     it('should skip when no push tickets exist', async () => {
       mockPrisma.pushTicket.findMany.mockResolvedValue([]);
