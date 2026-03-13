@@ -8,9 +8,8 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly MAX_TOKENS_PER_USER = 5;
-
-  // In-memory buffer of ticket IDs — will be removed when sendPush/handlePushReceipts are refactored
-  private pendingTickets: { ticketId: string; pushToken: string }[] = [];
+  private static readonly MAX_RETRIES = 3;
+  private static readonly PUSH_CONCURRENCY = 5;
 
   constructor(private prisma: PrismaService) {}
 
@@ -184,120 +183,205 @@ export class NotificationsService {
   /**
    * Poll Expo for push receipts and remove invalid tokens.
    * Runs every 30 minutes — Expo recommends waiting ~15min after sending.
+   * Will be fully rewritten in Task 4 to use PushTicket DB table.
    */
   @Cron(CronExpression.EVERY_30_MINUTES, { timeZone: 'Africa/Nairobi' })
   async handlePushReceipts() {
-    if (this.pendingTickets.length === 0) return;
+    // Stubbed — will be rewritten in Task 4 to query PushTicket table
+    return;
+  }
 
-    // Drain the buffer
-    const tickets = this.pendingTickets.splice(0);
-    const ticketIds = tickets.map((t) => t.ticketId);
+  @Cron('*/10 * * * * *', { timeZone: 'Africa/Nairobi' })
+  async processPushJobs() {
+    const job = await this.prisma.pushJob.findFirst({
+      where: { status: { in: ['PENDING', 'PROCESSING'] } },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        notification: {
+          select: { userId: true, title: true, body: true, metadata: true },
+        },
+      },
+    });
+
+    if (!job) return;
+
+    if (job.status === 'PENDING') {
+      await this.prisma.pushJob.update({
+        where: { id: job.id },
+        data: { status: 'PROCESSING' },
+      });
+    }
+
+    const tokenWhere: Record<string, unknown> = {};
+    if (job.notification.userId) {
+      tokenWhere.userId = job.notification.userId;
+    }
+    if (job.cursor) {
+      tokenWhere.id = { gt: job.cursor };
+    }
+
+    const tokens = await this.prisma.pushToken.findMany({
+      where: tokenWhere,
+      orderBy: { id: 'asc' },
+      take: job.batchSize,
+      select: { id: true, token: true },
+    });
+
+    if (tokens.length === 0) {
+      await this.prisma.pushJob.update({
+        where: { id: job.id },
+        data: { status: 'COMPLETED' },
+      });
+      await this.syncPushStats(job.id);
+      return;
+    }
 
     try {
-      const chunks = this.chunkArray(ticketIds, 1000);
-      const invalidTokens: string[] = [];
+      const { sent, failed, tickets } = await this.sendPushBatch(
+        tokens,
+        job.notification.title,
+        job.notification.body,
+        job.notification.metadata as Record<string, unknown> | null,
+      );
 
-      for (const chunk of chunks) {
-        const response = await fetch(
-          'https://exp.host/--/api/v2/push/getReceipts',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: chunk }),
-          },
-        );
-
-        const json = (await response.json()) as {
-          data: Record<
-            string,
-            { status: string; details?: { error?: string } }
-          >;
-        };
-
-        for (const [ticketId, receipt] of Object.entries(json.data)) {
-          if (
-            receipt.status === 'error' &&
-            receipt.details?.error === 'DeviceNotRegistered'
-          ) {
-            const ticket = tickets.find((t) => t.ticketId === ticketId);
-            if (ticket) invalidTokens.push(ticket.pushToken);
-          }
-        }
-      }
-
-      if (invalidTokens.length > 0) {
-        const result = await this.prisma.pushToken.deleteMany({
-          where: { token: { in: invalidTokens } },
+      if (tickets.length > 0) {
+        await this.prisma.pushTicket.createMany({
+          data: tickets,
+          skipDuplicates: true,
         });
-        this.logger.log(`Removed ${result.count} invalid push tokens`);
       }
-    } catch {
-      // Re-queue tickets for next cycle if receipt check fails
-      this.pendingTickets.push(...tickets);
+
+      const lastCursor = tokens[tokens.length - 1].id;
+      const isLastBatch = tokens.length < job.batchSize;
+
+      await this.prisma.pushJob.update({
+        where: { id: job.id },
+        data: {
+          cursor: lastCursor,
+          sent: job.sent + sent,
+          failed: job.failed + failed,
+          retries: 0,
+          ...(isLastBatch ? { status: 'COMPLETED' } : {}),
+        },
+      });
+
+      if (isLastBatch) {
+        await this.syncPushStats(job.id);
+      }
+    } catch (err) {
+      const retries = job.retries + 1;
+      const isFatal = retries >= NotificationsService.MAX_RETRIES;
+
+      await this.prisma.pushJob.update({
+        where: { id: job.id },
+        data: {
+          retries,
+          ...(isFatal
+            ? {
+                status: 'FAILED',
+                error: err instanceof Error ? err.message : 'Unknown error',
+              }
+            : {}),
+        },
+      });
+
+      if (isFatal) {
+        this.logger.error(`Push job ${job.id} failed permanently`, err);
+        await this.syncPushStats(job.id);
+      }
     }
   }
 
-  private async sendPush(
-    userId: string | null,
+  private async syncPushStats(jobId: string) {
+    const job = await this.prisma.pushJob.findFirst({ where: { id: jobId } });
+    if (!job) return;
+    await this.prisma.notification.update({
+      where: { id: job.notificationId },
+      data: { pushSentCount: job.sent, pushFailedCount: job.failed },
+    });
+  }
+
+  private async sendPushBatch(
+    tokens: { id: string; token: string }[],
     title: string,
     body: string,
     metadata?: Record<string, unknown> | null,
-  ): Promise<{ sent: number; failed: number }> {
-    try {
-      const tokens = await this.prisma.pushToken.findMany({
-        where: userId ? { userId } : undefined,
-        select: { token: true },
-        take: 10000, // Safety cap for broadcasts
-      });
+  ): Promise<{
+    sent: number;
+    failed: number;
+    tickets: { ticketId: string; pushToken: string }[];
+  }> {
+    const messages = tokens.map((t) => ({
+      to: t.token,
+      sound: 'default' as const,
+      title,
+      body,
+      data: metadata ?? {},
+    }));
 
-      if (tokens.length === 0) return { sent: 0, failed: 0 };
+    let sent = 0;
+    let failed = 0;
+    const tickets: { ticketId: string; pushToken: string }[] = [];
 
-      const messages = tokens.map((t) => ({
-        to: t.token,
-        sound: 'default' as const,
-        title,
-        body,
-        data: metadata ?? {},
-      }));
+    const chunks = this.chunkArray(messages, 100);
+    for (
+      let i = 0;
+      i < chunks.length;
+      i += NotificationsService.PUSH_CONCURRENCY
+    ) {
+      const batch = chunks.slice(i, i + NotificationsService.PUSH_CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (chunk, batchIndex) => {
+          const response = await fetch(
+            'https://exp.host/--/api/v2/push/send',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(chunk),
+            },
+          );
 
-      let sent = 0;
-      let failed = 0;
+          const json = (await response.json()) as {
+            data: { id?: string; status: string }[];
+          };
 
-      // Send via Expo Push API and collect ticket IDs
-      const chunks = this.chunkArray(messages, 100);
-      for (const chunk of chunks) {
-        const response = await fetch('https://exp.host/--/api/v2/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(chunk),
-        });
+          let chunkSent = 0;
+          let chunkFailed = 0;
+          const chunkTickets: { ticketId: string; pushToken: string }[] = [];
 
-        const json = (await response.json()) as {
-          data: { id?: string; status: string }[];
-        };
+          const chunkOffset = (i + batchIndex) * 100;
 
-        // Buffer ticket IDs for receipt polling
-        for (let i = 0; i < json.data.length; i++) {
-          const ticket = json.data[i];
-          if (ticket.status === 'ok') {
-            sent++;
-            if (ticket.id) {
-              this.pendingTickets.push({
-                ticketId: ticket.id,
-                pushToken: chunk[i].to,
-              });
+          for (let j = 0; j < json.data.length; j++) {
+            const ticket = json.data[j];
+            if (ticket.status === 'ok') {
+              chunkSent++;
+              if (ticket.id) {
+                chunkTickets.push({
+                  ticketId: ticket.id,
+                  pushToken: tokens[chunkOffset + j].token,
+                });
+              }
+            } else {
+              chunkFailed++;
             }
-          } else {
-            failed++;
           }
-        }
-      }
 
-      return { sent, failed };
-    } catch {
-      // Silent fail — push is best-effort
-      return { sent: 0, failed: 0 };
+          return {
+            sent: chunkSent,
+            failed: chunkFailed,
+            tickets: chunkTickets,
+          };
+        }),
+      );
+
+      for (const result of results) {
+        sent += result.sent;
+        failed += result.failed;
+        tickets.push(...result.tickets);
+      }
     }
+
+    return { sent, failed, tickets };
   }
 
   private chunkArray<T>(arr: T[], size: number): T[][] {

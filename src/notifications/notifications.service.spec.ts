@@ -120,4 +120,138 @@ describe('NotificationsService', () => {
       expect(result).toEqual(mockNotification);
     });
   });
+
+  describe('processPushJobs', () => {
+    it('should skip when no pending jobs exist', async () => {
+      mockPrisma.pushJob.findFirst.mockResolvedValue(null);
+
+      await service.processPushJobs();
+
+      expect(mockPrisma.pushToken.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should process a batch of tokens and update job progress', async () => {
+      const job = {
+        id: 'job-1',
+        notificationId: 'notif-1',
+        status: 'PENDING',
+        cursor: null,
+        batchSize: 500,
+        sent: 0,
+        failed: 0,
+        retries: 0,
+        notification: {
+          userId: null,
+          title: 'Test',
+          body: 'Body',
+          metadata: null,
+        },
+      };
+      mockPrisma.pushJob.findFirst.mockResolvedValue(job);
+      mockPrisma.pushToken.findMany.mockResolvedValue([
+        { id: 'tok-1', token: 'ExponentPushToken[aaa]' },
+        { id: 'tok-2', token: 'ExponentPushToken[bbb]' },
+      ]);
+
+      const mockResponse = {
+        json: jest.fn().mockResolvedValue({
+          data: [
+            { id: 'ticket-1', status: 'ok' },
+            { id: 'ticket-2', status: 'ok' },
+          ],
+        }),
+      };
+      global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+      await service.processPushJobs();
+
+      // Should mark as PROCESSING first
+      expect(mockPrisma.pushJob.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'job-1' },
+          data: expect.objectContaining({ status: 'PROCESSING' }),
+        }),
+      );
+      // Should save tickets to DB
+      expect(mockPrisma.pushTicket.createMany).toHaveBeenCalled();
+      // Should update job with cursor and counts — COMPLETED since < batchSize
+      expect(mockPrisma.pushJob.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'COMPLETED',
+            cursor: 'tok-2',
+            sent: 2,
+            failed: 0,
+            retries: 0,
+          }),
+        }),
+      );
+    });
+
+    it('should use cursor for resuming interrupted jobs', async () => {
+      const job = {
+        id: 'job-1',
+        notificationId: 'notif-1',
+        status: 'PROCESSING',
+        cursor: 'tok-5',
+        batchSize: 500,
+        sent: 5,
+        failed: 0,
+        retries: 0,
+        notification: {
+          userId: null,
+          title: 'Test',
+          body: 'Body',
+          metadata: null,
+        },
+      };
+      mockPrisma.pushJob.findFirst.mockResolvedValue(job);
+      mockPrisma.pushToken.findMany.mockResolvedValue([]);
+
+      await service.processPushJobs();
+
+      expect(mockPrisma.pushToken.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: { gt: 'tok-5' },
+          }),
+        }),
+      );
+    });
+
+    it('should mark job FAILED after 3 retries', async () => {
+      const job = {
+        id: 'job-1',
+        notificationId: 'notif-1',
+        status: 'PROCESSING',
+        cursor: 'tok-3',
+        batchSize: 500,
+        sent: 3,
+        failed: 0,
+        retries: 2,
+        notification: {
+          userId: null,
+          title: 'Test',
+          body: 'Body',
+          metadata: null,
+        },
+      };
+      mockPrisma.pushJob.findFirst.mockResolvedValue(job);
+      mockPrisma.pushToken.findMany.mockResolvedValue([
+        { id: 'tok-4', token: 'ExponentPushToken[ddd]' },
+      ]);
+      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+
+      await service.processPushJobs();
+
+      expect(mockPrisma.pushJob.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'FAILED',
+            error: 'Network error',
+          }),
+        }),
+      );
+    });
+  });
 });
