@@ -9,7 +9,7 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly MAX_TOKENS_PER_USER = 5;
 
-  // In-memory buffer of ticket IDs to check for receipts
+  // In-memory buffer of ticket IDs — will be removed when sendPush/handlePushReceipts are refactored
   private pendingTickets: { ticketId: string; pushToken: string }[] = [];
 
   constructor(private prisma: PrismaService) {}
@@ -25,22 +25,11 @@ export class NotificationsService {
       },
     });
 
-    // Send push notification and persist delivery stats
-    const { sent, failed } = await this.sendPush(
-      dto.userId ?? null,
-      dto.title,
-      dto.body,
-      dto.metadata,
-    );
+    await this.prisma.pushJob.create({
+      data: { notificationId: notification.id },
+    });
 
-    if (sent > 0 || failed > 0) {
-      await this.prisma.notification.update({
-        where: { id: notification.id },
-        data: { pushSentCount: sent, pushFailedCount: failed },
-      });
-    }
-
-    return { ...notification, pushSentCount: sent, pushFailedCount: failed };
+    return notification;
   }
 
   async findAllForUser(userId: string, page = 1, limit = 20) {
