@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,7 +66,11 @@ describe('NotificationsService', () => {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    $transaction: jest.fn().mockImplementation((fn) => fn(mockPrisma)),
+    $transaction: jest
+      .fn()
+      .mockImplementation((fn: (prisma: typeof mockPrisma) => unknown) =>
+        fn(mockPrisma),
+      ),
   };
 
   beforeEach(async () => {
@@ -305,8 +310,16 @@ describe('NotificationsService', () => {
 
     it('should delete invalid tokens from DeviceNotRegistered receipts', async () => {
       mockPrisma.pushTicket.findMany.mockResolvedValue([
-        { id: 'pt-1', ticketId: 'ticket-1', pushToken: 'ExponentPushToken[aaa]' },
-        { id: 'pt-2', ticketId: 'ticket-2', pushToken: 'ExponentPushToken[bbb]' },
+        {
+          id: 'pt-1',
+          ticketId: 'ticket-1',
+          pushToken: 'ExponentPushToken[aaa]',
+        },
+        {
+          id: 'pt-2',
+          ticketId: 'ticket-2',
+          pushToken: 'ExponentPushToken[bbb]',
+        },
       ]);
 
       global.fetch = jest.fn().mockResolvedValue({
