@@ -18,17 +18,17 @@ export class CreateNotificationDto {
   @IsUUID()
   userId?: string;
 
-  @ApiProperty({ example: 'Gym Closed Tomorrow', maxLength: 200 })
+  @ApiProperty({ example: 'Gym Closed Tomorrow', maxLength: 100 })
   @IsString()
-  @MaxLength(200)
+  @MaxLength(100)
   title: string;
 
   @ApiProperty({
     example: 'The gym will be closed for maintenance on Saturday.',
-    maxLength: 1000,
+    maxLength: 200,
   })
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(200)
   body: string;
 
   @ApiProperty({ enum: NotificationType, example: 'GENERAL' })
