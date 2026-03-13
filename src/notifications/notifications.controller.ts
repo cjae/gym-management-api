@@ -13,9 +13,14 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { NotificationResponseDto } from './dto/notification-response.dto';
+import { PaginatedNotificationsResponseDto } from './dto/paginated-notifications-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -24,6 +29,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
@@ -32,13 +38,20 @@ export class NotificationsController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiCreatedResponse({ description: 'Notification created and pushed' })
+  @ApiCreatedResponse({
+    description: 'Notification created and pushed',
+    type: NotificationResponseDto,
+  })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   create(@Body() dto: CreateNotificationDto) {
     return this.notificationsService.create(dto);
   }
 
   @Get()
-  @ApiOkResponse({ description: 'Paginated notifications for current user' })
+  @ApiOkResponse({
+    description: 'Paginated notifications for current user',
+    type: PaginatedNotificationsResponseDto,
+  })
   findAll(
     @CurrentUser('id') userId: string,
     @Query() query: PaginationQueryDto,
@@ -52,6 +65,7 @@ export class NotificationsController {
 
   @Patch(':id/read')
   @ApiOkResponse({ description: 'Notification marked as read' })
+  @ApiNotFoundResponse({ description: 'Notification not found' })
   markAsRead(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.notificationsService.markAsRead(id, userId);
   }
