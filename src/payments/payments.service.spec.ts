@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -10,19 +12,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
-
-  const mockPrisma = {
-    memberSubscription: {
-      findUnique: jest.fn(),
-    },
-    payment: {
-      create: jest.fn(),
-      findFirst: jest.fn(),
-      update: jest.fn(),
-      updateMany: jest.fn(),
-      findMany: jest.fn(),
-    },
-  };
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string) => {
@@ -40,13 +30,14 @@ describe('PaymentsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 
     service = module.get<PaymentsService>(PaymentsService);
+    prisma = module.get(PrismaService);
     jest.clearAllMocks();
   });
 
@@ -79,48 +70,48 @@ describe('PaymentsService', () => {
     };
 
     beforeEach(() => {
-      mockPrisma.memberSubscription.findUnique.mockResolvedValue(
-        mockSubscription,
+      prisma.memberSubscription.findUnique.mockResolvedValue(
+        mockSubscription as any,
       );
-      mockPrisma.payment.create.mockResolvedValue(mockPayment);
+      prisma.payment.create.mockResolvedValue(mockPayment as any);
       mockedAxios.post.mockResolvedValue(mockPaystackResponse);
     });
 
     it('should expire existing PENDING payment before creating a new one', async () => {
       const existingPending = { id: 'old-pay-1', status: 'PENDING' };
-      mockPrisma.payment.findFirst.mockResolvedValue(existingPending);
+      prisma.payment.findFirst.mockResolvedValue(existingPending as any);
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      expect(mockPrisma.payment.findFirst).toHaveBeenCalledWith({
+      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
         where: {
           subscriptionId,
           status: 'PENDING',
         },
       });
 
-      expect(mockPrisma.payment.update).toHaveBeenCalledWith({
+      expect(prisma.payment.update).toHaveBeenCalledWith({
         where: { id: 'old-pay-1' },
         data: { status: 'EXPIRED' },
       });
 
-      expect(mockPrisma.payment.create).toHaveBeenCalled();
+      expect(prisma.payment.create).toHaveBeenCalled();
     });
 
     it('should create payment normally when no PENDING payment exists', async () => {
-      mockPrisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.findFirst.mockResolvedValue(null);
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      expect(mockPrisma.payment.findFirst).toHaveBeenCalledWith({
+      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
         where: {
           subscriptionId,
           status: 'PENDING',
         },
       });
 
-      expect(mockPrisma.payment.update).not.toHaveBeenCalled();
-      expect(mockPrisma.payment.create).toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+      expect(prisma.payment.create).toHaveBeenCalled();
     });
   });
 });

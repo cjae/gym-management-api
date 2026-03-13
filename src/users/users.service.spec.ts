@@ -8,10 +8,12 @@ import {
 } from '@nestjs/common';
 import { EmailService } from '../email/email.service';
 import { LicensingService } from '../licensing/licensing.service';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 
 describe('UsersService', () => {
   let service: UsersService;
-  let prisma: PrismaService;
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockUserFromDb = {
     id: 'user-1',
@@ -67,17 +69,6 @@ describe('UsersService', () => {
     lastAttendance: mockUserFromDb.attendances[0].checkInDate,
   };
 
-  const mockPrisma = {
-    user: {
-      findMany: jest.fn().mockResolvedValue([mockUserFromDb]),
-      findUnique: jest.fn().mockResolvedValue(mockUserFromDb),
-      update: jest.fn().mockResolvedValue(mockUserFromDb),
-      create: jest.fn().mockResolvedValue(mockUserFromDb),
-      delete: jest.fn().mockResolvedValue(mockUserFromDb),
-      count: jest.fn().mockResolvedValue(1),
-    },
-  };
-
   const mockEmailService = {
     sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
   };
@@ -93,14 +84,14 @@ describe('UsersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: EmailService, useValue: mockEmailService },
         { provide: LicensingService, useValue: mockLicensingService },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    prisma = module.get<PrismaService>(PrismaService);
+    prisma = module.get(PrismaService);
   });
 
   it('should be defined', () => {
@@ -109,6 +100,9 @@ describe('UsersService', () => {
 
   describe('findAll', () => {
     it('should return paginated users', async () => {
+      prisma.user.findMany.mockResolvedValue([mockUserFromDb] as any);
+      prisma.user.count.mockResolvedValue(1);
+
       const result = await service.findAll(1, 20);
       expect(result).toEqual({
         data: [mockUser],
@@ -116,7 +110,7 @@ describe('UsersService', () => {
         page: 1,
         limit: 20,
       });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { deletedAt: null },
@@ -127,14 +121,17 @@ describe('UsersService', () => {
     });
 
     it('should filter users by role', async () => {
+      prisma.user.findMany.mockResolvedValue([mockUserFromDb] as any);
+      prisma.user.count.mockResolvedValue(1);
+
       await service.findAll(1, 20, ['MEMBER']);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { deletedAt: null, role: { in: ['MEMBER'] } },
         }),
       );
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.count).toHaveBeenCalledWith({
         where: { deletedAt: null, role: { in: ['MEMBER'] } },
       });
@@ -143,9 +140,11 @@ describe('UsersService', () => {
 
   describe('findOne', () => {
     it('should return a user by id', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockUserFromDb as any);
+
       const result = await service.findOne('user-1');
       expect(result).toEqual(mockUser);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-1' },
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -154,17 +153,17 @@ describe('UsersService', () => {
     });
 
     it('should throw NotFoundException if user not found', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue(null);
       await expect(service.findOne('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
     });
 
     it('should throw NotFoundException if user is soft-deleted', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce({
+      prisma.user.findUnique.mockResolvedValue({
         ...mockUserFromDb,
         deletedAt: new Date(),
-      });
+      } as any);
       await expect(service.findOne('user-1')).rejects.toThrow(
         NotFoundException,
       );
@@ -180,12 +179,14 @@ describe('UsersService', () => {
     };
 
     it('should create a user with hashed password and mustChangePassword=true', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue(mockUserFromDb as any);
+
       const result: Record<string, unknown> = await service.create(
         createDto,
         'ADMIN',
       );
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -207,7 +208,7 @@ describe('UsersService', () => {
     });
 
     it('should throw ConflictException if email already exists', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(mockUserFromDb);
+      prisma.user.findUnique.mockResolvedValue(mockUserFromDb as any);
       await expect(service.create(createDto, 'ADMIN')).rejects.toThrow(
         ConflictException,
       );
@@ -220,12 +221,14 @@ describe('UsersService', () => {
     });
 
     it('should allow SUPER_ADMIN to create ADMIN', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue(mockUserFromDb as any);
+
       await service.create(
         { ...createDto, role: 'ADMIN' as const },
         'SUPER_ADMIN',
       );
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -244,9 +247,9 @@ describe('UsersService', () => {
     });
 
     it('should enforce license member limit for MEMBER role', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue(null);
       mockLicensingService.getMemberLimit.mockResolvedValueOnce(10);
-      mockPrisma.user.count.mockResolvedValueOnce(10);
+      prisma.user.count.mockResolvedValue(10);
       await expect(service.create(createDto, 'ADMIN')).rejects.toThrow(
         ForbiddenException,
       );
@@ -255,8 +258,11 @@ describe('UsersService', () => {
 
   describe('remove', () => {
     it('should soft-delete a user by setting deletedAt', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockUserFromDb as any);
+      prisma.user.update.mockResolvedValue(mockUserFromDb as any);
+
       await service.remove('user-1');
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'user-1' },
@@ -266,7 +272,7 @@ describe('UsersService', () => {
     });
 
     it('should throw NotFoundException if user does not exist', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue(null);
       await expect(service.remove('nonexistent')).rejects.toThrow(
         NotFoundException,
       );

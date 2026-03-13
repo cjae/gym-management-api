@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { BannersService } from './banners.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
@@ -7,6 +9,7 @@ import { BannerCtaType } from '@prisma/client';
 
 describe('BannersService', () => {
   let service: BannersService;
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockBanner = {
     id: 'banner-1',
@@ -27,31 +30,29 @@ describe('BannersService', () => {
     updatedAt: new Date(),
   };
 
-  const mockPrisma = {
-    banner: {
-      create: jest.fn().mockResolvedValue(mockBanner),
-      findMany: jest.fn().mockResolvedValue([mockBanner]),
-      findFirst: jest.fn().mockResolvedValue(mockBanner),
-      update: jest.fn().mockResolvedValue(mockBanner),
-      count: jest.fn().mockResolvedValue(1),
-    },
-    bannerInteraction: {
-      create: jest.fn().mockResolvedValue({ id: 'interaction-1' }),
-      count: jest.fn().mockResolvedValue(10),
-      groupBy: jest.fn().mockResolvedValue([]),
-    },
-    $queryRaw: jest.fn().mockResolvedValue([{ count: BigInt(5) }]),
-  };
-
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BannersService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
       ],
     }).compile();
     service = module.get<BannersService>(BannersService);
+    prisma = module.get(PrismaService);
+
+    // Set default mock return values
+    prisma.banner.create.mockResolvedValue(mockBanner as any);
+    prisma.banner.findMany.mockResolvedValue([mockBanner] as any);
+    prisma.banner.findFirst.mockResolvedValue(mockBanner as any);
+    prisma.banner.update.mockResolvedValue(mockBanner as any);
+    prisma.banner.count.mockResolvedValue(1);
+    prisma.bannerInteraction.create.mockResolvedValue({
+      id: 'interaction-1',
+    } as any);
+    prisma.bannerInteraction.count.mockResolvedValue(10);
+    prisma.bannerInteraction.groupBy.mockResolvedValue([] as any);
+    prisma.$queryRaw.mockResolvedValue([{ count: BigInt(5) }] as any);
   });
 
   describe('create', () => {
@@ -68,7 +69,7 @@ describe('BannersService', () => {
         endDate: '2026-04-01T00:00:00.000Z',
       };
       const result = await service.create(dto, 'admin-1');
-      expect(mockPrisma.banner.create).toHaveBeenCalledWith({
+      expect(prisma.banner.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           title: dto.title,
           createdBy: 'admin-1',
@@ -93,12 +94,12 @@ describe('BannersService', () => {
 
   describe('findAll', () => {
     it('should return paginated banners with analytics', async () => {
-      mockPrisma.bannerInteraction.count
+      prisma.bannerInteraction.count
         .mockResolvedValueOnce(100)
         .mockResolvedValueOnce(25);
 
       const result = await service.findAll(1, 20);
-      expect(mockPrisma.banner.findMany).toHaveBeenCalledWith(
+      expect(prisma.banner.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
@@ -116,14 +117,14 @@ describe('BannersService', () => {
   describe('findOne', () => {
     it('should return a banner by id', async () => {
       const result = await service.findOne('banner-1');
-      expect(mockPrisma.banner.findFirst).toHaveBeenCalledWith({
+      expect(prisma.banner.findFirst).toHaveBeenCalledWith({
         where: { id: 'banner-1', deletedAt: null },
       });
       expect(result).toEqual(mockBanner);
     });
 
     it('should throw NotFoundException if banner not found', async () => {
-      mockPrisma.banner.findFirst.mockResolvedValueOnce(null);
+      prisma.banner.findFirst.mockResolvedValueOnce(null);
       await expect(service.findOne('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
@@ -134,8 +135,8 @@ describe('BannersService', () => {
     it('should update a banner', async () => {
       const dto = { title: 'Updated Promo' };
       const result = await service.update('banner-1', dto);
-      expect(mockPrisma.banner.findFirst).toHaveBeenCalled();
-      expect(mockPrisma.banner.update).toHaveBeenCalledWith({
+      expect(prisma.banner.findFirst).toHaveBeenCalled();
+      expect(prisma.banner.update).toHaveBeenCalledWith({
         where: { id: 'banner-1' },
         data: expect.objectContaining({ title: 'Updated Promo' }),
       });
@@ -149,7 +150,7 @@ describe('BannersService', () => {
     });
 
     it('should throw NotFoundException if banner not found', async () => {
-      mockPrisma.banner.findFirst.mockResolvedValueOnce(null);
+      prisma.banner.findFirst.mockResolvedValueOnce(null);
       await expect(
         service.update('nonexistent', { title: 'x' }),
       ).rejects.toThrow(NotFoundException);
@@ -159,15 +160,15 @@ describe('BannersService', () => {
   describe('softDelete', () => {
     it('should set deletedAt on the banner', async () => {
       await service.softDelete('banner-1');
-      expect(mockPrisma.banner.findFirst).toHaveBeenCalled();
-      expect(mockPrisma.banner.update).toHaveBeenCalledWith({
+      expect(prisma.banner.findFirst).toHaveBeenCalled();
+      expect(prisma.banner.update).toHaveBeenCalledWith({
         where: { id: 'banner-1' },
         data: { deletedAt: expect.any(Date) },
       });
     });
 
     it('should throw NotFoundException if banner not found', async () => {
-      mockPrisma.banner.findFirst.mockResolvedValueOnce(null);
+      prisma.banner.findFirst.mockResolvedValueOnce(null);
       await expect(service.softDelete('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
@@ -177,7 +178,7 @@ describe('BannersService', () => {
   describe('findActive', () => {
     it('should return active banners ordered by displayOrder', async () => {
       const result = await service.findActive();
-      expect(mockPrisma.banner.findMany).toHaveBeenCalledWith(
+      expect(prisma.banner.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             isPublished: true,
@@ -194,8 +195,8 @@ describe('BannersService', () => {
   describe('logInteraction', () => {
     it('should create a banner interaction', async () => {
       await service.logInteraction('banner-1', 'user-1', 'IMPRESSION');
-      expect(mockPrisma.banner.findFirst).toHaveBeenCalled();
-      expect(mockPrisma.bannerInteraction.create).toHaveBeenCalledWith({
+      expect(prisma.banner.findFirst).toHaveBeenCalled();
+      expect(prisma.bannerInteraction.create).toHaveBeenCalledWith({
         data: {
           bannerId: 'banner-1',
           userId: 'user-1',
@@ -205,7 +206,7 @@ describe('BannersService', () => {
     });
 
     it('should throw NotFoundException if banner not found', async () => {
-      mockPrisma.banner.findFirst.mockResolvedValueOnce(null);
+      prisma.banner.findFirst.mockResolvedValueOnce(null);
       await expect(
         service.logInteraction('nonexistent', 'user-1', 'TAP'),
       ).rejects.toThrow(NotFoundException);
@@ -214,12 +215,12 @@ describe('BannersService', () => {
 
   describe('getAnalytics', () => {
     it('should return analytics for a banner', async () => {
-      mockPrisma.bannerInteraction.count
+      prisma.bannerInteraction.count
         .mockResolvedValueOnce(1250)
         .mockResolvedValueOnce(87);
-      mockPrisma.$queryRaw
-        .mockResolvedValueOnce([{ count: BigInt(340) }])
-        .mockResolvedValueOnce([{ count: BigInt(62) }]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ count: BigInt(340) }] as any)
+        .mockResolvedValueOnce([{ count: BigInt(62) }] as any);
 
       const result = await service.getAnalytics('banner-1');
       expect(result).toHaveProperty('bannerId', 'banner-1');
@@ -229,7 +230,7 @@ describe('BannersService', () => {
     });
 
     it('should throw NotFoundException if banner not found', async () => {
-      mockPrisma.banner.findFirst.mockResolvedValueOnce(null);
+      prisma.banner.findFirst.mockResolvedValueOnce(null);
       await expect(service.getAnalytics('nonexistent')).rejects.toThrow(
         NotFoundException,
       );

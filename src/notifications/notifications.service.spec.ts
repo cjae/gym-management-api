@@ -1,10 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockNotification = {
     id: 'notif-1',
@@ -33,56 +36,35 @@ describe('NotificationsService', () => {
     updatedAt: new Date(),
   };
 
-  const mockPrisma = {
-    notification: {
-      create: jest.fn().mockResolvedValue(mockNotification),
-      findMany: jest.fn().mockResolvedValue([]),
-      findFirst: jest.fn(),
-      count: jest.fn().mockResolvedValue(0),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      update: jest.fn(),
-      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
-    pushJob: {
-      create: jest.fn().mockResolvedValue(mockPushJob),
-      findFirst: jest.fn(),
-      findUnique: jest.fn(),
-      update: jest.fn(),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
-    pushToken: {
-      findMany: jest.fn().mockResolvedValue([]),
-      upsert: jest.fn(),
-      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
-    pushTicket: {
-      findMany: jest.fn().mockResolvedValue([]),
-      createMany: jest.fn().mockResolvedValue({ count: 0 }),
-      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
-    notificationRead: {
-      upsert: jest.fn(),
-      createMany: jest.fn().mockResolvedValue({ count: 0 }),
-      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
-    $transaction: jest
-      .fn()
-      .mockImplementation((fn: (prisma: typeof mockPrisma) => unknown) =>
-        fn(mockPrisma),
-      ),
-  };
-
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotificationsService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
       ],
     }).compile();
 
     service = module.get<NotificationsService>(NotificationsService);
+    prisma = module.get(PrismaService);
+
+    // Set default mock return values
+    prisma.notification.create.mockResolvedValue(mockNotification as any);
+    prisma.notification.findMany.mockResolvedValue([]);
+    prisma.notification.count.mockResolvedValue(0);
+    prisma.notification.updateMany.mockResolvedValue({ count: 1 } as any);
+    prisma.notification.deleteMany.mockResolvedValue({ count: 0 } as any);
+    prisma.pushJob.create.mockResolvedValue(mockPushJob as any);
+    prisma.pushJob.updateMany.mockResolvedValue({ count: 1 } as any);
+    prisma.pushJob.deleteMany.mockResolvedValue({ count: 0 } as any);
+    prisma.pushToken.findMany.mockResolvedValue([]);
+    prisma.pushToken.deleteMany.mockResolvedValue({ count: 0 } as any);
+    prisma.pushTicket.findMany.mockResolvedValue([]);
+    prisma.pushTicket.createMany.mockResolvedValue({ count: 0 } as any);
+    prisma.pushTicket.deleteMany.mockResolvedValue({ count: 0 } as any);
+    prisma.notificationRead.createMany.mockResolvedValue({ count: 0 } as any);
+    prisma.notificationRead.deleteMany.mockResolvedValue({ count: 0 } as any);
+    prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
   });
 
   describe('create', () => {
@@ -95,7 +77,7 @@ describe('NotificationsService', () => {
 
       const result = await service.create(dto);
 
-      expect(mockPrisma.notification.create).toHaveBeenCalledWith({
+      expect(prisma.notification.create).toHaveBeenCalledWith({
         data: {
           userId: undefined,
           title: 'Test',
@@ -104,7 +86,7 @@ describe('NotificationsService', () => {
           metadata: undefined,
         },
       });
-      expect(mockPrisma.pushJob.create).toHaveBeenCalledWith({
+      expect(prisma.pushJob.create).toHaveBeenCalledWith({
         data: { notificationId: 'notif-1' },
       });
       expect(result).toEqual(mockNotification);
@@ -120,21 +102,21 @@ describe('NotificationsService', () => {
 
       const result = await service.create(dto);
 
-      expect(mockPrisma.notification.create).toHaveBeenCalledWith({
+      expect(prisma.notification.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ userId: 'user-1' }),
       });
-      expect(mockPrisma.pushJob.create).toHaveBeenCalled();
+      expect(prisma.pushJob.create).toHaveBeenCalled();
       expect(result).toEqual(mockNotification);
     });
   });
 
   describe('processPushJobs', () => {
     it('should skip when no pending jobs exist', async () => {
-      mockPrisma.pushJob.findFirst.mockResolvedValue(null);
+      prisma.pushJob.findFirst.mockResolvedValue(null);
 
       await service.processPushJobs();
 
-      expect(mockPrisma.pushToken.findMany).not.toHaveBeenCalled();
+      expect(prisma.pushToken.findMany).not.toHaveBeenCalled();
     });
 
     it('should process a batch of tokens and update job progress', async () => {
@@ -154,11 +136,11 @@ describe('NotificationsService', () => {
           metadata: null,
         },
       };
-      mockPrisma.pushJob.findFirst.mockResolvedValue(job);
-      mockPrisma.pushToken.findMany.mockResolvedValue([
+      prisma.pushJob.findFirst.mockResolvedValue(job as any);
+      prisma.pushToken.findMany.mockResolvedValue([
         { id: 'tok-1', token: 'ExponentPushToken[aaa]' },
         { id: 'tok-2', token: 'ExponentPushToken[bbb]' },
-      ]);
+      ] as any);
 
       const mockResponse = {
         json: jest.fn().mockResolvedValue({
@@ -169,25 +151,25 @@ describe('NotificationsService', () => {
         }),
       };
       global.fetch = jest.fn().mockResolvedValue(mockResponse);
-      mockPrisma.pushJob.findUnique.mockResolvedValue({
+      prisma.pushJob.findUnique.mockResolvedValue({
         ...job,
         sent: 2,
         failed: 0,
-      });
+      } as any);
 
       await service.processPushJobs();
 
       // Should atomically claim the job as PROCESSING
-      expect(mockPrisma.pushJob.updateMany).toHaveBeenCalledWith(
+      expect(prisma.pushJob.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'job-1', status: 'PENDING' },
           data: expect.objectContaining({ status: 'PROCESSING' }),
         }),
       );
       // Should save tickets to DB
-      expect(mockPrisma.pushTicket.createMany).toHaveBeenCalled();
+      expect(prisma.pushTicket.createMany).toHaveBeenCalled();
       // Should update job with cursor and counts — COMPLETED since < batchSize
-      expect(mockPrisma.pushJob.update).toHaveBeenLastCalledWith(
+      expect(prisma.pushJob.update).toHaveBeenLastCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: 'COMPLETED',
@@ -217,16 +199,16 @@ describe('NotificationsService', () => {
           metadata: null,
         },
       };
-      mockPrisma.pushJob.findFirst.mockResolvedValue(job);
-      mockPrisma.pushToken.findMany.mockResolvedValue([]);
-      mockPrisma.pushJob.findUnique.mockResolvedValue({
+      prisma.pushJob.findFirst.mockResolvedValue(job as any);
+      prisma.pushToken.findMany.mockResolvedValue([]);
+      prisma.pushJob.findUnique.mockResolvedValue({
         ...job,
         status: 'COMPLETED',
-      });
+      } as any);
 
       await service.processPushJobs();
 
-      expect(mockPrisma.pushToken.findMany).toHaveBeenCalledWith(
+      expect(prisma.pushToken.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             id: { gt: 'tok-5' },
@@ -252,20 +234,20 @@ describe('NotificationsService', () => {
           metadata: null,
         },
       };
-      mockPrisma.pushJob.findFirst.mockResolvedValue(job);
-      mockPrisma.pushToken.findMany.mockResolvedValue([
+      prisma.pushJob.findFirst.mockResolvedValue(job as any);
+      prisma.pushToken.findMany.mockResolvedValue([
         { id: 'tok-4', token: 'ExponentPushToken[ddd]' },
-      ]);
+      ] as any);
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
-      mockPrisma.pushJob.findUnique.mockResolvedValue({
+      prisma.pushJob.findUnique.mockResolvedValue({
         ...job,
         status: 'FAILED',
         retries: 3,
-      });
+      } as any);
 
       await service.processPushJobs();
 
-      expect(mockPrisma.pushJob.update).toHaveBeenLastCalledWith(
+      expect(prisma.pushJob.update).toHaveBeenLastCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: 'FAILED',
@@ -278,29 +260,31 @@ describe('NotificationsService', () => {
 
   describe('markAllAsRead', () => {
     it('should batch broadcast read receipts in pages of 500', async () => {
-      mockPrisma.notification.updateMany.mockResolvedValue({ count: 0 });
+      prisma.notification.updateMany.mockResolvedValue({ count: 0 } as any);
       // First call: 500 results (full page — loop continues)
       // Second call: 200 results (partial page — loop ends)
-      mockPrisma.notification.findMany
+      prisma.notification.findMany
         .mockResolvedValueOnce(
-          Array.from({ length: 500 }, (_, i) => ({ id: `notif-${i}` })),
+          Array.from({ length: 500 }, (_, i) => ({ id: `notif-${i}` })) as any,
         )
         .mockResolvedValueOnce(
-          Array.from({ length: 200 }, (_, i) => ({ id: `notif-${500 + i}` })),
+          Array.from({ length: 200 }, (_, i) => ({
+            id: `notif-${500 + i}`,
+          })) as any,
         );
-      mockPrisma.notificationRead.createMany.mockResolvedValue({ count: 0 });
+      prisma.notificationRead.createMany.mockResolvedValue({ count: 0 } as any);
 
       await service.markAllAsRead('user-1');
 
       // Should have been called twice for broadcast batching
-      expect(mockPrisma.notification.findMany).toHaveBeenCalledTimes(2);
-      expect(mockPrisma.notificationRead.createMany).toHaveBeenCalledTimes(2);
+      expect(prisma.notification.findMany).toHaveBeenCalledTimes(2);
+      expect(prisma.notificationRead.createMany).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('handlePushReceipts', () => {
     it('should skip when no push tickets exist', async () => {
-      mockPrisma.pushTicket.findMany.mockResolvedValue([]);
+      prisma.pushTicket.findMany.mockResolvedValue([]);
       global.fetch = jest.fn();
 
       await service.handlePushReceipts();
@@ -309,7 +293,7 @@ describe('NotificationsService', () => {
     });
 
     it('should delete invalid tokens from DeviceNotRegistered receipts', async () => {
-      mockPrisma.pushTicket.findMany.mockResolvedValue([
+      prisma.pushTicket.findMany.mockResolvedValue([
         {
           id: 'pt-1',
           ticketId: 'ticket-1',
@@ -320,7 +304,7 @@ describe('NotificationsService', () => {
           ticketId: 'ticket-2',
           pushToken: 'ExponentPushToken[bbb]',
         },
-      ]);
+      ] as any);
 
       global.fetch = jest.fn().mockResolvedValue({
         json: jest.fn().mockResolvedValue({
@@ -337,11 +321,11 @@ describe('NotificationsService', () => {
       await service.handlePushReceipts();
 
       // Should delete the invalid push token
-      expect(mockPrisma.pushToken.deleteMany).toHaveBeenCalledWith({
+      expect(prisma.pushToken.deleteMany).toHaveBeenCalledWith({
         where: { token: { in: ['ExponentPushToken[bbb]'] } },
       });
       // Should delete processed tickets
-      expect(mockPrisma.pushTicket.deleteMany).toHaveBeenCalledWith({
+      expect(prisma.pushTicket.deleteMany).toHaveBeenCalledWith({
         where: { id: { in: ['pt-1', 'pt-2'] } },
       });
     });
@@ -349,24 +333,24 @@ describe('NotificationsService', () => {
 
   describe('cleanupOldNotifications', () => {
     it('should delete old notifications, tickets, and jobs', async () => {
-      mockPrisma.notification.deleteMany.mockResolvedValue({ count: 3 });
-      mockPrisma.pushTicket.deleteMany.mockResolvedValue({ count: 10 });
-      mockPrisma.pushJob.deleteMany.mockResolvedValue({ count: 2 });
+      prisma.notification.deleteMany.mockResolvedValue({ count: 3 } as any);
+      prisma.pushTicket.deleteMany.mockResolvedValue({ count: 10 } as any);
+      prisma.pushJob.deleteMany.mockResolvedValue({ count: 2 } as any);
 
       await service.cleanupOldNotifications();
 
       // Should NOT manually delete reads (cascade handles it)
-      expect(mockPrisma.notificationRead.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.notificationRead.deleteMany).not.toHaveBeenCalled();
       // Should delete old notifications
-      expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({
+      expect(prisma.notification.deleteMany).toHaveBeenCalledWith({
         where: { createdAt: { lt: expect.any(Date) } },
       });
       // Should delete stale push tickets
-      expect(mockPrisma.pushTicket.deleteMany).toHaveBeenCalledWith({
+      expect(prisma.pushTicket.deleteMany).toHaveBeenCalledWith({
         where: { createdAt: { lt: expect.any(Date) } },
       });
       // Should delete completed/failed push jobs
-      expect(mockPrisma.pushJob.deleteMany).toHaveBeenCalledWith({
+      expect(prisma.pushJob.deleteMany).toHaveBeenCalledWith({
         where: {
           status: { in: ['COMPLETED', 'FAILED'] },
           updatedAt: { lt: expect.any(Date) },

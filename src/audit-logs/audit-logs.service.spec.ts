@@ -1,41 +1,30 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { AuditLogService } from './audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditAction } from '@prisma/client';
 
 describe('AuditLogService', () => {
   let service: AuditLogService;
-
-  const mockPrisma = {
-    auditLog: {
-      create: jest.fn(),
-      findMany: jest.fn(),
-      count: jest.fn(),
-    },
-    user: { findUnique: jest.fn() },
-    subscriptionPlan: { findUnique: jest.fn() },
-    memberSubscription: { findUnique: jest.fn() },
-    staffSalaryRecord: { findUnique: jest.fn() },
-    trainerProfile: { findUnique: jest.fn() },
-    entrance: { findUnique: jest.fn() },
-    gymQrCode: { findUnique: jest.fn() },
-  };
+  let prisma: DeepMockProxy<PrismaClient>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuditLogService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
       ],
     }).compile();
     service = module.get<AuditLogService>(AuditLogService);
+    prisma = module.get(PrismaService);
     jest.clearAllMocks();
   });
 
   describe('log', () => {
     it('should create an audit log entry', async () => {
-      mockPrisma.auditLog.create.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({} as any);
 
       await service.log({
         userId: 'user-1',
@@ -48,7 +37,7 @@ describe('AuditLogService', () => {
         route: 'POST /api/v1/users',
       });
 
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
         data: {
           userId: 'user-1',
           action: AuditAction.CREATE,
@@ -65,7 +54,7 @@ describe('AuditLogService', () => {
     });
 
     it('should accept null userId for unauthenticated actions', async () => {
-      mockPrisma.auditLog.create.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({} as any);
 
       await service.log({
         userId: null,
@@ -73,7 +62,7 @@ describe('AuditLogService', () => {
         resource: 'Auth',
       });
 
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: null,
           action: AuditAction.LOGIN_FAILED,
@@ -83,7 +72,7 @@ describe('AuditLogService', () => {
     });
 
     it('should strip sensitive fields from oldData', async () => {
-      mockPrisma.auditLog.create.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({} as any);
 
       await service.log({
         userId: 'user-1',
@@ -99,7 +88,7 @@ describe('AuditLogService', () => {
         },
       });
 
-      const call = mockPrisma.auditLog.create.mock.calls[0][0];
+      const call = prisma.auditLog.create.mock.calls[0][0];
       expect(call.data.oldData).toEqual({ email: 'test@example.com' });
       expect(call.data.oldData).not.toHaveProperty('password');
       expect(call.data.oldData).not.toHaveProperty('paystackAuthorizationCode');
@@ -108,7 +97,7 @@ describe('AuditLogService', () => {
     });
 
     it('should strip sensitive fields from newData', async () => {
-      mockPrisma.auditLog.create.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({} as any);
 
       await service.log({
         userId: 'user-1',
@@ -122,12 +111,12 @@ describe('AuditLogService', () => {
         },
       });
 
-      const call = mockPrisma.auditLog.create.mock.calls[0][0];
+      const call = prisma.auditLog.create.mock.calls[0][0];
       expect(call.data.newData).toEqual({ firstName: 'Jane' });
     });
 
     it('should handle null oldData and newData gracefully', async () => {
-      mockPrisma.auditLog.create.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({} as any);
 
       await service.log({
         userId: 'user-1',
@@ -136,13 +125,13 @@ describe('AuditLogService', () => {
         resourceId: 'user-2',
       });
 
-      const call = mockPrisma.auditLog.create.mock.calls[0][0];
+      const call = prisma.auditLog.create.mock.calls[0][0];
       expect(call.data.oldData).toBeUndefined();
       expect(call.data.newData).toBeUndefined();
     });
 
     it('should strip sensitive fields from metadata', async () => {
-      mockPrisma.auditLog.create.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({} as any);
 
       await service.log({
         userId: 'user-1',
@@ -154,12 +143,12 @@ describe('AuditLogService', () => {
         },
       });
 
-      const call = mockPrisma.auditLog.create.mock.calls[0][0];
+      const call = prisma.auditLog.create.mock.calls[0][0];
       expect(call.data.metadata).toEqual({ reason: 'test' });
     });
 
     it('should not throw when database create fails', async () => {
-      mockPrisma.auditLog.create.mockRejectedValue(new Error('DB down'));
+      prisma.auditLog.create.mockRejectedValue(new Error('DB down'));
 
       await expect(
         service.log({
@@ -174,43 +163,43 @@ describe('AuditLogService', () => {
   describe('fetchOldData', () => {
     it('should fetch User record', async () => {
       const user = { id: 'user-1', email: 'test@example.com' };
-      mockPrisma.user.findUnique.mockResolvedValue(user);
+      prisma.user.findUnique.mockResolvedValue(user as any);
 
       const result = await service.fetchOldData('User', 'user-1');
 
       expect(result).toEqual(user);
-      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-1' },
       });
     });
 
     it('should fetch SubscriptionPlan record', async () => {
       const plan = { id: 'plan-1', name: 'Monthly' };
-      mockPrisma.subscriptionPlan.findUnique.mockResolvedValue(plan);
+      prisma.subscriptionPlan.findUnique.mockResolvedValue(plan as any);
 
       const result = await service.fetchOldData('SubscriptionPlan', 'plan-1');
 
       expect(result).toEqual(plan);
-      expect(mockPrisma.subscriptionPlan.findUnique).toHaveBeenCalledWith({
+      expect(prisma.subscriptionPlan.findUnique).toHaveBeenCalledWith({
         where: { id: 'plan-1' },
       });
     });
 
     it('should fetch Subscription (memberSubscription) record', async () => {
       const sub = { id: 'sub-1', status: 'ACTIVE' };
-      mockPrisma.memberSubscription.findUnique.mockResolvedValue(sub);
+      prisma.memberSubscription.findUnique.mockResolvedValue(sub as any);
 
       const result = await service.fetchOldData('Subscription', 'sub-1');
 
       expect(result).toEqual(sub);
-      expect(mockPrisma.memberSubscription.findUnique).toHaveBeenCalledWith({
+      expect(prisma.memberSubscription.findUnique).toHaveBeenCalledWith({
         where: { id: 'sub-1' },
       });
     });
 
     it('should fetch Salary (staffSalaryRecord) record', async () => {
       const salary = { id: 'sal-1', amount: 50000 };
-      mockPrisma.staffSalaryRecord.findUnique.mockResolvedValue(salary);
+      prisma.staffSalaryRecord.findUnique.mockResolvedValue(salary as any);
 
       const result = await service.fetchOldData('Salary', 'sal-1');
 
@@ -219,7 +208,7 @@ describe('AuditLogService', () => {
 
     it('should fetch Trainer (trainerProfile) record', async () => {
       const trainer = { id: 'trainer-1', specialization: 'Fitness' };
-      mockPrisma.trainerProfile.findUnique.mockResolvedValue(trainer);
+      prisma.trainerProfile.findUnique.mockResolvedValue(trainer as any);
 
       const result = await service.fetchOldData('Trainer', 'trainer-1');
 
@@ -228,7 +217,7 @@ describe('AuditLogService', () => {
 
     it('should fetch Entrance record', async () => {
       const entrance = { id: 'ent-1', name: 'Main' };
-      mockPrisma.entrance.findUnique.mockResolvedValue(entrance);
+      prisma.entrance.findUnique.mockResolvedValue(entrance as any);
 
       const result = await service.fetchOldData('Entrance', 'ent-1');
 
@@ -237,7 +226,7 @@ describe('AuditLogService', () => {
 
     it('should fetch QrCode (gymQrCode) record', async () => {
       const qr = { id: 'qr-1', code: 'abc123' };
-      mockPrisma.gymQrCode.findUnique.mockResolvedValue(qr);
+      prisma.gymQrCode.findUnique.mockResolvedValue(qr as any);
 
       const result = await service.fetchOldData('QrCode', 'qr-1');
 
@@ -251,7 +240,7 @@ describe('AuditLogService', () => {
     });
 
     it('should return null when record not found', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue(null);
 
       const result = await service.fetchOldData('User', 'nonexistent');
 
@@ -259,9 +248,7 @@ describe('AuditLogService', () => {
     });
 
     it('should return null when database query fails', async () => {
-      mockPrisma.user.findUnique.mockRejectedValue(
-        new Error('DB connection lost'),
-      );
+      prisma.user.findUnique.mockRejectedValue(new Error('DB connection lost'));
 
       const result = await service.fetchOldData('User', 'user-1');
 
@@ -294,8 +281,8 @@ describe('AuditLogService', () => {
     ];
 
     it('should return paginated audit logs', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue(mockAuditLogs);
-      mockPrisma.auditLog.count.mockResolvedValue(1);
+      prisma.auditLog.findMany.mockResolvedValue(mockAuditLogs as any);
+      prisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.findAll({ page: 1, limit: 20 });
 
@@ -303,7 +290,7 @@ describe('AuditLogService', () => {
         data: mockAuditLogs,
         meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
       });
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith({
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
         where: {},
         include: {
           user: {
@@ -317,12 +304,12 @@ describe('AuditLogService', () => {
     });
 
     it('should apply userId filter', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       await service.findAll({ page: 1, limit: 20, userId: 'user-1' });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ userId: 'user-1' }),
         }),
@@ -330,12 +317,12 @@ describe('AuditLogService', () => {
     });
 
     it('should apply action filter', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       await service.findAll({ page: 1, limit: 20, action: AuditAction.CREATE });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ action: AuditAction.CREATE }),
         }),
@@ -343,12 +330,12 @@ describe('AuditLogService', () => {
     });
 
     it('should apply resource filter', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       await service.findAll({ page: 1, limit: 20, resource: 'User' });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ resource: 'User' }),
         }),
@@ -356,12 +343,12 @@ describe('AuditLogService', () => {
     });
 
     it('should apply resourceId filter', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       await service.findAll({ page: 1, limit: 20, resourceId: 'user-2' });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ resourceId: 'user-2' }),
         }),
@@ -369,15 +356,15 @@ describe('AuditLogService', () => {
     });
 
     it('should apply date range filter', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       const startDate = '2026-03-01';
       const endDate = '2026-03-10';
 
       await service.findAll({ page: 1, limit: 20, startDate, endDate });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             createdAt: { gte: new Date(startDate), lte: new Date(endDate) },
@@ -387,12 +374,12 @@ describe('AuditLogService', () => {
     });
 
     it('should apply ipAddress filter', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       await service.findAll({ page: 1, limit: 20, ipAddress: '192.168.1.1' });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ ipAddress: '192.168.1.1' }),
         }),
@@ -400,12 +387,12 @@ describe('AuditLogService', () => {
     });
 
     it('should calculate correct pagination offset', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(50);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(50);
 
       const result = await service.findAll({ page: 3, limit: 10 });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ skip: 20, take: 10 }),
       );
       expect(result.meta).toEqual({
@@ -417,8 +404,8 @@ describe('AuditLogService', () => {
     });
 
     it('should apply multiple filters simultaneously', async () => {
-      mockPrisma.auditLog.findMany.mockResolvedValue([]);
-      mockPrisma.auditLog.count.mockResolvedValue(0);
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.auditLog.count.mockResolvedValue(0);
 
       await service.findAll({
         page: 1,
@@ -428,7 +415,7 @@ describe('AuditLogService', () => {
         resource: 'User',
       });
 
-      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             userId: 'user-1',

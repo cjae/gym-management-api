@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -18,15 +20,7 @@ function getMondayOfWeek(date: Date): Date {
 
 describe('AttendanceService', () => {
   let service: AttendanceService;
-
-  const mockPrisma = {
-    gymQrCode: { findFirst: jest.fn() },
-    subscriptionMember: { findFirst: jest.fn() },
-    attendance: { findUnique: jest.fn(), create: jest.fn() },
-    streak: { upsert: jest.fn(), findUnique: jest.fn() },
-    user: { findUnique: jest.fn() },
-    entrance: { findUnique: jest.fn() },
-  };
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockEventEmitter = { emit: jest.fn() };
 
@@ -42,34 +36,35 @@ describe('AttendanceService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AttendanceService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
     service = module.get<AttendanceService>(AttendanceService);
+    prisma = module.get(PrismaService);
     jest.clearAllMocks();
   });
 
   it('should reject invalid QR code', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue(null);
+    prisma.gymQrCode.findFirst.mockResolvedValue(null);
     await expect(
       service.checkIn('member-1', { qrCode: 'invalid' }),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('should reject member without active subscription', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
-    mockPrisma.subscriptionMember.findFirst.mockResolvedValue(null);
-    mockPrisma.user.findUnique.mockResolvedValue({
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue(null);
+    prisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
       firstName: 'John',
       lastName: 'Doe',
       displayPicture: null,
-    });
+    } as any);
     await expect(
       service.checkIn('member-1', { qrCode: 'valid' }),
     ).rejects.toThrow(ForbiddenException);
@@ -89,29 +84,29 @@ describe('AttendanceService', () => {
   });
 
   it('should emit check_in.result on successful check-in', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
-    mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
-    });
-    mockPrisma.attendance.findUnique.mockResolvedValue(null);
-    mockPrisma.attendance.create.mockResolvedValue({});
-    mockPrisma.user.findUnique.mockResolvedValue({
+    } as any);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({} as any);
+    prisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
       firstName: 'Jane',
       lastName: 'Smith',
       displayPicture: 'https://example.com/pic.jpg',
-    });
-    mockPrisma.streak.findUnique.mockResolvedValue(null);
-    mockPrisma.streak.upsert.mockResolvedValue({
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue(null);
+    prisma.streak.upsert.mockResolvedValue({
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
       weekStart: currentMonday,
-    });
+    } as any);
 
     const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -132,30 +127,30 @@ describe('AttendanceService', () => {
   });
 
   it('should emit check_in.result with "Already checked in today" on re-scan', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
-    mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
-    });
-    mockPrisma.attendance.findUnique.mockResolvedValue({
+    } as any);
+    prisma.attendance.findUnique.mockResolvedValue({
       id: 'att-1',
       memberId: 'member-1',
-    });
-    mockPrisma.streak.findUnique.mockResolvedValue({
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue({
       memberId: 'member-1',
       weeklyStreak: 5,
       daysThisWeek: 3,
       weekStart: currentMonday,
-    });
-    mockPrisma.user.findUnique.mockResolvedValue({
+    } as any);
+    prisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
       firstName: 'Jane',
       lastName: 'Smith',
       displayPicture: null,
-    });
+    } as any);
 
     const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -180,38 +175,38 @@ describe('AttendanceService', () => {
 
   it('should parse entranceId from QR payload and save on attendance', async () => {
     const entranceId = '550e8400-e29b-41d4-a716-446655440000';
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
-    mockPrisma.entrance.findUnique.mockResolvedValue({
+    } as any);
+    prisma.entrance.findUnique.mockResolvedValue({
       id: entranceId,
       name: 'Front Door',
       isActive: true,
-    });
-    mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
-    });
-    mockPrisma.attendance.findUnique.mockResolvedValue(null);
-    mockPrisma.attendance.create.mockResolvedValue({});
-    mockPrisma.user.findUnique.mockResolvedValue({
+    } as any);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({} as any);
+    prisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
       firstName: 'Jane',
       lastName: 'Smith',
       displayPicture: null,
-    });
-    mockPrisma.streak.findUnique.mockResolvedValue(null);
-    mockPrisma.streak.upsert.mockResolvedValue({
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue(null);
+    prisma.streak.upsert.mockResolvedValue({
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
       weekStart: currentMonday,
-    });
+    } as any);
 
     await service.checkIn('member-1', { qrCode: `valid:${entranceId}` });
 
-    expect(mockPrisma.attendance.create).toHaveBeenCalledWith({
+    expect(prisma.attendance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ entranceId }),
     });
     expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -221,16 +216,16 @@ describe('AttendanceService', () => {
   });
 
   it('should reject check-in with inactive entrance', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
+    } as any);
     const inactiveEntranceId = '550e8400-e29b-41d4-a716-446655440001';
-    mockPrisma.entrance.findUnique.mockResolvedValue({
+    prisma.entrance.findUnique.mockResolvedValue({
       id: inactiveEntranceId,
       name: 'Closed Gate',
       isActive: false,
-    });
+    } as any);
 
     await expect(
       service.checkIn('member-1', { qrCode: `valid:${inactiveEntranceId}` }),
@@ -238,12 +233,12 @@ describe('AttendanceService', () => {
   });
 
   it('should reject check-in with non-existent entrance', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
+    } as any);
     const missingEntranceId = '550e8400-e29b-41d4-a716-446655440002';
-    mockPrisma.entrance.findUnique.mockResolvedValue(null);
+    prisma.entrance.findUnique.mockResolvedValue(null);
 
     await expect(
       service.checkIn('member-1', { qrCode: `valid:${missingEntranceId}` }),
@@ -251,34 +246,34 @@ describe('AttendanceService', () => {
   });
 
   it('should work without entranceId for backwards compatibility', async () => {
-    mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+    prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
-    });
-    mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
-    });
-    mockPrisma.attendance.findUnique.mockResolvedValue(null);
-    mockPrisma.attendance.create.mockResolvedValue({});
-    mockPrisma.user.findUnique.mockResolvedValue({
+    } as any);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({} as any);
+    prisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
       firstName: 'Jane',
       lastName: 'Smith',
       displayPicture: null,
-    });
-    mockPrisma.streak.findUnique.mockResolvedValue(null);
-    mockPrisma.streak.upsert.mockResolvedValue({
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue(null);
+    prisma.streak.upsert.mockResolvedValue({
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
       weekStart: currentMonday,
-    });
+    } as any);
 
     await service.checkIn('member-1', { qrCode: 'valid' });
 
-    expect(mockPrisma.entrance.findUnique).not.toHaveBeenCalled();
-    expect(mockPrisma.attendance.create).toHaveBeenCalledWith({
+    expect(prisma.entrance.findUnique).not.toHaveBeenCalled();
+    expect(prisma.attendance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ entranceId: undefined }),
     });
   });
@@ -286,44 +281,44 @@ describe('AttendanceService', () => {
   describe('weekly streak logic', () => {
     /** Helper: set up mocks so checkIn reaches updateStreak. */
     function setupCheckInMocks() {
-      mockPrisma.gymQrCode.findFirst.mockResolvedValue({
+      prisma.gymQrCode.findFirst.mockResolvedValue({
         id: '1',
         code: 'valid',
-      });
-      mockPrisma.subscriptionMember.findFirst.mockResolvedValue({
+      } as any);
+      prisma.subscriptionMember.findFirst.mockResolvedValue({
         id: 'sm-1',
         memberId: 'member-1',
-      });
-      mockPrisma.attendance.findUnique.mockResolvedValue(null);
-      mockPrisma.attendance.create.mockResolvedValue({});
-      mockPrisma.user.findUnique.mockResolvedValue({
+      } as any);
+      prisma.attendance.findUnique.mockResolvedValue(null);
+      prisma.attendance.create.mockResolvedValue({} as any);
+      prisma.user.findUnique.mockResolvedValue({
         id: 'member-1',
         firstName: 'Jane',
         lastName: 'Smith',
         displayPicture: null,
-      });
+      } as any);
     }
 
     it('should increment daysThisWeek for same-week check-in', async () => {
       setupCheckInMocks();
-      mockPrisma.streak.findUnique.mockResolvedValue({
+      prisma.streak.findUnique.mockResolvedValue({
         memberId: 'member-1',
         weeklyStreak: 3,
         longestStreak: 5,
         daysThisWeek: 2,
         weekStart: currentMonday,
         lastCheckInDate: today,
-      });
-      mockPrisma.streak.upsert.mockResolvedValue({
+      } as any);
+      prisma.streak.upsert.mockResolvedValue({
         weeklyStreak: 3,
         longestStreak: 5,
         daysThisWeek: 3,
         weekStart: currentMonday,
-      });
+      } as any);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
-      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+      expect(prisma.streak.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({ daysThisWeek: 3, weeklyStreak: 3 }),
         }),
@@ -337,24 +332,24 @@ describe('AttendanceService', () => {
       const prevMonday = new Date(currentMonday);
       prevMonday.setDate(prevMonday.getDate() - 7);
 
-      mockPrisma.streak.findUnique.mockResolvedValue({
+      prisma.streak.findUnique.mockResolvedValue({
         memberId: 'member-1',
         weeklyStreak: 2,
         longestStreak: 5,
         daysThisWeek: 4,
         weekStart: prevMonday,
         lastCheckInDate: prevMonday,
-      });
-      mockPrisma.streak.upsert.mockResolvedValue({
+      } as any);
+      prisma.streak.upsert.mockResolvedValue({
         weeklyStreak: 3,
         longestStreak: 5,
         daysThisWeek: 1,
         weekStart: currentMonday,
-      });
+      } as any);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
-      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+      expect(prisma.streak.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({ weeklyStreak: 3, daysThisWeek: 1 }),
         }),
@@ -367,24 +362,24 @@ describe('AttendanceService', () => {
       const prevMonday = new Date(currentMonday);
       prevMonday.setDate(prevMonday.getDate() - 7);
 
-      mockPrisma.streak.findUnique.mockResolvedValue({
+      prisma.streak.findUnique.mockResolvedValue({
         memberId: 'member-1',
         weeklyStreak: 5,
         longestStreak: 5,
         daysThisWeek: 3,
         weekStart: prevMonday,
         lastCheckInDate: prevMonday,
-      });
-      mockPrisma.streak.upsert.mockResolvedValue({
+      } as any);
+      prisma.streak.upsert.mockResolvedValue({
         weeklyStreak: 0,
         longestStreak: 5,
         daysThisWeek: 1,
         weekStart: currentMonday,
-      });
+      } as any);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
-      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+      expect(prisma.streak.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({ weeklyStreak: 0, daysThisWeek: 1 }),
         }),
@@ -397,24 +392,24 @@ describe('AttendanceService', () => {
       const twoWeeksAgo = new Date(currentMonday);
       twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-      mockPrisma.streak.findUnique.mockResolvedValue({
+      prisma.streak.findUnique.mockResolvedValue({
         memberId: 'member-1',
         weeklyStreak: 8,
         longestStreak: 8,
         daysThisWeek: 5,
         weekStart: twoWeeksAgo,
         lastCheckInDate: twoWeeksAgo,
-      });
-      mockPrisma.streak.upsert.mockResolvedValue({
+      } as any);
+      prisma.streak.upsert.mockResolvedValue({
         weeklyStreak: 0,
         longestStreak: 8,
         daysThisWeek: 1,
         weekStart: currentMonday,
-      });
+      } as any);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
-      expect(mockPrisma.streak.upsert).toHaveBeenCalledWith(
+      expect(prisma.streak.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({ weeklyStreak: 0, daysThisWeek: 1 }),
         }),

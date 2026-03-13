@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { BillingService } from './billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -9,16 +11,7 @@ import { UsersService } from '../users/users.service';
 
 describe('BillingService', () => {
   let service: BillingService;
-
-  const mockPrisma = {
-    memberSubscription: {
-      findMany: jest.fn(),
-      update: jest.fn(),
-    },
-    payment: {
-      count: jest.fn(),
-    },
-  };
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockPaymentsService = {
     chargeAuthorization: jest.fn(),
@@ -51,7 +44,7 @@ describe('BillingService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BillingService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: PaymentsService, useValue: mockPaymentsService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
@@ -61,6 +54,7 @@ describe('BillingService', () => {
     }).compile();
 
     service = module.get<BillingService>(BillingService);
+    prisma = module.get(PrismaService);
     jest.clearAllMocks();
   });
 
@@ -80,10 +74,10 @@ describe('BillingService', () => {
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
 
-      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([
+      prisma.memberSubscription.findMany.mockResolvedValueOnce([
         subscription,
-      ]);
-      mockPrisma.payment.count.mockResolvedValueOnce(0);
+      ] as any);
+      prisma.payment.count.mockResolvedValueOnce(0);
       mockPaymentsService.chargeAuthorization.mockResolvedValueOnce({
         id: 'pay-1',
       });
@@ -109,14 +103,14 @@ describe('BillingService', () => {
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
 
-      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([
+      prisma.memberSubscription.findMany.mockResolvedValueOnce([
         subscription,
-      ]);
-      mockPrisma.payment.count.mockResolvedValueOnce(2);
+      ] as any);
+      prisma.payment.count.mockResolvedValueOnce(2);
 
       await service.processCardRenewals();
 
-      expect(mockPrisma.memberSubscription.update).toHaveBeenCalledWith({
+      expect(prisma.memberSubscription.update).toHaveBeenCalledWith({
         where: { id: 'sub-1' },
         data: { status: 'EXPIRED', autoRenew: false },
       });
@@ -142,9 +136,9 @@ describe('BillingService', () => {
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
 
-      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([
+      prisma.memberSubscription.findMany.mockResolvedValueOnce([
         subscription,
-      ]);
+      ] as any);
 
       await service.processMpesaReminders();
 
@@ -179,13 +173,13 @@ describe('BillingService', () => {
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
 
-      mockPrisma.memberSubscription.findMany.mockResolvedValueOnce([
+      prisma.memberSubscription.findMany.mockResolvedValueOnce([
         subscription,
-      ]);
+      ] as any);
 
       await service.expireOverdueSubscriptions();
 
-      expect(mockPrisma.memberSubscription.update).toHaveBeenCalledWith({
+      expect(prisma.memberSubscription.update).toHaveBeenCalledWith({
         where: { id: 'sub-3' },
         data: { status: 'EXPIRED', autoRenew: false },
       });

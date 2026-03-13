@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TrainersService } from './trainers.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 
 describe('TrainersService', () => {
   let service: TrainersService;
-  let prisma: PrismaService;
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockProfile = {
     id: 'profile-1',
@@ -34,33 +36,16 @@ describe('TrainersService', () => {
     notes: null,
   };
 
-  const mockPrisma = {
-    trainerProfile: {
-      create: jest.fn().mockResolvedValue(mockProfile),
-      findMany: jest.fn().mockResolvedValue([mockProfile]),
-      findUnique: jest.fn().mockResolvedValue(mockProfile),
-      count: jest.fn().mockResolvedValue(1),
-    },
-    trainerSchedule: {
-      create: jest.fn().mockResolvedValue(mockSchedule),
-      findMany: jest.fn().mockResolvedValue([mockSchedule]),
-    },
-    trainerAssignment: {
-      create: jest.fn().mockResolvedValue(mockAssignment),
-      findFirst: jest.fn().mockResolvedValue(mockAssignment),
-    },
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TrainersService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
       ],
     }).compile();
 
     service = module.get<TrainersService>(TrainersService);
-    prisma = module.get<PrismaService>(PrismaService);
+    prisma = module.get(PrismaService);
   });
 
   it('should be defined', () => {
@@ -69,19 +54,24 @@ describe('TrainersService', () => {
 
   describe('createProfile', () => {
     it('should create a trainer profile', async () => {
+      prisma.trainerProfile.create.mockResolvedValue(mockProfile as any);
+
       const result = await service.createProfile({
         userId: 'user-1',
         specialization: 'Strength',
         bio: 'Coach',
       });
       expect(result).toEqual(mockProfile);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.trainerProfile.create).toHaveBeenCalled();
     });
   });
 
   describe('findAll', () => {
     it('should return paginated trainer profiles', async () => {
+      prisma.trainerProfile.findMany.mockResolvedValue([mockProfile] as any);
+      prisma.trainerProfile.count.mockResolvedValue(1);
+
       const result = await service.findAll(1, 20);
       expect(result).toEqual({
         data: [mockProfile],
@@ -89,7 +79,7 @@ describe('TrainersService', () => {
         page: 1,
         limit: 20,
       });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.trainerProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 0,
@@ -101,6 +91,8 @@ describe('TrainersService', () => {
 
   describe('findOne', () => {
     it('should return a trainer profile by id', async () => {
+      prisma.trainerProfile.findUnique.mockResolvedValue(mockProfile as any);
+
       const result = await service.findOne('profile-1');
       expect(result).toEqual(mockProfile);
     });
@@ -108,6 +100,8 @@ describe('TrainersService', () => {
 
   describe('addSchedule', () => {
     it('should add a schedule to a trainer', async () => {
+      prisma.trainerSchedule.create.mockResolvedValue(mockSchedule as any);
+
       const result = await service.addSchedule('profile-1', {
         title: 'Morning Class',
         dayOfWeek: 1,
@@ -120,6 +114,8 @@ describe('TrainersService', () => {
 
   describe('getSchedules', () => {
     it('should return schedules for a trainer', async () => {
+      prisma.trainerSchedule.findMany.mockResolvedValue([mockSchedule] as any);
+
       const result = await service.getSchedules('profile-1');
       expect(result).toEqual([mockSchedule]);
     });
@@ -127,6 +123,8 @@ describe('TrainersService', () => {
 
   describe('assignMember', () => {
     it('should assign a member to a trainer', async () => {
+      prisma.trainerAssignment.create.mockResolvedValue(mockAssignment as any);
+
       const result = await service.assignMember({
         trainerId: 'profile-1',
         memberId: 'member-1',
@@ -138,6 +136,10 @@ describe('TrainersService', () => {
 
   describe('getMemberTrainer', () => {
     it('should return current trainer for a member', async () => {
+      prisma.trainerAssignment.findFirst.mockResolvedValue(
+        mockAssignment as any,
+      );
+
       const result = await service.getMemberTrainer('member-1');
       expect(result).toEqual(mockAssignment);
     });

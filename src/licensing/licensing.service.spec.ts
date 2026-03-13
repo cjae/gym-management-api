@@ -1,6 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { LicensingService } from './licensing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
@@ -8,32 +10,13 @@ import axios from 'axios';
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-type MockPrisma = {
-  licenseCache: {
-    findUnique: jest.Mock;
-    upsert: jest.Mock;
-  };
-  user: {
-    count: jest.Mock;
-  };
-};
-
 type MockConfig = {
   get: jest.Mock;
 };
 
 describe('LicensingService', () => {
   let service: LicensingService;
-
-  const mockPrisma: MockPrisma = {
-    licenseCache: {
-      findUnique: jest.fn(),
-      upsert: jest.fn(),
-    },
-    user: {
-      count: jest.fn(),
-    },
-  };
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockConfigService: MockConfig = {
     get: jest.fn().mockReturnValue({
@@ -46,12 +29,13 @@ describe('LicensingService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LicensingService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     service = module.get<LicensingService>(LicensingService);
+    prisma = module.get(PrismaService);
     jest.clearAllMocks();
     // Re-set the default mock after clearAllMocks
     mockConfigService.get.mockReturnValue({
@@ -67,7 +51,7 @@ describe('LicensingService', () => {
         licenseServerUrl: '',
       });
       const devService = new LicensingService(
-        mockPrisma as unknown as PrismaService,
+        prisma as unknown as PrismaService,
         mockConfigService as unknown as ConfigService,
       );
       const result = await devService.isActive();
@@ -75,56 +59,56 @@ describe('LicensingService', () => {
     });
 
     it('should return true when cached status is ACTIVE', async () => {
-      mockPrisma.licenseCache.findUnique.mockResolvedValue({
+      prisma.licenseCache.findUnique.mockResolvedValue({
         status: 'ACTIVE',
         lastSuccessAt: new Date(),
-      });
+      } as any);
       const result = await service.isActive();
       expect(result).toBe(true);
     });
 
     it('should return true when SUSPENDED but within grace period', async () => {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-      mockPrisma.licenseCache.findUnique.mockResolvedValue({
+      prisma.licenseCache.findUnique.mockResolvedValue({
         status: 'SUSPENDED',
         lastSuccessAt: threeDaysAgo,
-      });
+      } as any);
       const result = await service.isActive();
       expect(result).toBe(true);
     });
 
     it('should return false when SUSPENDED and grace period exceeded', async () => {
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-      mockPrisma.licenseCache.findUnique.mockResolvedValue({
+      prisma.licenseCache.findUnique.mockResolvedValue({
         status: 'SUSPENDED',
         lastSuccessAt: tenDaysAgo,
-      });
+      } as any);
       const result = await service.isActive();
       expect(result).toBe(false);
     });
 
     it('should return true when no cache exists (first run)', async () => {
-      mockPrisma.licenseCache.findUnique.mockResolvedValue(null);
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
       const result = await service.isActive();
       expect(result).toBe(true);
     });
 
     it('should return true when EXPIRED but within grace period', async () => {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-      mockPrisma.licenseCache.findUnique.mockResolvedValue({
+      prisma.licenseCache.findUnique.mockResolvedValue({
         status: 'EXPIRED',
         lastSuccessAt: threeDaysAgo,
-      });
+      } as any);
       const result = await service.isActive();
       expect(result).toBe(true);
     });
 
     it('should return false when EXPIRED and grace period exceeded', async () => {
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-      mockPrisma.licenseCache.findUnique.mockResolvedValue({
+      prisma.licenseCache.findUnique.mockResolvedValue({
         status: 'EXPIRED',
         lastSuccessAt: tenDaysAgo,
-      });
+      } as any);
       const result = await service.isActive();
       expect(result).toBe(false);
     });
@@ -132,7 +116,7 @@ describe('LicensingService', () => {
 
   describe('validateLicense', () => {
     it('should update cache with ACTIVE on successful response', async () => {
-      mockPrisma.user.count.mockResolvedValue(25);
+      prisma.user.count.mockResolvedValue(25);
       mockedAxios.post.mockResolvedValue({
         status: 200,
         data: {
@@ -143,7 +127,7 @@ describe('LicensingService', () => {
           expiresAt: '2026-04-10T00:00:00Z',
         },
       });
-      mockPrisma.licenseCache.upsert.mockResolvedValue({});
+      prisma.licenseCache.upsert.mockResolvedValue({} as any);
 
       await service.validateLicense();
 
@@ -154,7 +138,7 @@ describe('LicensingService', () => {
           headers: { 'X-License-Key': 'test-license-key' },
         }),
       );
-      expect(mockPrisma.licenseCache.upsert).toHaveBeenCalledWith(
+      expect(prisma.licenseCache.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'singleton' },
           update: expect.objectContaining({ status: 'ACTIVE' }),
@@ -164,18 +148,18 @@ describe('LicensingService', () => {
     });
 
     it('should set SUSPENDED on 401 response', async () => {
-      mockPrisma.user.count.mockResolvedValue(25);
+      prisma.user.count.mockResolvedValue(25);
       const error = {
         isAxiosError: true,
         response: { status: 401 },
       };
       mockedAxios.post.mockRejectedValue(error);
       (mockedAxios.isAxiosError as unknown) = jest.fn().mockReturnValue(true);
-      mockPrisma.licenseCache.upsert.mockResolvedValue({});
+      prisma.licenseCache.upsert.mockResolvedValue({} as any);
 
       await service.validateLicense();
 
-      expect(mockPrisma.licenseCache.upsert).toHaveBeenCalledWith(
+      expect(prisma.licenseCache.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({ status: 'SUSPENDED' }),
         }),
@@ -183,18 +167,18 @@ describe('LicensingService', () => {
     });
 
     it('should set SUSPENDED on 403 response', async () => {
-      mockPrisma.user.count.mockResolvedValue(25);
+      prisma.user.count.mockResolvedValue(25);
       const error = {
         isAxiosError: true,
         response: { status: 403 },
       };
       mockedAxios.post.mockRejectedValue(error);
       (mockedAxios.isAxiosError as unknown) = jest.fn().mockReturnValue(true);
-      mockPrisma.licenseCache.upsert.mockResolvedValue({});
+      prisma.licenseCache.upsert.mockResolvedValue({} as any);
 
       await service.validateLicense();
 
-      expect(mockPrisma.licenseCache.upsert).toHaveBeenCalledWith(
+      expect(prisma.licenseCache.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({ status: 'SUSPENDED' }),
         }),
@@ -202,7 +186,7 @@ describe('LicensingService', () => {
     });
 
     it('should not change status on network error', async () => {
-      mockPrisma.user.count.mockResolvedValue(25);
+      prisma.user.count.mockResolvedValue(25);
       const error = {
         isAxiosError: true,
         response: undefined,
@@ -212,7 +196,7 @@ describe('LicensingService', () => {
 
       await service.validateLicense();
 
-      expect(mockPrisma.licenseCache.upsert).not.toHaveBeenCalled();
+      expect(prisma.licenseCache.upsert).not.toHaveBeenCalled();
     });
 
     it('should skip validation when LICENSE_KEY is not set', async () => {
@@ -221,7 +205,7 @@ describe('LicensingService', () => {
         licenseServerUrl: '',
       });
       const devService = new LicensingService(
-        mockPrisma as unknown as PrismaService,
+        prisma as unknown as PrismaService,
         mockConfigService as unknown as ConfigService,
       );
 
@@ -238,7 +222,7 @@ describe('LicensingService', () => {
         licenseServerUrl: 'https://license.example.com',
       });
       const configuredService = new LicensingService(
-        mockPrisma as unknown as PrismaService,
+        prisma as unknown as PrismaService,
         mockConfigService as unknown as ConfigService,
       );
       const spy = jest
@@ -257,7 +241,7 @@ describe('LicensingService', () => {
         licenseServerUrl: '',
       });
       const devService = new LicensingService(
-        mockPrisma as unknown as PrismaService,
+        prisma as unknown as PrismaService,
         mockConfigService as unknown as ConfigService,
       );
       const spy = jest
@@ -273,15 +257,15 @@ describe('LicensingService', () => {
 
   describe('getMemberLimit', () => {
     it('should return maxMembers from cached license', async () => {
-      mockPrisma.licenseCache.findUnique.mockResolvedValue({
+      prisma.licenseCache.findUnique.mockResolvedValue({
         maxMembers: 100,
-      });
+      } as any);
       const result = await service.getMemberLimit();
       expect(result).toBe(100);
     });
 
     it('should return null when no cache exists', async () => {
-      mockPrisma.licenseCache.findUnique.mockResolvedValue(null);
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
       const result = await service.getMemberLimit();
       expect(result).toBeNull();
     });
