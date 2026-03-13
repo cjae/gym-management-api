@@ -184,12 +184,68 @@ export class NotificationsService {
   /**
    * Poll Expo for push receipts and remove invalid tokens.
    * Runs every 30 minutes — Expo recommends waiting ~15min after sending.
-   * Will be fully rewritten in Task 4 to use PushTicket DB table.
+   * Reads from PushTicket DB table, uses Map for O(1) lookups.
    */
   @Cron(CronExpression.EVERY_30_MINUTES, { timeZone: 'Africa/Nairobi' })
   async handlePushReceipts() {
-    // Stubbed — will be rewritten in Task 4 to query PushTicket table
-    return;
+    const tickets = await this.prisma.pushTicket.findMany({
+      orderBy: { createdAt: 'asc' },
+      take: 1000,
+    });
+
+    if (tickets.length === 0) return;
+
+    try {
+      const ticketMap = new Map(
+        tickets.map((t) => [t.ticketId, t.pushToken]),
+      );
+      const ticketIds = tickets.map((t) => t.ticketId);
+      const invalidTokens: string[] = [];
+
+      const chunks = this.chunkArray(ticketIds, 1000);
+      for (const chunk of chunks) {
+        const response = await fetch(
+          'https://exp.host/--/api/v2/push/getReceipts',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: chunk }),
+          },
+        );
+
+        const json = (await response.json()) as {
+          data: Record<
+            string,
+            { status: string; details?: { error?: string } }
+          >;
+        };
+
+        for (const [ticketId, receipt] of Object.entries(json.data)) {
+          if (
+            receipt.status === 'error' &&
+            receipt.details?.error === 'DeviceNotRegistered'
+          ) {
+            const pushToken = ticketMap.get(ticketId);
+            if (pushToken) invalidTokens.push(pushToken);
+          }
+        }
+      }
+
+      if (invalidTokens.length > 0) {
+        const result = await this.prisma.pushToken.deleteMany({
+          where: { token: { in: invalidTokens } },
+        });
+        this.logger.log(`Removed ${result.count} invalid push tokens`);
+      }
+
+      // Delete processed tickets regardless of outcome
+      await this.prisma.pushTicket.deleteMany({
+        where: { id: { in: tickets.map((t) => t.id) } },
+      });
+    } catch (err) {
+      this.logger.error('Failed to process push receipts', err);
+      // Leave tickets for next cycle
+    }
   }
 
   @Cron('*/10 * * * * *', { timeZone: 'Africa/Nairobi' })

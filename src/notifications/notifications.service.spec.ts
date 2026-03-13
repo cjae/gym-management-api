@@ -270,4 +270,45 @@ describe('NotificationsService', () => {
       );
     });
   });
+
+  describe('handlePushReceipts', () => {
+    it('should skip when no push tickets exist', async () => {
+      mockPrisma.pushTicket.findMany.mockResolvedValue([]);
+      global.fetch = jest.fn();
+
+      await service.handlePushReceipts();
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should delete invalid tokens from DeviceNotRegistered receipts', async () => {
+      mockPrisma.pushTicket.findMany.mockResolvedValue([
+        { id: 'pt-1', ticketId: 'ticket-1', pushToken: 'ExponentPushToken[aaa]' },
+        { id: 'pt-2', ticketId: 'ticket-2', pushToken: 'ExponentPushToken[bbb]' },
+      ]);
+
+      global.fetch = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: {
+            'ticket-1': { status: 'ok' },
+            'ticket-2': {
+              status: 'error',
+              details: { error: 'DeviceNotRegistered' },
+            },
+          },
+        }),
+      });
+
+      await service.handlePushReceipts();
+
+      // Should delete the invalid push token
+      expect(mockPrisma.pushToken.deleteMany).toHaveBeenCalledWith({
+        where: { token: { in: ['ExponentPushToken[bbb]'] } },
+      });
+      // Should delete processed tickets
+      expect(mockPrisma.pushTicket.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['pt-1', 'pt-2'] } },
+      });
+    });
+  });
 });
