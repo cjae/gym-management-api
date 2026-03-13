@@ -245,6 +245,42 @@ describe('AuditLogService', () => {
       });
     });
 
+    it('should fetch Payment record', async () => {
+      const payment = { id: 'pay-1', amount: 5000 };
+      prisma.payment.findUnique.mockResolvedValue(payment as any);
+
+      const result = await service.fetchOldData('Payment', 'pay-1');
+
+      expect(result).toEqual(payment);
+    });
+
+    it('should fetch Attendance record', async () => {
+      const attendance = { id: 'att-1', memberId: 'member-1' };
+      prisma.attendance.findUnique.mockResolvedValue(attendance as any);
+
+      const result = await service.fetchOldData('Attendance', 'att-1');
+
+      expect(result).toEqual(attendance);
+    });
+
+    it('should fetch Banner record', async () => {
+      const banner = { id: 'banner-1', title: 'Welcome' };
+      prisma.banner.findUnique.mockResolvedValue(banner as any);
+
+      const result = await service.fetchOldData('Banners', 'banner-1');
+
+      expect(result).toEqual(banner);
+    });
+
+    it('should fetch Notification record', async () => {
+      const notification = { id: 'notif-1', title: 'Alert' };
+      prisma.notification.findUnique.mockResolvedValue(notification as any);
+
+      const result = await service.fetchOldData('Notifications', 'notif-1');
+
+      expect(result).toEqual(notification);
+    });
+
     it('should return null for unknown resource', async () => {
       const result = await service.fetchOldData('Unknown', 'id-1');
 
