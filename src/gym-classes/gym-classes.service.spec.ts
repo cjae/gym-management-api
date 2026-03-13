@@ -122,7 +122,10 @@ describe('GymClassesService', () => {
   describe('update', () => {
     it('should update a gym class', async () => {
       const updated = { ...mockGymClass, title: 'Evening HIIT' };
-      prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
+      prisma.gymClass.findUnique.mockResolvedValue({
+        ...mockGymClass,
+        enrollments: [],
+      } as any);
       prisma.gymClass.findFirst.mockResolvedValue(null);
       prisma.gymClass.update.mockResolvedValue(updated as any);
 
@@ -135,9 +138,7 @@ describe('GymClassesService', () => {
       const updated = { ...mockGymClass, startTime: '07:00', endTime: '08:00' };
       prisma.gymClass.findUnique.mockResolvedValue({
         ...mockGymClass,
-        enrollments: [
-          { member: { email: 'a@b.com', firstName: 'John' } },
-        ],
+        enrollments: [{ member: { email: 'a@b.com', firstName: 'John' } }],
       } as any);
       prisma.gymClass.findFirst.mockResolvedValue(null);
       prisma.gymClass.update.mockResolvedValue(updated as any);
@@ -171,9 +172,7 @@ describe('GymClassesService', () => {
     it('should soft-delete and notify enrolled members', async () => {
       prisma.gymClass.findUnique.mockResolvedValue({
         ...mockGymClass,
-        enrollments: [
-          { member: { email: 'a@b.com', firstName: 'John' } },
-        ],
+        enrollments: [{ member: { email: 'a@b.com', firstName: 'John' } }],
       } as any);
       prisma.gymClass.update.mockResolvedValue({
         ...mockGymClass,
