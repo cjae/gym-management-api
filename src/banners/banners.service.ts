@@ -81,7 +81,7 @@ export class BannersService {
   }
 
   async update(id: string, dto: UpdateBannerDto) {
-    await this.findOne(id);
+    const banner = await this.findOne(id);
 
     const data: Prisma.BannerUpdateInput = { ...dto };
 
@@ -90,6 +90,14 @@ export class BannersService {
     }
     if (dto.endDate) {
       data.endDate = new Date(dto.endDate);
+    }
+
+    const effectiveStart = dto.startDate
+      ? new Date(dto.startDate)
+      : banner.startDate;
+    const effectiveEnd = dto.endDate ? new Date(dto.endDate) : banner.endDate;
+    if (effectiveEnd <= effectiveStart) {
+      throw new BadRequestException('endDate must be after startDate');
     }
 
     return this.prisma.banner.update({

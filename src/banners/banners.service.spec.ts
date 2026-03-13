@@ -141,6 +141,12 @@ describe('BannersService', () => {
       expect(result).toEqual(mockBanner);
     });
 
+    it('should throw BadRequestException if endDate is before startDate on update', async () => {
+      await expect(
+        service.update('banner-1', { startDate: '2026-05-01T00:00:00.000Z' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('should throw NotFoundException if banner not found', async () => {
       mockPrisma.banner.findFirst.mockResolvedValueOnce(null);
       await expect(
