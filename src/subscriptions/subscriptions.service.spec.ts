@@ -5,6 +5,7 @@ import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AdminPaymentMethod } from './dto/admin-create-subscription.dto';
+import { MemberPaymentMethod } from './dto/create-subscription.dto';
 
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
@@ -99,7 +100,7 @@ describe('SubscriptionsService', () => {
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: 'MPESA' as const,
+        paymentMethod: MemberPaymentMethod.MPESA,
       });
 
       expect(result.status).toBe('PENDING');
@@ -134,7 +135,7 @@ describe('SubscriptionsService', () => {
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: 'MPESA' as const,
+        paymentMethod: MemberPaymentMethod.MPESA,
       });
 
       expect(result.id).toBe('pending-sub-1');
@@ -158,7 +159,7 @@ describe('SubscriptionsService', () => {
       await expect(
         service.create('user-1', {
           planId: 'plan-1',
-          paymentMethod: 'MPESA' as const,
+          paymentMethod: MemberPaymentMethod.MPESA,
         }),
       ).rejects.toThrow('Subscription plan is not active');
     });
@@ -172,7 +173,7 @@ describe('SubscriptionsService', () => {
       await expect(
         service.create('user-1', {
           planId: 'plan-1',
-          paymentMethod: 'MPESA' as const,
+          paymentMethod: MemberPaymentMethod.MPESA,
         }),
       ).rejects.toThrow('Member already has an active subscription');
     });

@@ -170,7 +170,7 @@ describe('LicensingService', () => {
         response: { status: 401 },
       };
       mockedAxios.post.mockRejectedValue(error);
-      mockedAxios.isAxiosError = jest.fn().mockReturnValue(true);
+      (mockedAxios.isAxiosError as unknown) = jest.fn().mockReturnValue(true);
       mockPrisma.licenseCache.upsert.mockResolvedValue({});
 
       await service.validateLicense();
@@ -189,7 +189,7 @@ describe('LicensingService', () => {
         response: { status: 403 },
       };
       mockedAxios.post.mockRejectedValue(error);
-      mockedAxios.isAxiosError = jest.fn().mockReturnValue(true);
+      (mockedAxios.isAxiosError as unknown) = jest.fn().mockReturnValue(true);
       mockPrisma.licenseCache.upsert.mockResolvedValue({});
 
       await service.validateLicense();
@@ -208,7 +208,7 @@ describe('LicensingService', () => {
         response: undefined,
       };
       mockedAxios.post.mockRejectedValue(error);
-      mockedAxios.isAxiosError = jest.fn().mockReturnValue(true);
+      (mockedAxios.isAxiosError as unknown) = jest.fn().mockReturnValue(true);
 
       await service.validateLicense();
 

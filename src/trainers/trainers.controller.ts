@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   Param,
   Query,
@@ -17,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
+import { UpdateTrainerProfileDto } from './dto/update-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 import { TrainerProfileResponseDto } from './dto/trainer-profile-response.dto';
@@ -57,6 +59,12 @@ export class TrainersController {
     return this.trainersService.getMemberTrainer(memberId);
   }
 
+  @Get('schedules')
+  @ApiOkResponse({ type: [TrainerScheduleResponseDto] })
+  getAllSchedules() {
+    return this.trainersService.getAllSchedules();
+  }
+
   @Get('user/:userId')
   @ApiOkResponse({ type: TrainerProfileResponseDto })
   @ApiNotFoundResponse({
@@ -71,6 +79,15 @@ export class TrainersController {
   @ApiNotFoundResponse({ description: 'Trainer not found' })
   findOne(@Param('id') id: string) {
     return this.trainersService.findOne(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: TrainerProfileResponseDto })
+  @ApiNotFoundResponse({ description: 'Trainer not found' })
+  updateProfile(@Param('id') id: string, @Body() dto: UpdateTrainerProfileDto) {
+    return this.trainersService.updateProfile(id, dto);
   }
 
   @Post(':id/schedules')
