@@ -48,7 +48,7 @@ export class GymClassesService {
         dayOfWeek: dto.dayOfWeek,
         startTime: dto.startTime,
         endTime: dto.endTime,
-        maxCapacity: dto.maxCapacity ?? 20,
+        maxCapacity: dto.maxCapacity ?? 50,
         trainerId: dto.trainerId,
       },
       include: {
