@@ -28,6 +28,7 @@ import { LicensingModule } from './licensing/licensing.module';
 import { LicenseGuard } from './licensing/licensing.guard';
 import { AuditLogModule } from './audit-logs/audit-logs.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { BannersModule } from './banners/banners.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     UploadsModule,
     AuditLogModule,
     NotificationsModule,
+    BannersModule,
   ],
   controllers: [AppController],
   providers: [
