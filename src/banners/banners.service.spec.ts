@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
 import { BannersService } from './banners.service';
 import { PrismaService } from '../prisma/prisma.service';
