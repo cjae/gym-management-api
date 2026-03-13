@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { UpdateTrainerProfileDto } from './dto/update-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 
 const safeUserSelect = {
@@ -111,6 +112,29 @@ export class TrainersService {
         },
       },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+  }
+
+  async updateSchedule(
+    trainerId: string,
+    scheduleId: string,
+    dto: UpdateScheduleDto,
+  ) {
+    return this.prisma.trainerSchedule.update({
+      where: { id: scheduleId, trainerId },
+      data: {
+        title: dto.title,
+        dayOfWeek: dto.dayOfWeek,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        maxCapacity: dto.maxCapacity,
+      },
+    });
+  }
+
+  async deleteSchedule(trainerId: string, scheduleId: string) {
+    return this.prisma.trainerSchedule.delete({
+      where: { id: scheduleId, trainerId },
     });
   }
 

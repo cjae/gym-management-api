@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -20,6 +21,7 @@ import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { UpdateTrainerProfileDto } from './dto/update-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 import { TrainerProfileResponseDto } from './dto/trainer-profile-response.dto';
 import { TrainerScheduleResponseDto } from './dto/trainer-schedule-response.dto';
@@ -102,6 +104,31 @@ export class TrainersController {
   @ApiOkResponse({ type: [TrainerScheduleResponseDto] })
   getSchedules(@Param('id') trainerId: string) {
     return this.trainersService.getSchedules(trainerId);
+  }
+
+  @Patch(':id/schedules/:scheduleId')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: TrainerScheduleResponseDto })
+  @ApiNotFoundResponse({ description: 'Schedule not found' })
+  updateSchedule(
+    @Param('id') trainerId: string,
+    @Param('scheduleId') scheduleId: string,
+    @Body() dto: UpdateScheduleDto,
+  ) {
+    return this.trainersService.updateSchedule(trainerId, scheduleId, dto);
+  }
+
+  @Delete(':id/schedules/:scheduleId')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: TrainerScheduleResponseDto })
+  @ApiNotFoundResponse({ description: 'Schedule not found' })
+  deleteSchedule(
+    @Param('id') trainerId: string,
+    @Param('scheduleId') scheduleId: string,
+  ) {
+    return this.trainersService.deleteSchedule(trainerId, scheduleId);
   }
 
   @Post('assign')
