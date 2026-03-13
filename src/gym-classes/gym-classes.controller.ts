@@ -101,10 +101,7 @@ export class GymClassesController {
   @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiOkResponse({ description: 'Unenrolled from class' })
-  unenroll(
-    @Param('id') classId: string,
-    @CurrentUser('id') memberId: string,
-  ) {
+  unenroll(@Param('id') classId: string, @CurrentUser('id') memberId: string) {
     return this.gymClassesService.unenroll(classId, memberId);
   }
 

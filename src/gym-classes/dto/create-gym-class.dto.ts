@@ -24,7 +24,10 @@ export class CreateGymClassDto {
   @MaxLength(500)
   description?: string;
 
-  @ApiProperty({ example: 1, description: 'Day of week (0 = Sunday, 6 = Saturday)' })
+  @ApiProperty({
+    example: 1,
+    description: 'Day of week (0 = Sunday, 6 = Saturday)',
+  })
   @IsInt()
   @Min(0)
   @Max(6)
@@ -51,7 +54,10 @@ export class CreateGymClassDto {
   @Min(1)
   maxCapacity?: number;
 
-  @ApiPropertyOptional({ example: 'trainer-profile-uuid', description: 'Trainer profile ID to assign' })
+  @ApiPropertyOptional({
+    example: 'trainer-profile-uuid',
+    description: 'Trainer profile ID to assign',
+  })
   @IsOptional()
   @IsUUID()
   trainerId?: string;

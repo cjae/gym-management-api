@@ -216,7 +216,8 @@ describe('SubscriptionsService', () => {
 
       await service.findAll(1, 20);
 
-      const findManyCall = prisma.memberSubscription.findMany.mock.calls[0]?.[0];
+      const findManyCall =
+        prisma.memberSubscription.findMany.mock.calls[0]?.[0];
       expect(findManyCall?.where).toEqual(
         expect.objectContaining({ status: { not: 'PENDING' } }),
       );

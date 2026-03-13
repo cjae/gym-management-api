@@ -86,7 +86,7 @@ export class GymClassesService {
       },
     });
 
-    if (!gymClass) {
+    if (!gymClass || !gymClass.isActive) {
       throw new NotFoundException('Class not found');
     }
 
@@ -176,10 +176,15 @@ export class GymClassesService {
   async enroll(classId: string, memberId: string) {
     const gymClass = await this.prisma.gymClass.findUnique({
       where: { id: classId },
+      include: { _count: { select: { enrollments: true } } },
     });
 
     if (!gymClass || !gymClass.isActive) {
       throw new NotFoundException('Class not found or is inactive');
+    }
+
+    if (gymClass._count.enrollments >= gymClass.maxCapacity) {
+      throw new ConflictException('Class is full');
     }
 
     return this.prisma.classEnrollment.create({
@@ -188,12 +193,28 @@ export class GymClassesService {
   }
 
   async unenroll(classId: string, memberId: string) {
+    const gymClass = await this.prisma.gymClass.findUnique({
+      where: { id: classId },
+    });
+
+    if (!gymClass) {
+      throw new NotFoundException('Class not found');
+    }
+
     await this.prisma.classEnrollment.deleteMany({
       where: { classId, memberId },
     });
   }
 
   async getEnrollments(classId: string) {
+    const gymClass = await this.prisma.gymClass.findUnique({
+      where: { id: classId },
+    });
+
+    if (!gymClass) {
+      throw new NotFoundException('Class not found');
+    }
+
     return this.prisma.classEnrollment.findMany({
       where: { classId },
       include: { member: { select: safeUserSelect } },

@@ -117,6 +117,17 @@ describe('GymClassesService', () => {
         NotFoundException,
       );
     });
+
+    it('should throw NotFoundException for inactive class', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue({
+        ...mockGymClass,
+        isActive: false,
+      } as any);
+
+      await expect(service.findOne('class-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('update', () => {
@@ -194,7 +205,10 @@ describe('GymClassesService', () => {
 
   describe('enroll', () => {
     it('should enroll a member in a class', async () => {
-      prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
+      prisma.gymClass.findUnique.mockResolvedValue({
+        ...mockGymClass,
+        _count: { enrollments: 5 },
+      } as any);
       prisma.classEnrollment.create.mockResolvedValue(mockEnrollment as any);
 
       const result = await service.enroll('class-1', 'member-1');
@@ -206,16 +220,30 @@ describe('GymClassesService', () => {
       prisma.gymClass.findUnique.mockResolvedValue({
         ...mockGymClass,
         isActive: false,
+        _count: { enrollments: 0 },
       } as any);
 
       await expect(service.enroll('class-1', 'member-1')).rejects.toThrow(
         NotFoundException,
       );
     });
+
+    it('should throw ConflictException when class is at capacity', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue({
+        ...mockGymClass,
+        maxCapacity: 20,
+        _count: { enrollments: 20 },
+      } as any);
+
+      await expect(service.enroll('class-1', 'member-1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
   });
 
   describe('unenroll', () => {
     it('should remove enrollment', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
       prisma.classEnrollment.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.unenroll('class-1', 'member-1');
@@ -224,10 +252,19 @@ describe('GymClassesService', () => {
         where: { classId: 'class-1', memberId: 'member-1' },
       });
     });
+
+    it('should throw NotFoundException when class not found', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue(null);
+
+      await expect(service.unenroll('class-1', 'member-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('getEnrollments', () => {
     it('should return enrollments for a class', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
       prisma.classEnrollment.findMany.mockResolvedValue([
         mockEnrollment,
       ] as any);
@@ -235,6 +272,14 @@ describe('GymClassesService', () => {
       const result = await service.getEnrollments('class-1');
 
       expect(result).toEqual([mockEnrollment]);
+    });
+
+    it('should throw NotFoundException when class not found', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue(null);
+
+      await expect(service.getEnrollments('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
