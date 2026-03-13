@@ -348,22 +348,15 @@ describe('NotificationsService', () => {
   });
 
   describe('cleanupOldNotifications', () => {
-    it('should delete old notifications, reads, tickets, and jobs', async () => {
-      mockPrisma.notificationRead.deleteMany.mockResolvedValue({ count: 5 });
+    it('should delete old notifications, tickets, and jobs', async () => {
       mockPrisma.notification.deleteMany.mockResolvedValue({ count: 3 });
       mockPrisma.pushTicket.deleteMany.mockResolvedValue({ count: 10 });
       mockPrisma.pushJob.deleteMany.mockResolvedValue({ count: 2 });
 
       await service.cleanupOldNotifications();
 
-      // Should delete reads for old notifications
-      expect(mockPrisma.notificationRead.deleteMany).toHaveBeenCalledWith({
-        where: {
-          notification: {
-            createdAt: { lt: expect.any(Date) },
-          },
-        },
-      });
+      // Should NOT manually delete reads (cascade handles it)
+      expect(mockPrisma.notificationRead.deleteMany).not.toHaveBeenCalled();
       // Should delete old notifications
       expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({
         where: { createdAt: { lt: expect.any(Date) } },

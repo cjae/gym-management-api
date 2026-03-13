@@ -11,6 +11,7 @@ export class NotificationsService {
   private static readonly MAX_RETRIES = 3;
   private static readonly PUSH_CONCURRENCY = 5;
   private static readonly EXPO_CHUNK_SIZE = 100;
+  private isProcessing = false;
 
   constructor(private prisma: PrismaService) {}
 
@@ -125,7 +126,6 @@ export class NotificationsService {
     let broadcastCount = 0;
     const batchSize = 500;
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const unreadBroadcasts = await this.prisma.notification.findMany({
         where: {
@@ -201,9 +201,7 @@ export class NotificationsService {
     if (tickets.length === 0) return;
 
     try {
-      const ticketMap = new Map(
-        tickets.map((t) => [t.ticketId, t.pushToken]),
-      );
+      const ticketMap = new Map(tickets.map((t) => [t.ticketId, t.pushToken]));
       const ticketIds = tickets.map((t) => t.ticketId);
       const invalidTokens: string[] = [];
 
@@ -255,6 +253,16 @@ export class NotificationsService {
 
   @Cron('*/10 * * * * *', { timeZone: 'Africa/Nairobi' })
   async processPushJobs() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+    try {
+      await this._processPushJobs();
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  private async _processPushJobs() {
     const job = await this.prisma.pushJob.findFirst({
       where: { status: { in: ['PENDING', 'PROCESSING'] } },
       orderBy: { createdAt: 'asc' },
@@ -295,7 +303,7 @@ export class NotificationsService {
         where: { id: job.id },
         data: { status: 'COMPLETED' },
       });
-      await this.syncPushStats(job.id);
+      await this.syncPushStats(job.notificationId, job.sent, job.failed);
       return;
     }
 
@@ -329,7 +337,11 @@ export class NotificationsService {
       });
 
       if (isLastBatch) {
-        await this.syncPushStats(job.id);
+        await this.syncPushStats(
+          job.notificationId,
+          job.sent + sent,
+          job.failed + failed,
+        );
       }
     } catch (err) {
       const retries = job.retries + 1;
@@ -350,17 +362,19 @@ export class NotificationsService {
 
       if (isFatal) {
         this.logger.error(`Push job ${job.id} failed permanently`, err);
-        await this.syncPushStats(job.id);
+        await this.syncPushStats(job.notificationId, job.sent, job.failed);
       }
     }
   }
 
-  private async syncPushStats(jobId: string) {
-    const job = await this.prisma.pushJob.findUnique({ where: { id: jobId } });
-    if (!job) return;
+  private async syncPushStats(
+    notificationId: string,
+    sent: number,
+    failed: number,
+  ) {
     await this.prisma.notification.update({
-      where: { id: job.notificationId },
-      data: { pushSentCount: job.sent, pushFailedCount: job.failed },
+      where: { id: notificationId },
+      data: { pushSentCount: sent, pushFailedCount: failed },
     });
   }
 
@@ -386,7 +400,10 @@ export class NotificationsService {
     let failed = 0;
     const tickets: { ticketId: string; pushToken: string }[] = [];
 
-    const chunks = this.chunkArray(messages, NotificationsService.EXPO_CHUNK_SIZE);
+    const chunks = this.chunkArray(
+      messages,
+      NotificationsService.EXPO_CHUNK_SIZE,
+    );
     for (
       let i = 0;
       i < chunks.length;
@@ -395,14 +412,11 @@ export class NotificationsService {
       const batch = chunks.slice(i, i + NotificationsService.PUSH_CONCURRENCY);
       const results = await Promise.all(
         batch.map(async (chunk, batchIndex) => {
-          const response = await fetch(
-            'https://exp.host/--/api/v2/push/send',
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(chunk),
-            },
-          );
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chunk),
+          });
 
           const json = (await response.json()) as {
             data: { id?: string; status: string }[];
@@ -412,7 +426,8 @@ export class NotificationsService {
           let chunkFailed = 0;
           const chunkTickets: { ticketId: string; pushToken: string }[] = [];
 
-          const chunkOffset = (i + batchIndex) * NotificationsService.EXPO_CHUNK_SIZE;
+          const chunkOffset =
+            (i + batchIndex) * NotificationsService.EXPO_CHUNK_SIZE;
 
           for (let j = 0; j < json.data.length; j++) {
             const ticket = json.data[j];
@@ -458,16 +473,7 @@ export class NotificationsService {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Delete read receipts for old notifications first (FK constraint)
-    const reads = await this.prisma.notificationRead.deleteMany({
-      where: {
-        notification: {
-          createdAt: { lt: ninetyDaysAgo },
-        },
-      },
-    });
-
-    // Delete old notifications
+    // Delete old notifications (cascade handles read receipts)
     const notifications = await this.prisma.notification.deleteMany({
       where: { createdAt: { lt: ninetyDaysAgo } },
     });
@@ -486,7 +492,7 @@ export class NotificationsService {
     });
 
     this.logger.log(
-      `Cleanup: ${reads.count} reads, ${notifications.count} notifications, ` +
+      `Cleanup: ${notifications.count} notifications, ` +
         `${tickets.count} tickets, ${jobs.count} jobs deleted`,
     );
   }
