@@ -385,7 +385,7 @@ model PushJob {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  notification Notification @relation(fields: [notificationId], references: [id])
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
 }
@@ -405,7 +405,7 @@ model NotificationRead {
   userId         String
   createdAt      DateTime @default(now())
 
-  notification Notification @relation(fields: [notificationId], references: [id])
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@unique([notificationId, userId])
   @@index([userId])
