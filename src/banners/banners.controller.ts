@@ -53,10 +53,7 @@ export class BannersController {
     type: BannerListItemDto,
   })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  create(
-    @Body() dto: CreateBannerDto,
-    @CurrentUser('id') userId: string,
-  ) {
+  create(@Body() dto: CreateBannerDto, @CurrentUser('id') userId: string) {
     return this.bannersService.create(dto, userId);
   }
 
