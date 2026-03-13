@@ -10,6 +10,7 @@ export class NotificationsService {
   private readonly MAX_TOKENS_PER_USER = 5;
   private static readonly MAX_RETRIES = 3;
   private static readonly PUSH_CONCURRENCY = 5;
+  private static readonly EXPO_CHUNK_SIZE = 100;
 
   constructor(private prisma: PrismaService) {}
 
@@ -206,10 +207,11 @@ export class NotificationsService {
     if (!job) return;
 
     if (job.status === 'PENDING') {
-      await this.prisma.pushJob.update({
-        where: { id: job.id },
+      const { count } = await this.prisma.pushJob.updateMany({
+        where: { id: job.id, status: 'PENDING' },
         data: { status: 'PROCESSING' },
       });
+      if (count === 0) return; // Another instance claimed it
     }
 
     const tokenWhere: Record<string, unknown> = {};
@@ -293,7 +295,7 @@ export class NotificationsService {
   }
 
   private async syncPushStats(jobId: string) {
-    const job = await this.prisma.pushJob.findFirst({ where: { id: jobId } });
+    const job = await this.prisma.pushJob.findUnique({ where: { id: jobId } });
     if (!job) return;
     await this.prisma.notification.update({
       where: { id: job.notificationId },
@@ -323,7 +325,7 @@ export class NotificationsService {
     let failed = 0;
     const tickets: { ticketId: string; pushToken: string }[] = [];
 
-    const chunks = this.chunkArray(messages, 100);
+    const chunks = this.chunkArray(messages, NotificationsService.EXPO_CHUNK_SIZE);
     for (
       let i = 0;
       i < chunks.length;
@@ -349,7 +351,7 @@ export class NotificationsService {
           let chunkFailed = 0;
           const chunkTickets: { ticketId: string; pushToken: string }[] = [];
 
-          const chunkOffset = (i + batchIndex) * 100;
+          const chunkOffset = (i + batchIndex) * NotificationsService.EXPO_CHUNK_SIZE;
 
           for (let j = 0; j < json.data.length; j++) {
             const ticket = json.data[j];

@@ -45,7 +45,9 @@ describe('NotificationsService', () => {
     pushJob: {
       create: jest.fn().mockResolvedValue(mockPushJob),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     pushToken: {
@@ -162,13 +164,18 @@ describe('NotificationsService', () => {
         }),
       };
       global.fetch = jest.fn().mockResolvedValue(mockResponse);
+      mockPrisma.pushJob.findUnique.mockResolvedValue({
+        ...job,
+        sent: 2,
+        failed: 0,
+      });
 
       await service.processPushJobs();
 
-      // Should mark as PROCESSING first
-      expect(mockPrisma.pushJob.update).toHaveBeenCalledWith(
+      // Should atomically claim the job as PROCESSING
+      expect(mockPrisma.pushJob.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'job-1' },
+          where: { id: 'job-1', status: 'PENDING' },
           data: expect.objectContaining({ status: 'PROCESSING' }),
         }),
       );
@@ -207,6 +214,10 @@ describe('NotificationsService', () => {
       };
       mockPrisma.pushJob.findFirst.mockResolvedValue(job);
       mockPrisma.pushToken.findMany.mockResolvedValue([]);
+      mockPrisma.pushJob.findUnique.mockResolvedValue({
+        ...job,
+        status: 'COMPLETED',
+      });
 
       await service.processPushJobs();
 
@@ -241,6 +252,11 @@ describe('NotificationsService', () => {
         { id: 'tok-4', token: 'ExponentPushToken[ddd]' },
       ]);
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+      mockPrisma.pushJob.findUnique.mockResolvedValue({
+        ...job,
+        status: 'FAILED',
+        retries: 3,
+      });
 
       await service.processPushJobs();
 
