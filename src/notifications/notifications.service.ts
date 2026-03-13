@@ -15,21 +15,23 @@ export class NotificationsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateNotificationDto) {
-    const notification = await this.prisma.notification.create({
-      data: {
-        userId: dto.userId,
-        title: dto.title,
-        body: dto.body,
-        type: dto.type,
-        metadata: dto.metadata as Prisma.InputJsonValue,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const notification = await tx.notification.create({
+        data: {
+          userId: dto.userId,
+          title: dto.title,
+          body: dto.body,
+          type: dto.type,
+          metadata: dto.metadata as Prisma.InputJsonValue,
+        },
+      });
 
-    await this.prisma.pushJob.create({
-      data: { notificationId: notification.id },
-    });
+      await tx.pushJob.create({
+        data: { notificationId: notification.id },
+      });
 
-    return notification;
+      return notification;
+    });
   }
 
   async findAllForUser(userId: string, page = 1, limit = 20) {

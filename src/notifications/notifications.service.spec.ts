@@ -63,6 +63,7 @@ describe('NotificationsService', () => {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    $transaction: jest.fn().mockImplementation((fn) => fn(mockPrisma)),
   };
 
   beforeEach(async () => {
@@ -110,12 +111,13 @@ describe('NotificationsService', () => {
         type: 'GENERAL' as const,
       };
 
-      await service.create(dto);
+      const result = await service.create(dto);
 
       expect(mockPrisma.notification.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ userId: 'user-1' }),
       });
       expect(mockPrisma.pushJob.create).toHaveBeenCalled();
+      expect(result).toEqual(mockNotification);
     });
   });
 });
