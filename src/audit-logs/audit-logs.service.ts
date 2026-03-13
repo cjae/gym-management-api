@@ -42,6 +42,7 @@ const RESOURCE_MODEL_MAP: Record<string, string> = {
   Trainer: 'trainerProfile',
   Entrance: 'entrance',
   QrCode: 'gymQrCode',
+  GymClasses: 'gymClass',
 };
 
 @Injectable()

@@ -251,6 +251,36 @@ describe('AuditInterceptor', () => {
     );
   });
 
+  it('should resolve GymClassesController to GymClasses resource', async () => {
+    const oldRecord = { id: 'class-1', title: 'Morning HIIT' };
+    mockAuditLogService.fetchOldData.mockResolvedValue(oldRecord);
+
+    const context = createMockContext({
+      method: 'PATCH',
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      params: { id: 'class-1' },
+      body: { title: 'Evening HIIT' },
+      url: '/api/v1/gym-classes/class-1',
+      controllerName: 'GymClassesController',
+    });
+    const handler = createMockCallHandler({ id: 'class-1', title: 'Evening HIIT' });
+
+    const result$ = await interceptor.intercept(context, handler);
+    await lastValueFrom(result$);
+
+    expect(mockAuditLogService.fetchOldData).toHaveBeenCalledWith(
+      'GymClasses',
+      'class-1',
+    );
+    expect(mockAuditLogService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'UPDATE',
+        resource: 'GymClasses',
+        oldData: oldRecord,
+      }),
+    );
+  });
+
   it('should not fail the request if audit logging throws', async () => {
     mockAuditLogService.log.mockRejectedValue(new Error('Audit DB down'));
 

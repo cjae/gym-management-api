@@ -233,6 +233,18 @@ describe('AuditLogService', () => {
       expect(result).toEqual(qr);
     });
 
+    it('should fetch GymClass record', async () => {
+      const gymClass = { id: 'class-1', title: 'Morning HIIT' };
+      prisma.gymClass.findUnique.mockResolvedValue(gymClass as any);
+
+      const result = await service.fetchOldData('GymClasses', 'class-1');
+
+      expect(result).toEqual(gymClass);
+      expect(prisma.gymClass.findUnique).toHaveBeenCalledWith({
+        where: { id: 'class-1' },
+      });
+    });
+
     it('should return null for unknown resource', async () => {
       const result = await service.fetchOldData('Unknown', 'id-1');
 
