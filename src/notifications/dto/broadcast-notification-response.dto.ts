@@ -17,13 +17,17 @@ export class BroadcastNotificationResponseDto {
   @ApiPropertyOptional()
   metadata?: Record<string, unknown>;
 
-  @ApiProperty({ description: 'Number of push notifications sent successfully' })
+  @ApiProperty({
+    description: 'Number of push notifications sent successfully',
+  })
   pushSentCount: number;
 
   @ApiProperty({ description: 'Number of push notifications that failed' })
   pushFailedCount: number;
 
-  @ApiProperty({ description: 'Number of users who have read this notification' })
+  @ApiProperty({
+    description: 'Number of users who have read this notification',
+  })
   readCount: number;
 
   @ApiProperty()

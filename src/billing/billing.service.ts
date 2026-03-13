@@ -232,19 +232,19 @@ export class BillingService {
 
     for (const user of birthdayUsers) {
       this.emailService
-        .sendBirthdayEmail(user.email as string, user.firstName as string)
+        .sendBirthdayEmail(user.email, user.firstName)
         .catch(() => {});
 
       this.notificationsService
         .create({
-          userId: user.id as string,
+          userId: user.id,
           title: 'Happy Birthday! 🎂',
-          body: `Happy Birthday, ${user.firstName as string}! Wishing you a fantastic day!`,
+          body: `Happy Birthday, ${user.firstName}! Wishing you a fantastic day!`,
           type: NotificationType.BIRTHDAY,
         })
         .catch(() => {});
 
-      this.logger.log(`Sent birthday wish to ${user.email as string}`);
+      this.logger.log(`Sent birthday wish to ${user.email}`);
     }
   }
 
