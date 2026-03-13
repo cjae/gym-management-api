@@ -34,7 +34,8 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `payments/` — Paystack integration with webhook verification. One PENDING payment per subscription enforced (existing PENDING expired before creating new one).
 - `attendance/` — QR-based check-in, idempotent per member per day (`@@unique([memberId, checkInDate])`)
 - `qr/` — GymQrCode generation and validation
-- `trainers/` — Profiles, schedules, member assignments
+- `trainers/` — Profiles, 1:1 member assignments
+- `gym-classes/` — Independent class scheduling with member enrollment. Classes exist as standalone weekly time slots, optionally assigned a trainer. Members self-enroll. Email notifications on time changes and cancellations. Time overlap validation prevents scheduling conflicts.
 - `salary/` — Staff payroll, SUPER_ADMIN only
 - `email/` — Global EmailService using Mailgun + Handlebars templates (partials: header, footer, button). Logs emails when Mailgun is not configured.
 - `billing/` — Daily cron job for recurring subscription billing. Auto-charges card users via Paystack authorization codes, sends email reminders to M-Pesa users. Expires overdue subscriptions.
