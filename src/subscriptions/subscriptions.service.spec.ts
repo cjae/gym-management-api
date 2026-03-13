@@ -32,11 +32,11 @@ describe('SubscriptionsService', () => {
     service = module.get<SubscriptionsService>(SubscriptionsService);
     prisma = module.get(PrismaService);
 
-    prisma.$transaction.mockImplementation((input: unknown) =>
+    (prisma.$transaction as jest.Mock).mockImplementation((input: unknown) =>
       typeof input === 'function'
         ? (input as (tx: typeof prisma) => unknown)(prisma)
         : Promise.all(input as Promise<unknown>[]),
-    ) as any;
+    );
   });
 
   it('should be defined', () => {
@@ -216,8 +216,8 @@ describe('SubscriptionsService', () => {
 
       await service.findAll(1, 20);
 
-      const findManyCall = prisma.memberSubscription.findMany.mock.calls[0][0];
-      expect(findManyCall.where).toEqual(
+      const findManyCall = prisma.memberSubscription.findMany.mock.calls[0]?.[0];
+      expect(findManyCall?.where).toEqual(
         expect.objectContaining({ status: { not: 'PENDING' } }),
       );
     });
@@ -348,9 +348,13 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         frozenSub as any,
       );
-      prisma.memberSubscription.update.mockImplementationOnce(({ data }) => {
-        return Promise.resolve({ ...frozenSub, ...data }) as any;
-      });
+      prisma.memberSubscription.update.mockResolvedValueOnce({
+        ...frozenSub,
+        status: 'ACTIVE',
+        freezeStartDate: null,
+        freezeEndDate: null,
+        frozenDaysUsed: 5,
+      } as any);
 
       const result = await service.unfreeze('sub-1', 'user-1', 'MEMBER');
       expect(result.status).toBe('ACTIVE');
