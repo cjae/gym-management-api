@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TrainerProfileResponseDto } from './trainer-profile-response.dto';
 
 export class TrainerAssignmentResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -18,4 +19,10 @@ export class TrainerAssignmentResponseDto {
 
   @ApiPropertyOptional({ example: 'Focus on cardio and flexibility' })
   notes?: string;
+
+  @ApiPropertyOptional({
+    type: () => TrainerProfileResponseDto,
+    description: 'Trainer profile (included in member trainer lookup)',
+  })
+  trainer?: TrainerProfileResponseDto;
 }
