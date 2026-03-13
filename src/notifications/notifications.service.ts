@@ -25,10 +25,22 @@ export class NotificationsService {
       },
     });
 
-    // Send push notification
-    await this.sendPush(dto.userId ?? null, dto.title, dto.body, dto.metadata);
+    // Send push notification and persist delivery stats
+    const { sent, failed } = await this.sendPush(
+      dto.userId ?? null,
+      dto.title,
+      dto.body,
+      dto.metadata,
+    );
 
-    return notification;
+    if (sent > 0 || failed > 0) {
+      await this.prisma.notification.update({
+        where: { id: notification.id },
+        data: { pushSentCount: sent, pushFailedCount: failed },
+      });
+    }
+
+    return { ...notification, pushSentCount: sent, pushFailedCount: failed };
   }
 
   async findAllForUser(userId: string, page = 1, limit = 20) {
@@ -54,6 +66,30 @@ export class NotificationsService {
     const data = notifications.map(({ reads, ...notification }) => ({
       ...notification,
       isRead: notification.userId ? notification.isRead : reads.length > 0,
+    }));
+
+    return { data, total, page, limit };
+  }
+
+  async findAllBroadcasts(page = 1, limit = 20) {
+    const where = { userId: null };
+
+    const [notifications, total] = await Promise.all([
+      this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          _count: { select: { reads: true } },
+        },
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+
+    const data = notifications.map(({ _count, ...notification }) => ({
+      ...notification,
+      readCount: _count.reads,
     }));
 
     return { data, total, page, limit };
@@ -215,7 +251,7 @@ export class NotificationsService {
     title: string,
     body: string,
     metadata?: Record<string, unknown> | null,
-  ) {
+  ): Promise<{ sent: number; failed: number }> {
     try {
       const tokens = await this.prisma.pushToken.findMany({
         where: userId ? { userId } : undefined,
@@ -223,7 +259,7 @@ export class NotificationsService {
         take: 10000, // Safety cap for broadcasts
       });
 
-      if (tokens.length === 0) return;
+      if (tokens.length === 0) return { sent: 0, failed: 0 };
 
       const messages = tokens.map((t) => ({
         to: t.token,
@@ -232,6 +268,9 @@ export class NotificationsService {
         body,
         data: metadata ?? {},
       }));
+
+      let sent = 0;
+      let failed = 0;
 
       // Send via Expo Push API and collect ticket IDs
       const chunks = this.chunkArray(messages, 100);
@@ -249,16 +288,24 @@ export class NotificationsService {
         // Buffer ticket IDs for receipt polling
         for (let i = 0; i < json.data.length; i++) {
           const ticket = json.data[i];
-          if (ticket.status === 'ok' && ticket.id) {
-            this.pendingTickets.push({
-              ticketId: ticket.id,
-              pushToken: chunk[i].to,
-            });
+          if (ticket.status === 'ok') {
+            sent++;
+            if (ticket.id) {
+              this.pendingTickets.push({
+                ticketId: ticket.id,
+                pushToken: chunk[i].to,
+              });
+            }
+          } else {
+            failed++;
           }
         }
       }
+
+      return { sent, failed };
     } catch {
       // Silent fail — push is best-effort
+      return { sent: 0, failed: 0 };
     }
   }
 

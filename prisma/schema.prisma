@@ -350,10 +350,12 @@ model Notification {
   userId    String?
   title     String
   body      String
-  type      NotificationType @default(GENERAL)
-  isRead    Boolean  @default(false)
-  metadata  Json?
-  createdAt DateTime @default(now())
+  type            NotificationType @default(GENERAL)
+  isRead          Boolean  @default(false)
+  metadata        Json?
+  pushSentCount   Int      @default(0)
+  pushFailedCount Int      @default(0)
+  createdAt       DateTime @default(now())
 
   user  User?              @relation("UserNotifications", fields: [userId], references: [id])
   reads NotificationRead[]

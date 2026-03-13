@@ -1,12 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationType } from '@prisma/client';
 
-export class NotificationResponseDto {
+export class BroadcastNotificationResponseDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
-
-  @ApiPropertyOptional({ format: 'uuid' })
-  userId?: string;
 
   @ApiProperty()
   title: string;
@@ -17,17 +14,17 @@ export class NotificationResponseDto {
   @ApiProperty({ enum: NotificationType, example: 'GENERAL' })
   type: NotificationType;
 
-  @ApiProperty()
-  isRead: boolean;
-
   @ApiPropertyOptional()
   metadata?: Record<string, unknown>;
 
-  @ApiProperty({ description: 'Push notifications sent successfully' })
+  @ApiProperty({ description: 'Number of push notifications sent successfully' })
   pushSentCount: number;
 
-  @ApiProperty({ description: 'Push notifications that failed' })
+  @ApiProperty({ description: 'Number of push notifications that failed' })
   pushFailedCount: number;
+
+  @ApiProperty({ description: 'Number of users who have read this notification' })
+  readCount: number;
 
   @ApiProperty()
   createdAt: Date;

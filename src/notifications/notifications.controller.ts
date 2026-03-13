@@ -21,6 +21,7 @@ import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { NotificationResponseDto } from './dto/notification-response.dto';
 import { PaginatedNotificationsResponseDto } from './dto/paginated-notifications-response.dto';
+import { PaginatedBroadcastsResponseDto } from './dto/paginated-broadcasts-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -45,6 +46,18 @@ export class NotificationsController {
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   create(@Body() dto: CreateNotificationDto) {
     return this.notificationsService.create(dto);
+  }
+
+  @Get('broadcasts')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({
+    description: 'Paginated broadcast notifications with read and push stats',
+    type: PaginatedBroadcastsResponseDto,
+  })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
+  findAllBroadcasts(@Query() query: PaginationQueryDto) {
+    return this.notificationsService.findAllBroadcasts(query.page, query.limit);
   }
 
   @Get()
