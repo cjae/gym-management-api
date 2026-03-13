@@ -42,4 +42,13 @@ export class UpdatePlanDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    example: 20,
+    description: 'Max freeze days per billing cycle. 0 = freeze not available.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxFreezeDays?: number;
 }

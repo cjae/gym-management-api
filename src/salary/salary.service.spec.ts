@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { SalaryService } from './salary.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('SalaryService', () => {
   let service: SalaryService;
-  let prisma: PrismaService;
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const mockRecord = {
     id: 'salary-1',
@@ -20,29 +22,25 @@ describe('SalaryService', () => {
     updatedAt: new Date(),
   };
 
-  const mockPrisma = {
-    staffSalaryRecord: {
-      create: jest.fn().mockResolvedValue(mockRecord),
-      findMany: jest.fn().mockResolvedValue([mockRecord]),
-      update: jest.fn().mockResolvedValue({
-        ...mockRecord,
-        status: 'PAID',
-        paidAt: new Date(),
-      }),
-      delete: jest.fn().mockResolvedValue(mockRecord),
-    },
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SalaryService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
       ],
     }).compile();
 
     service = module.get<SalaryService>(SalaryService);
-    prisma = module.get<PrismaService>(PrismaService);
+    prisma = module.get(PrismaService);
+
+    prisma.staffSalaryRecord.create.mockResolvedValue(mockRecord as any);
+    prisma.staffSalaryRecord.findMany.mockResolvedValue([mockRecord] as any);
+    prisma.staffSalaryRecord.update.mockResolvedValue({
+      ...mockRecord,
+      status: 'PAID',
+      paidAt: new Date(),
+    } as any);
+    prisma.staffSalaryRecord.delete.mockResolvedValue(mockRecord as any);
   });
 
   it('should be defined', () => {
@@ -69,7 +67,7 @@ describe('SalaryService', () => {
 
     it('should filter by month and year', async () => {
       await service.findAll({ month: 3, year: 2026 });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.staffSalaryRecord.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { month: 3, year: 2026 },

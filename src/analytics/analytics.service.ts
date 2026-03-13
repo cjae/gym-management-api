@@ -18,13 +18,13 @@ export interface DashboardResult {
     byPlan: Record<string, number>;
   };
   attendance: {
-    today: number;
-    thisWeek: number;
-    avgDailyLast30Days: number;
+    todayCheckIns: number;
+    thisWeekCheckIns: number;
+    avgDaily30Days: number;
   };
   payments: {
-    pendingLast30Days: number;
-    failedLast30Days: number;
+    pendingCount30Days: number;
+    failedCount30Days: number;
   };
   financials?: {
     revenueThisMonth: number;
@@ -33,14 +33,6 @@ export interface DashboardResult {
     pendingSalaries: number;
     netPositionThisMonth: number;
   };
-  recentActivity: ActivityItem[];
-}
-
-export interface ActivityItem {
-  type: string;
-  message: string;
-  timestamp: Date;
-  metadata?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -67,7 +59,7 @@ export class AnalyticsService {
     const sevenDaysFromNow = new Date(now);
     sevenDaysFromNow.setDate(now.getDate() + 7);
 
-    const memberWhere = { role: 'MEMBER' as const };
+    const memberWhere = { role: 'MEMBER' as const, deletedAt: null };
 
     const [
       totalMembers,
@@ -83,7 +75,6 @@ export class AnalyticsService {
       attendanceThisWeek,
       pendingPayments,
       failedPayments,
-      recentActivity,
     ] = await Promise.all([
       this.prisma.user.count({ where: memberWhere }),
       this.prisma.user.count({
@@ -132,7 +123,6 @@ export class AnalyticsService {
       this.prisma.payment.count({
         where: { status: 'FAILED', createdAt: { gte: thirtyDaysAgo } },
       }),
-      this.getRecentActivity(),
     ]);
 
     // Resolve plan names for byPlan
@@ -162,7 +152,7 @@ export class AnalyticsService {
     const attendanceLast30 = await this.prisma.attendance.count({
       where: { checkInDate: { gte: thirtyDaysAgo } },
     });
-    const avgDailyLast30Days =
+    const avgDaily30Days =
       Math.round((attendanceLast30 / daysInRange) * 100) / 100;
 
     const dashboard: DashboardResult = {
@@ -180,15 +170,14 @@ export class AnalyticsService {
         byPlan,
       },
       attendance: {
-        today: attendanceToday,
-        thisWeek: attendanceThisWeek,
-        avgDailyLast30Days,
+        todayCheckIns: attendanceToday,
+        thisWeekCheckIns: attendanceThisWeek,
+        avgDaily30Days,
       },
       payments: {
-        pendingLast30Days: pendingPayments,
-        failedLast30Days: failedPayments,
+        pendingCount30Days: pendingPayments,
+        failedCount30Days: failedPayments,
       },
-      recentActivity,
     };
 
     if (role === 'SUPER_ADMIN') {
@@ -254,127 +243,6 @@ export class AnalyticsService {
     return dashboard;
   }
 
-  async getRecentActivity(limit = 20): Promise<ActivityItem[]> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const [newMembers, checkIns, payments, subscriptions] = await Promise.all([
-      this.prisma.user.findMany({
-        where: {
-          role: 'MEMBER',
-          createdAt: { gte: thirtyDaysAgo },
-        },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-      }),
-      this.prisma.attendance.findMany({
-        where: { checkInTime: { gte: thirtyDaysAgo } },
-        select: {
-          id: true,
-          memberId: true,
-          checkInTime: true,
-          member: {
-            select: { firstName: true, lastName: true },
-          },
-        },
-        orderBy: { checkInTime: 'desc' },
-        take: limit,
-      }),
-      this.prisma.payment.findMany({
-        where: { createdAt: { gte: thirtyDaysAgo } },
-        select: {
-          id: true,
-          amount: true,
-          currency: true,
-          status: true,
-          createdAt: true,
-          subscription: {
-            select: {
-              primaryMember: {
-                select: { firstName: true, lastName: true },
-              },
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-      }),
-      this.prisma.memberSubscription.findMany({
-        where: { createdAt: { gte: thirtyDaysAgo } },
-        select: {
-          id: true,
-          status: true,
-          createdAt: true,
-          primaryMember: {
-            select: { firstName: true, lastName: true },
-          },
-          plan: { select: { name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-      }),
-    ]);
-
-    const activities: ActivityItem[] = [];
-
-    for (const member of newMembers) {
-      activities.push({
-        type: 'NEW_MEMBER',
-        message: `${member.firstName} ${member.lastName} registered as a new member`,
-        timestamp: member.createdAt,
-        metadata: { memberId: member.id },
-      });
-    }
-
-    for (const checkIn of checkIns) {
-      activities.push({
-        type: 'CHECK_IN',
-        message: `${checkIn.member.firstName} ${checkIn.member.lastName} checked in`,
-        timestamp: checkIn.checkInTime,
-        metadata: { memberId: checkIn.memberId },
-      });
-    }
-
-    for (const payment of payments) {
-      const name = `${payment.subscription.primaryMember.firstName} ${payment.subscription.primaryMember.lastName}`;
-      activities.push({
-        type: 'PAYMENT',
-        message: `${name} made a ${payment.status} payment of ${payment.amount} ${payment.currency}`,
-        timestamp: payment.createdAt,
-        metadata: {
-          paymentId: payment.id,
-          amount: payment.amount,
-          status: payment.status,
-        },
-      });
-    }
-
-    for (const sub of subscriptions) {
-      const name = `${sub.primaryMember.firstName} ${sub.primaryMember.lastName}`;
-      const action = sub.status === 'CANCELLED' ? 'cancelled' : 'started';
-      activities.push({
-        type: 'SUBSCRIPTION',
-        message: `${name} ${action} a ${sub.plan.name} subscription`,
-        timestamp: sub.createdAt,
-        metadata: {
-          subscriptionId: sub.id,
-          planName: sub.plan.name,
-          status: sub.status,
-        },
-      });
-    }
-
-    activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
-    return activities.slice(0, limit);
-  }
-
   private getDateRange(query: AnalyticsQueryDto) {
     const to = query.to ? new Date(query.to) : new Date();
     const from = query.from
@@ -400,6 +268,42 @@ export class AnalyticsService {
       case Granularity.MONTHLY:
         return `${year}-${month}`;
     }
+  }
+
+  async getExpiringMemberships() {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now);
+    sevenDaysFromNow.setDate(now.getDate() + 7);
+
+    const subscriptions = await this.prisma.memberSubscription.findMany({
+      where: {
+        status: 'ACTIVE',
+        endDate: { gte: now, lte: sevenDaysFromNow },
+      },
+      select: {
+        endDate: true,
+        primaryMember: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        plan: { select: { name: true } },
+      },
+      orderBy: { endDate: 'asc' },
+      take: 20,
+    });
+
+    const memberships = subscriptions.map((sub) => {
+      const diffMs = sub.endDate.getTime() - now.getTime();
+      const daysUntilExpiry = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      return {
+        memberId: sub.primaryMember.id,
+        memberName: `${sub.primaryMember.firstName} ${sub.primaryMember.lastName}`,
+        planName: sub.plan.name,
+        expiresAt: sub.endDate,
+        daysUntilExpiry,
+      };
+    });
+
+    return { memberships };
   }
 
   async getRevenueTrends(query: AnalyticsQueryDto, paymentMethod?: string) {
@@ -571,7 +475,7 @@ export class AnalyticsService {
       }
       const bucket = buckets.get(period)!;
 
-      if (sub.status === 'ACTIVE') {
+      if (sub.status === 'ACTIVE' || sub.status === 'FROZEN') {
         bucket.newSubscriptions++;
         byPlan[sub.plan.name] = (byPlan[sub.plan.name] || 0) + 1;
         byPaymentMethod[sub.paymentMethod] =
@@ -583,9 +487,25 @@ export class AnalyticsService {
       }
     }
 
-    const totalActive = await this.prisma.memberSubscription.count({
-      where: { status: 'ACTIVE' },
+    // Count subscribers that existed at the start of the period
+    // (created before period start, not yet expired/cancelled before period start)
+    const subscribersAtStart = await this.prisma.memberSubscription.count({
+      where: {
+        createdAt: { lt: from },
+        status: { in: ['ACTIVE', 'FROZEN', 'CANCELLED', 'EXPIRED'] },
+        OR: [
+          { endDate: { gte: from } },
+          { status: { in: ['CANCELLED', 'EXPIRED'] } },
+        ],
+      },
     });
+
+    // Also count new subscriptions created during the period
+    const newInPeriod = subscriptions.filter(
+      (s) => s.status === 'ACTIVE' || s.status === 'FROZEN',
+    ).length;
+
+    const totalBase = subscribersAtStart + newInPeriod;
 
     const totalCancelled = subscriptions.filter(
       (s) => s.status === 'CANCELLED',
@@ -594,8 +514,10 @@ export class AnalyticsService {
       (s) => s.status === 'EXPIRED',
     ).length;
     const churnRate =
-      totalActive > 0
-        ? ((totalCancelled + totalExpired) / totalActive) * 100
+      totalBase > 0
+        ? Math.round(
+            ((totalCancelled + totalExpired) / totalBase) * 100 * 100,
+          ) / 100
         : 0;
 
     const series = Array.from(buckets.entries())
@@ -617,12 +539,14 @@ export class AnalyticsService {
     const { from, to } = this.getDateRange(query);
     const granularity = query.granularity || Granularity.MONTHLY;
 
+    const memberWhere = { role: 'MEMBER' as const, deletedAt: null };
+
     const users = await this.prisma.user.findMany({
       where: {
+        ...memberWhere,
         createdAt: { gte: from, lte: to },
       },
       select: {
-        role: true,
         status: true,
         createdAt: true,
       },
@@ -630,17 +554,12 @@ export class AnalyticsService {
 
     const priorCount = await this.prisma.user.count({
       where: {
+        ...memberWhere,
         createdAt: { lt: from },
       },
     });
 
     const buckets = new Map<string, number>();
-    const byRole: Record<string, number> = {
-      MEMBER: 0,
-      TRAINER: 0,
-      ADMIN: 0,
-      SUPER_ADMIN: 0,
-    };
     const byStatus: Record<string, number> = {
       ACTIVE: 0,
       INACTIVE: 0,
@@ -651,7 +570,6 @@ export class AnalyticsService {
       const period = this.getPeriodKey(user.createdAt, granularity);
       buckets.set(period, (buckets.get(period) || 0) + 1);
 
-      if (user.role in byRole) byRole[user.role]++;
       if (user.status in byStatus) byStatus[user.status]++;
     }
 
@@ -665,7 +583,6 @@ export class AnalyticsService {
 
     return {
       series,
-      byRole,
       byStatus,
     };
   }

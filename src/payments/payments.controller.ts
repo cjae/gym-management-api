@@ -13,8 +13,11 @@ import {
 import {
   ApiTags,
   ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
   ApiBadRequestResponse,
   ApiHeader,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 
@@ -22,11 +25,17 @@ interface RawBodyRequest extends Request {
   rawBody?: Buffer;
 }
 import { PaymentsService } from './payments.service';
+import { PaymentInitResponseDto } from './dto/payment-init-response.dto';
+import { WebhookResponseDto } from './dto/webhook-response.dto';
+import { PaginatedPaymentsResponseDto } from './dto/paginated-payments-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Payments')
+@ApiUnauthorizedResponse({
+  description: 'Missing or invalid JWT (except webhook)',
+})
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
@@ -34,6 +43,10 @@ export class PaymentsController {
   @Post('initialize/:subscriptionId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiCreatedResponse({
+    type: PaymentInitResponseDto,
+    description: 'Payment initialized with Paystack',
+  })
   @ApiBadRequestResponse({ description: 'Subscription not found' })
   initialize(
     @Param('subscriptionId') subscriptionId: string,
@@ -49,6 +62,7 @@ export class PaymentsController {
 
   @Post('webhook')
   @Version(VERSION_NEUTRAL)
+  @ApiOkResponse({ type: WebhookResponseDto })
   @ApiHeader({
     name: 'x-paystack-signature',
     description: 'HMAC SHA512 signature from Paystack',
@@ -64,6 +78,7 @@ export class PaymentsController {
   @Get('history')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOkResponse({ type: PaginatedPaymentsResponseDto })
   history(
     @CurrentUser('id') memberId: string,
     @Query() query: PaginationQueryDto,

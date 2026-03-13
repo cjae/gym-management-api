@@ -27,22 +27,24 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 
 **Modules** (all in `src/`):
 - `prisma/` — Global PrismaService, injected everywhere
-- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints
-- `users/` — CRUD with role-based access
+- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints. Registration requires `acceptTos` and `acceptWaiver` (both `true`), which sets `tosAcceptedAt` and `waiverAcceptedAt` timestamps on the User.
+- `users/` — CRUD with role-based access. Admin user creation (`POST /users`): ADMIN creates MEMBER/TRAINER, SUPER_ADMIN also creates ADMIN. Generates temp password, sets `mustChangePassword: true`, sends welcome email with credentials.
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members)
-- `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table)
-- `payments/` — Paystack integration with webhook verification
+- `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table). Member-created subscriptions start as `PENDING` until payment completes (webhook sets `ACTIVE`). Admin subscription creation (`POST /subscriptions/admin`): ADMIN/SUPER_ADMIN creates ACTIVE subscription for a MEMBER with offline payment (MPESA_OFFLINE/BANK_TRANSFER/COMPLIMENTARY), includes Payment record. Hourly cron cleans up PENDING subscriptions older than 1 hour. Freeze capability: members can freeze their subscription (up to plan's `maxFreezeDays` per billing cycle), blocking check-in and extending end date by actual frozen days on unfreeze. One freeze per billing cycle, auto-unfreeze via daily cron.
+- `payments/` — Paystack integration with webhook verification. One PENDING payment per subscription enforced (existing PENDING expired before creating new one).
 - `attendance/` — QR-based check-in, idempotent per member per day (`@@unique([memberId, checkInDate])`)
 - `qr/` — GymQrCode generation and validation
 - `trainers/` — Profiles, schedules, member assignments
-- `legal/` — Documents with digital signature capture
 - `salary/` — Staff payroll, SUPER_ADMIN only
 - `email/` — Global EmailService using Mailgun + Handlebars templates (partials: header, footer, button). Logs emails when Mailgun is not configured.
 - `billing/` — Daily cron job for recurring subscription billing. Auto-charges card users via Paystack authorization codes, sends email reminders to M-Pesa users. Expires overdue subscriptions.
 - `common/config/` — Typed config factories (app, auth, mail, payment, sentry)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
+- `uploads/` — Image upload to Cloudinary (avatars), returns URL
+- `licensing/` — SaaS license validation. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset.
+- `audit-logs/` — Audit logging for admin actions and auth events. Global interceptor auto-logs POST/PUT/PATCH/DELETE by ADMIN/SUPER_ADMIN with before/after JSON diffs. Auth events (login, logout, password reset/change) logged explicitly. `@NoAudit()` decorator to opt out. SUPER_ADMIN-only `GET /audit-logs` endpoint with filters.
 
-**Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`).
+**Auth pattern**: `JwtAuthGuard` + `RolesGuard` applied per-controller. Use `@Roles('ADMIN', 'SUPER_ADMIN')` decorator to restrict. Use `@CurrentUser()` param decorator to get the authenticated user. Public endpoints (login, register, forgot-password, reset-password) are protected with `BasicAuthGuard` (HTTP Basic Auth via `passport-http`) — credentials from `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` env vars. Webhooks are excluded from Basic Auth. Password reset uses `PasswordResetToken` table with 1-hour expiry. Logout invalidates JWT via `InvalidatedToken` table (JTI-based blocklist checked in `JwtStrategy.validate`). `GET /auth/me` and `PATCH /auth/me` available for any authenticated user to view/update their own profile (firstName, lastName, phone, gender, displayPicture). No role/email/status self-changes.
 
 **Roles hierarchy**: `SUPER_ADMIN > ADMIN > TRAINER > MEMBER`. The guards check exact role match (not hierarchical).
 
@@ -78,6 +80,11 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `MAILGUN_API_KEY` — Mailgun API key (emails logged to console when unset)
 - `MAILGUN_DOMAIN` — Mailgun sending domain
 - `MAIL_FROM` — Sender address (defaults to `noreply@{MAILGUN_DOMAIN}`)
+- `CLOUDINARY_CLOUD_NAME` — Cloudinary cloud name (optional in dev)
+- `CLOUDINARY_API_KEY` — Cloudinary API key (optional in dev)
+- `CLOUDINARY_API_SECRET` — Cloudinary API secret (optional in dev)
+- `LICENSE_KEY` — Unique license key per gym instance (optional in dev — unlicensed mode when unset)
+- `LICENSE_SERVER_URL` — Control plane base URL for license validation (optional in dev)
 
 ## Security
 
@@ -93,7 +100,8 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - **Password reset tokens**: SHA-256 hashed before storing in DB (raw token sent via email)
 - **Encryption at rest**: `paystackAuthorizationCode` encrypted with AES-256-GCM when `ENCRYPTION_KEY` is set
 - **Pagination**: All `findAll` endpoints paginated via `PaginationQueryDto` (default 20, max 100 per page)
+- **License enforcement**: Global `LicenseGuard` checks cached license on every request. 7-day grace period on network failures. `GET /api/health` bypasses guard. Member registration capped by license tier.
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 12 spec files, 64 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 22 spec files, 195 tests total.

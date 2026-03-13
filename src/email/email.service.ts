@@ -143,6 +143,25 @@ export class EmailService {
     );
   }
 
+  async sendWelcomeEmail(
+    to: string,
+    firstName: string,
+    tempPassword: string,
+  ): Promise<void> {
+    await this.sendEmail(to, 'Welcome — Your Account is Ready', 'welcome', {
+      firstName,
+      email: to,
+      tempPassword,
+      loginUrl: this.adminUrl,
+    });
+  }
+
+  async sendBirthdayEmail(to: string, firstName: string): Promise<void> {
+    await this.sendEmail(to, 'Happy Birthday! 🎂', 'birthday', {
+      firstName,
+    });
+  }
+
   async sendCardPaymentFailedEmail(
     to: string,
     firstName: string,

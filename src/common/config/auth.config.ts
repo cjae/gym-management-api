@@ -9,9 +9,29 @@ export type AuthConfig = {
 
 export const getAuthConfigName = () => 'auth';
 
+const requireInProduction = (
+  value: string | undefined,
+  name: string,
+  fallback: string,
+): string => {
+  if (value) return value;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`${name} must be set in production`);
+  }
+  return fallback;
+};
+
 export const getAuthConfig = (): AuthConfig => ({
-  jwtSecret: process.env.JWT_SECRET ?? 'dev-secret',
-  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret',
+  jwtSecret: requireInProduction(
+    process.env.JWT_SECRET,
+    'JWT_SECRET',
+    'dev-secret',
+  ),
+  jwtRefreshSecret: requireInProduction(
+    process.env.JWT_REFRESH_SECRET,
+    'JWT_REFRESH_SECRET',
+    'dev-refresh-secret',
+  ),
   basicAuthUser: process.env.BASIC_AUTH_USER ?? '',
   basicAuthPassword: process.env.BASIC_AUTH_PASSWORD ?? '',
 });

@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { BasicStrategy } from './strategies/basic.strategy';
+import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
 
 @Module({
@@ -18,14 +19,14 @@ import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
         return {
           global: true,
           secret: authConfig.jwtSecret,
-          signOptions: { expiresIn: '15m' },
+          signOptions: { expiresIn: '30m' },
         };
       },
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, BasicStrategy],
+  providers: [AuthService, JwtStrategy, JwtRefreshStrategy, BasicStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

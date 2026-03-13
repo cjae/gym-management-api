@@ -3,17 +3,24 @@ import {
   ConflictException,
   UnauthorizedException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { LicensingService } from '../licensing/licensing.service';
+import { AuditLogService } from '../audit-logs/audit-logs.service';
 import { AuthConfig, getAuthConfigName } from '../common/config/auth.config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { safeUserSelect } from '../common/constants/safe-user-select';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 
@@ -24,15 +31,32 @@ export class AuthService {
     private jwtService: JwtService,
     private emailService: EmailService,
     private configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly licensingService: LicensingService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async register(dto: RegisterDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existing) throw new ConflictException('Email already registered');
+    if (existing && !existing.deletedAt)
+      throw new ConflictException('Email already registered');
+
+    const maxMembers = await this.licensingService.getMemberLimit();
+    if (maxMembers !== null) {
+      const currentCount = await this.prisma.user.count({
+        where: { role: 'MEMBER', deletedAt: null },
+      });
+      if (currentCount >= maxMembers) {
+        throw new ForbiddenException(
+          'Member limit reached for your subscription tier.',
+        );
+      }
+    }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const now = new Date();
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -40,30 +64,106 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone,
+        tosAcceptedAt: now,
+        waiverAcceptedAt: now,
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.role);
+    this.eventEmitter.emit('activity.registration', {
+      type: 'registration',
+      description: `${user.firstName} ${user.lastName} registered as a new member`,
+      timestamp: new Date().toISOString(),
+      metadata: { memberId: user.id },
+    });
+
+    return this.generateTokens(user.id, user.email, user.role, false);
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user || user.deletedAt) {
+      this.auditLogService
+        .log({
+          userId: null,
+          action: AuditAction.LOGIN_FAILED,
+          resource: 'Auth',
+          ipAddress,
+          userAgent,
+          route: 'POST /api/v1/auth/login',
+          metadata: { email: dto.email },
+        })
+        .catch(() => {});
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const passwordValid = await bcrypt.compare(dto.password, user.password);
-    if (!passwordValid) throw new UnauthorizedException('Invalid credentials');
+    if (!passwordValid) {
+      this.auditLogService
+        .log({
+          userId: user.id,
+          action: AuditAction.LOGIN_FAILED,
+          resource: 'Auth',
+          ipAddress,
+          userAgent,
+          route: 'POST /api/v1/auth/login',
+          metadata: { email: dto.email },
+        })
+        .catch(() => {});
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
-    return this.generateTokens(user.id, user.email, user.role);
+    this.auditLogService
+      .log({
+        userId: user.id,
+        action: AuditAction.LOGIN,
+        resource: 'Auth',
+        ipAddress,
+        userAgent,
+        route: 'POST /api/v1/auth/login',
+      })
+      .catch(() => {});
+
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.mustChangePassword,
+    );
   }
 
-  async refreshToken(userId: string) {
+  async refreshToken(userId: string, oldRefreshJti: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-    if (!user) throw new UnauthorizedException('User not found');
-    return this.generateTokens(user.id, user.email, user.role);
+    if (!user || user.status !== 'ACTIVE' || user.deletedAt)
+      throw new UnauthorizedException('User not found or inactive');
+
+    // Invalidate old refresh token (rotation)
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    try {
+      await this.prisma.invalidatedToken.create({
+        data: { jti: oldRefreshJti, expiresAt },
+      });
+    } catch (error: unknown) {
+      // Unique constraint violation = token replay
+      if (
+        error instanceof Object &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new UnauthorizedException('Refresh token has already been used');
+      }
+      throw error;
+    }
+
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.mustChangePassword,
+    );
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -96,6 +196,16 @@ export class AuthService {
       token,
     );
 
+    this.auditLogService
+      .log({
+        userId: user.id,
+        action: AuditAction.PASSWORD_RESET_REQUEST,
+        resource: 'Auth',
+        route: 'POST /api/v1/auth/forgot-password',
+        metadata: { email: dto.email },
+      })
+      .catch(() => {});
+
     return {
       message:
         'If an account with that email exists, a reset link has been sent.',
@@ -120,13 +230,22 @@ export class AuthService {
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: resetToken.userId },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, mustChangePassword: false },
       }),
       this.prisma.passwordResetToken.update({
         where: { id: resetToken.id },
         data: { usedAt: new Date() },
       }),
     ]);
+
+    this.auditLogService
+      .log({
+        userId: resetToken.userId,
+        action: AuditAction.PASSWORD_RESET,
+        resource: 'Auth',
+        route: 'POST /api/v1/auth/reset-password',
+      })
+      .catch(() => {});
 
     return { message: 'Password has been reset successfully.' };
   }
@@ -147,20 +266,68 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, mustChangePassword: false },
     });
+
+    this.auditLogService
+      .log({
+        userId,
+        action: AuditAction.PASSWORD_CHANGE,
+        resource: 'Auth',
+        route: 'PATCH /api/v1/auth/change-password',
+      })
+      .catch(() => {});
 
     return { message: 'Password changed successfully.' };
   }
 
-  async logout(jti: string) {
-    // Calculate when the token expires (15m from now is the max for access tokens)
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: safeUserSelect,
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+    return user;
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    await this.getProfile(userId);
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...dto,
+        birthday: dto.birthday ? new Date(dto.birthday) : undefined,
+      },
+      select: safeUserSelect,
+    });
+  }
+
+  async logout(
+    jti: string,
+    userId?: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    // Calculate when the token expires (30m from now is the max for access tokens)
     // We store until 7d to also cover refresh tokens that share the same jti pattern
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await this.prisma.invalidatedToken.create({
       data: { jti, expiresAt },
     });
+
+    if (userId) {
+      this.auditLogService
+        .log({
+          userId,
+          action: AuditAction.LOGOUT,
+          resource: 'Auth',
+          ipAddress,
+          userAgent,
+          route: 'POST /api/v1/auth/logout',
+        })
+        .catch(() => {});
+    }
 
     return { message: 'Logged out successfully.' };
   }
@@ -169,20 +336,31 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async generateTokens(userId: string, email: string, role: string) {
+  private async generateTokens(
+    userId: string,
+    email: string,
+    role: string,
+    mustChangePassword: boolean,
+  ) {
     const authConfig = this.configService.get<AuthConfig>(getAuthConfigName())!;
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
         { sub: userId, email, role, jti: accessJti },
-        { expiresIn: '15m' },
+        { expiresIn: '30m' },
       ),
       this.jwtService.signAsync(
         { sub: userId, email, role, jti: refreshJti },
         { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
       ),
     ]);
-    return { accessToken, refreshToken };
+    const ACCESS_TOKEN_EXPIRY_SECONDS = 1800; // 30m
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
+      mustChangePassword,
+    };
   }
 }

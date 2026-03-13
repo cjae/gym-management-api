@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   PaymentConfig,
@@ -56,6 +58,7 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     const paymentConfig = this.configService.get<PaymentConfig>(
       getPaymentConfigName(),
@@ -79,6 +82,20 @@ export class PaymentsService {
       throw new ForbiddenException(
         'You can only initialize payments for your own subscriptions',
       );
+    }
+
+    // Expire any existing PENDING payment for this subscription
+    const existingPending = await this.prisma.payment.findFirst({
+      where: {
+        subscriptionId,
+        status: 'PENDING',
+      },
+    });
+    if (existingPending) {
+      await this.prisma.payment.update({
+        where: { id: existingPending.id },
+        data: { status: 'EXPIRED' },
+      });
     }
 
     const payment = await this.prisma.payment.create({
@@ -138,11 +155,29 @@ export class PaymentsService {
       }
 
       if (paymentId) {
-        await this.prisma.payment.update({
+        const updatedPayment = await this.prisma.payment.update({
           where: { id: paymentId },
           data: {
             status: 'PAID',
             paystackReference: reference,
+          },
+          include: {
+            subscription: {
+              include: { primaryMember: true },
+            },
+          },
+        });
+
+        const member = updatedPayment.subscription.primaryMember;
+        const memberName = `${member.firstName} ${member.lastName}`;
+        this.eventEmitter.emit('activity.payment', {
+          type: 'payment',
+          description: `${memberName} made a payment of ${updatedPayment.amount} ${updatedPayment.currency}`,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            paymentId,
+            amount: updatedPayment.amount,
+            status: 'PAID',
           },
         });
       }
@@ -163,6 +198,7 @@ export class PaymentsService {
             status: 'ACTIVE',
             endDate: nextBillingDate,
             nextBillingDate,
+            frozenDaysUsed: 0,
           };
 
           // Save card authorization for future recurring charges
@@ -190,11 +226,29 @@ export class PaymentsService {
       const paymentId: string | undefined = metadata?.paymentId;
 
       if (paymentId) {
-        await this.prisma.payment.update({
+        const updatedPayment = await this.prisma.payment.update({
           where: { id: paymentId },
           data: {
             status: 'FAILED',
             failureReason: gateway_response || 'Payment failed',
+          },
+          include: {
+            subscription: {
+              include: { primaryMember: true },
+            },
+          },
+        });
+
+        const member = updatedPayment.subscription.primaryMember;
+        const memberName = `${member.firstName} ${member.lastName}`;
+        this.eventEmitter.emit('activity.payment', {
+          type: 'payment',
+          description: `Payment of ${updatedPayment.amount} ${updatedPayment.currency} by ${memberName} failed`,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            paymentId,
+            amount: updatedPayment.amount,
+            status: 'FAILED',
           },
         });
       }
@@ -250,6 +304,23 @@ export class PaymentsService {
     }
 
     return payment;
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { timeZone: 'Africa/Nairobi' })
+  async expireStalePendingPayments() {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const { count } = await this.prisma.payment.updateMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: twentyFourHoursAgo },
+      },
+      data: { status: 'EXPIRED' },
+    });
+
+    if (count > 0) {
+      this.logger.log(`Expired ${count} stale pending payment(s)`);
+    }
   }
 
   async getPaymentHistory(memberId: string, page = 1, limit = 20) {

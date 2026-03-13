@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
+import { UpdateTrainerProfileDto } from './dto/update-trainer-profile.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 
 const safeUserSelect = {
@@ -43,9 +45,38 @@ export class TrainersService {
     return { data, total, page, limit };
   }
 
+  async updateProfile(id: string, dto: UpdateTrainerProfileDto) {
+    return this.prisma.trainerProfile.update({
+      where: { id },
+      data: {
+        specialization: dto.specialization,
+        bio: dto.bio,
+        availability: dto.availability as Prisma.InputJsonValue,
+      },
+      include: { user: { select: safeUserSelect } },
+    });
+  }
+
   async findOne(id: string) {
     return this.prisma.trainerProfile.findUnique({
       where: { id },
+      include: {
+        user: { select: safeUserSelect },
+        schedules: true,
+        assignments: {
+          include: {
+            member: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async findByUserId(userId: string) {
+    return this.prisma.trainerProfile.findUnique({
+      where: { userId },
       include: {
         user: { select: safeUserSelect },
         schedules: true,
@@ -70,6 +101,40 @@ export class TrainersService {
         endTime: dto.endTime,
         maxCapacity: dto.maxCapacity ?? 10,
       },
+    });
+  }
+
+  async getAllSchedules() {
+    return this.prisma.trainerSchedule.findMany({
+      include: {
+        trainer: {
+          include: { user: { select: safeUserSelect } },
+        },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+  }
+
+  async updateSchedule(
+    trainerId: string,
+    scheduleId: string,
+    dto: UpdateScheduleDto,
+  ) {
+    return this.prisma.trainerSchedule.update({
+      where: { id: scheduleId, trainerId },
+      data: {
+        title: dto.title,
+        dayOfWeek: dto.dayOfWeek,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        maxCapacity: dto.maxCapacity,
+      },
+    });
+  }
+
+  async deleteSchedule(trainerId: string, scheduleId: string) {
+    return this.prisma.trainerSchedule.delete({
+      where: { id: scheduleId, trainerId },
     });
   }
 

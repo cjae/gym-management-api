@@ -1,47 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client';
 import { AnalyticsService } from './analytics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Granularity } from './dto/analytics-query.dto';
 
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
+  let prisma: DeepMockProxy<PrismaClient>;
 
   const now = new Date('2026-03-08T12:00:00Z');
-
-  const mockPrisma = {
-    user: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-    },
-    memberSubscription: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-      groupBy: jest.fn(),
-    },
-    attendance: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-    },
-    payment: {
-      count: jest.fn(),
-      aggregate: jest.fn(),
-      findMany: jest.fn(),
-    },
-    staffSalaryRecord: {
-      aggregate: jest.fn(),
-      count: jest.fn(),
-    },
-  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AnalyticsService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
       ],
     }).compile();
 
     service = module.get<AnalyticsService>(AnalyticsService);
+    prisma = module.get(PrismaService);
     jest.clearAllMocks();
     jest.useFakeTimers().setSystemTime(now);
   });
@@ -53,7 +32,7 @@ describe('AnalyticsService', () => {
   describe('getDashboard', () => {
     beforeEach(() => {
       // Member stats mocks
-      mockPrisma.user.count
+      prisma.user.count
         .mockResolvedValueOnce(100) // total
         .mockResolvedValueOnce(80) // active
         .mockResolvedValueOnce(10) // inactive
@@ -61,41 +40,32 @@ describe('AnalyticsService', () => {
         .mockResolvedValueOnce(15); // newThisMonth
 
       // Subscription stats mocks
-      mockPrisma.memberSubscription.count
+      prisma.memberSubscription.count
         .mockResolvedValueOnce(60) // active
         .mockResolvedValueOnce(8) // expiringSoon
         .mockResolvedValueOnce(5); // expiredThisMonth
 
-      mockPrisma.memberSubscription.groupBy.mockResolvedValue([
+      prisma.memberSubscription.groupBy.mockResolvedValue([
         { planId: 'plan-1', _count: { id: 30 } },
         { planId: 'plan-2', _count: { id: 20 } },
-      ]);
+      ] as any);
 
-      // First call: getRecentActivity subscriptions, second call: byPlan resolution
-      mockPrisma.memberSubscription.findMany
-        .mockResolvedValueOnce([]) // getRecentActivity
-        .mockResolvedValueOnce([
-          // byPlan name resolution
-          { plan: { name: 'Basic' }, planId: 'plan-1' },
-          { plan: { name: 'Premium' }, planId: 'plan-2' },
-        ]);
+      // byPlan name resolution
+      prisma.memberSubscription.findMany.mockResolvedValue([
+        { plan: { name: 'Basic' }, planId: 'plan-1' },
+        { plan: { name: 'Premium' }, planId: 'plan-2' },
+      ] as any);
 
       // Attendance stats mocks
-      mockPrisma.attendance.count
+      prisma.attendance.count
         .mockResolvedValueOnce(45) // today
         .mockResolvedValueOnce(250) // thisWeek
         .mockResolvedValueOnce(900); // last30Days (for avg calculation)
 
-      mockPrisma.attendance.findMany.mockResolvedValue([]);
-
       // Payment stats mocks
-      mockPrisma.payment.count
+      prisma.payment.count
         .mockResolvedValueOnce(3) // pendingLast30Days
         .mockResolvedValueOnce(2); // failedLast30Days
-
-      // Recent activity mocks
-      mockPrisma.user.findMany.mockResolvedValue([]);
-      mockPrisma.payment.findMany.mockResolvedValue([]);
     });
 
     it('should return member stats', async () => {
@@ -118,14 +88,14 @@ describe('AnalyticsService', () => {
 
     it('should include financials for SUPER_ADMIN role', async () => {
       // Add financial mocks
-      mockPrisma.payment.aggregate
-        .mockResolvedValueOnce({ _sum: { amount: 500000 } }) // revenueThisMonth
-        .mockResolvedValueOnce({ _sum: { amount: 450000 } }); // revenueLastMonth
+      prisma.payment.aggregate
+        .mockResolvedValueOnce({ _sum: { amount: 500000 } } as any) // revenueThisMonth
+        .mockResolvedValueOnce({ _sum: { amount: 450000 } } as any); // revenueLastMonth
 
-      mockPrisma.staffSalaryRecord.aggregate.mockResolvedValue({
+      prisma.staffSalaryRecord.aggregate.mockResolvedValue({
         _sum: { amount: 200000 },
-      });
-      mockPrisma.staffSalaryRecord.count.mockResolvedValue(2);
+      } as any);
+      prisma.staffSalaryRecord.count.mockResolvedValue(2);
 
       const result = await service.getDashboard('SUPER_ADMIN');
 
@@ -140,76 +110,9 @@ describe('AnalyticsService', () => {
     });
   });
 
-  describe('getRecentActivity', () => {
-    it('should return merged and sorted activity feed', async () => {
-      const t1 = new Date('2026-03-08T11:00:00Z');
-      const t2 = new Date('2026-03-08T10:00:00Z');
-      const t3 = new Date('2026-03-08T09:00:00Z');
-      const t4 = new Date('2026-03-08T08:00:00Z');
-
-      mockPrisma.user.findMany.mockResolvedValue([
-        {
-          id: 'u1',
-          firstName: 'John',
-          lastName: 'Doe',
-          createdAt: t2,
-        },
-      ]);
-
-      mockPrisma.attendance.findMany.mockResolvedValue([
-        {
-          id: 'a1',
-          memberId: 'u1',
-          checkInTime: t1,
-          member: { firstName: 'John', lastName: 'Doe' },
-        },
-      ]);
-
-      mockPrisma.payment.findMany.mockResolvedValue([
-        {
-          id: 'p1',
-          amount: 5000,
-          currency: 'KES',
-          status: 'PAID',
-          createdAt: t3,
-          subscription: {
-            primaryMember: { firstName: 'Jane', lastName: 'Smith' },
-          },
-        },
-      ]);
-
-      mockPrisma.memberSubscription.findMany.mockResolvedValue([
-        {
-          id: 's1',
-          status: 'ACTIVE',
-          createdAt: t4,
-          primaryMember: { firstName: 'John', lastName: 'Doe' },
-          plan: { name: 'Basic' },
-        },
-      ]);
-
-      const result = await service.getRecentActivity(20);
-
-      expect(result).toHaveLength(4);
-      // Should be sorted by timestamp descending
-      expect(result[0].type).toBe('CHECK_IN');
-      expect(result[0].timestamp).toEqual(t1);
-      expect(result[1].type).toBe('NEW_MEMBER');
-      expect(result[1].timestamp).toEqual(t2);
-      expect(result[2].type).toBe('PAYMENT');
-      expect(result[2].timestamp).toEqual(t3);
-      expect(result[3].type).toBe('SUBSCRIPTION');
-      expect(result[3].timestamp).toEqual(t4);
-
-      // Check message format
-      expect(result[0].message).toContain('John Doe');
-      expect(result[2].message).toContain('5000');
-    });
-  });
-
   describe('getRevenueTrends', () => {
     it('should return revenue series grouped by period', async () => {
-      mockPrisma.payment.findMany.mockResolvedValue([
+      prisma.payment.findMany.mockResolvedValue([
         {
           amount: 5000,
           status: 'PAID',
@@ -234,7 +137,7 @@ describe('AnalyticsService', () => {
           paymentMethod: 'MPESA',
           createdAt: new Date('2026-02-15T10:00:00Z'),
         },
-      ]);
+      ] as any);
 
       const result = await service.getRevenueTrends({
         from: '2026-02-01',
@@ -258,14 +161,14 @@ describe('AnalyticsService', () => {
     });
 
     it('should filter by paymentMethod when provided', async () => {
-      mockPrisma.payment.findMany.mockResolvedValue([]);
+      prisma.payment.findMany.mockResolvedValue([] as any);
 
       await service.getRevenueTrends(
         { from: '2026-01-01', to: '2026-03-31' },
         'CARD',
       );
 
-      expect(mockPrisma.payment.findMany).toHaveBeenCalledWith(
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ paymentMethod: 'CARD' }) as Record<
             string,
@@ -283,7 +186,7 @@ describe('AnalyticsService', () => {
       const wednesday = new Date('2026-03-04T17:00:00Z');
       const wednesday2 = new Date('2026-03-04T09:00:00Z');
 
-      mockPrisma.attendance.findMany.mockResolvedValue([
+      prisma.attendance.findMany.mockResolvedValue([
         {
           checkInDate: monday,
           checkInTime: monday,
@@ -299,7 +202,7 @@ describe('AnalyticsService', () => {
           checkInTime: wednesday2,
           memberId: 'u3',
         },
-      ]);
+      ] as any);
 
       const result = await service.getAttendanceTrends({
         from: '2026-03-01',
@@ -318,7 +221,7 @@ describe('AnalyticsService', () => {
 
   describe('getSubscriptionTrends', () => {
     it('should return subscription series with churn rate', async () => {
-      mockPrisma.memberSubscription.findMany.mockResolvedValue([
+      prisma.memberSubscription.findMany.mockResolvedValue([
         {
           status: 'ACTIVE',
           createdAt: new Date('2026-03-01T10:00:00Z'),
@@ -343,9 +246,10 @@ describe('AnalyticsService', () => {
           plan: { name: 'Basic' },
           paymentMethod: 'MPESA',
         },
-      ]);
+      ] as any);
 
-      mockPrisma.memberSubscription.count.mockResolvedValue(50);
+      // subscribersAtStart = 48 (existing subs before period)
+      prisma.memberSubscription.count.mockResolvedValue(48);
 
       const result = await service.getSubscriptionTrends({
         from: '2026-03-01',
@@ -359,38 +263,66 @@ describe('AnalyticsService', () => {
       expect(result.series[0].expirations).toBe(1);
       expect(result.byPlan).toEqual({ Basic: 1, Premium: 1 });
       expect(result.byPaymentMethod).toEqual({ CARD: 1, MPESA: 1 });
-      // churnRate = (1 + 1) / 50 * 100 = 4
+      // churnRate = (1 + 1) / (48 + 2) * 100 = 4
       expect(result.churnRate).toBe(4);
     });
   });
 
-  describe('getMemberTrends', () => {
-    it('should return member series with running totals and breakdowns', async () => {
-      mockPrisma.user.findMany.mockResolvedValue([
+  describe('getExpiringMemberships', () => {
+    it('should return memberships expiring within 14 days sorted by urgency', async () => {
+      const fiveDaysFromNow = new Date(now);
+      fiveDaysFromNow.setDate(now.getDate() + 5);
+      const tenDaysFromNow = new Date(now);
+      tenDaysFromNow.setDate(now.getDate() + 10);
+
+      prisma.memberSubscription.findMany.mockResolvedValue([
         {
-          role: 'MEMBER',
+          id: 'sub-1',
+          endDate: fiveDaysFromNow,
+          primaryMember: { id: 'u1', firstName: 'Jane', lastName: 'Muthoni' },
+          plan: { name: 'Premium Monthly' },
+        },
+        {
+          id: 'sub-2',
+          endDate: tenDaysFromNow,
+          primaryMember: { id: 'u2', firstName: 'John', lastName: 'Kamau' },
+          plan: { name: 'Basic Monthly' },
+        },
+      ] as any);
+
+      const result = await service.getExpiringMemberships();
+
+      expect(result.memberships).toHaveLength(2);
+      expect(result.memberships[0]).toEqual({
+        memberId: 'u1',
+        memberName: 'Jane Muthoni',
+        planName: 'Premium Monthly',
+        expiresAt: fiveDaysFromNow,
+        daysUntilExpiry: 5,
+      });
+      expect(result.memberships[1].daysUntilExpiry).toBe(10);
+    });
+  });
+
+  describe('getMemberTrends', () => {
+    it('should return member series with running totals and status breakdown', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        {
           status: 'ACTIVE',
           createdAt: new Date('2026-03-01T10:00:00Z'),
         },
         {
-          role: 'MEMBER',
           status: 'ACTIVE',
           createdAt: new Date('2026-03-05T10:00:00Z'),
         },
         {
-          role: 'TRAINER',
-          status: 'ACTIVE',
-          createdAt: new Date('2026-03-10T10:00:00Z'),
-        },
-        {
-          role: 'MEMBER',
           status: 'INACTIVE',
           createdAt: new Date('2026-02-15T10:00:00Z'),
         },
-      ]);
+      ] as any);
 
-      // 10 users created before the from date
-      mockPrisma.user.count.mockResolvedValue(10);
+      // 10 members created before the from date
+      prisma.user.count.mockResolvedValue(10);
 
       const result = await service.getMemberTrends({
         from: '2026-02-01',
@@ -403,19 +335,13 @@ describe('AnalyticsService', () => {
       expect(result.series[0].period).toBe('2026-02');
       expect(result.series[0].newMembers).toBe(1);
       expect(result.series[0].totalMembers).toBe(11);
-      // March: 3 new, running total = 11 + 3 = 14
+      // March: 2 new, running total = 11 + 2 = 13
       expect(result.series[1].period).toBe('2026-03');
-      expect(result.series[1].newMembers).toBe(3);
-      expect(result.series[1].totalMembers).toBe(14);
+      expect(result.series[1].newMembers).toBe(2);
+      expect(result.series[1].totalMembers).toBe(13);
 
-      expect(result.byRole).toEqual({
-        MEMBER: 3,
-        TRAINER: 1,
-        ADMIN: 0,
-        SUPER_ADMIN: 0,
-      });
       expect(result.byStatus).toEqual({
-        ACTIVE: 3,
+        ACTIVE: 2,
         INACTIVE: 1,
         SUSPENDED: 0,
       });

@@ -1,6 +1,13 @@
-import { IsOptional, IsString, IsEnum, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsUrl,
+  IsDateString,
+  MaxLength,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { UserStatus } from '@prisma/client';
+import { UserStatus, Gender } from '@prisma/client';
 
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'John', description: 'First name' })
@@ -32,4 +39,29 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  @ApiPropertyOptional({
+    example: 'MALE',
+    description: 'Gender',
+    enum: Gender,
+  })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @ApiPropertyOptional({
+    example: 'https://res.cloudinary.com/example/image/upload/v1/avatar.jpg',
+    description: 'Display picture URL',
+  })
+  @IsOptional()
+  @IsUrl()
+  displayPicture?: string;
+
+  @ApiPropertyOptional({
+    example: '2000-03-10',
+    description: 'Birthday (only month and day are used, year is ignored)',
+  })
+  @IsOptional()
+  @IsDateString()
+  birthday?: string;
 }

@@ -21,7 +21,9 @@ enum UserStatus {
 }
 
 enum SubscriptionStatus {
+  PENDING
   ACTIVE
+  FROZEN
   EXPIRED
   CANCELLED
 }
@@ -30,6 +32,7 @@ enum PaymentStatus {
   PENDING
   PAID
   FAILED
+  EXPIRED
 }
 
 enum BillingInterval {
@@ -44,6 +47,9 @@ enum BillingInterval {
 enum PaymentMethod {
   CARD
   MPESA
+  MPESA_OFFLINE
+  BANK_TRANSFER
+  COMPLIMENTARY
 }
 
 enum SalaryStatus {
@@ -51,62 +57,109 @@ enum SalaryStatus {
   PAID
 }
 
-model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
-  password  String
-  phone     String?
-  firstName String
-  lastName  String
-  role      Role       @default(MEMBER)
-  status    UserStatus @default(ACTIVE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
 
-  subscriptionsOwned  MemberSubscription[] @relation("SubscriptionOwner")
-  subscriptionMembers SubscriptionMember[]
-  attendances         Attendance[]
-  streak              Streak?
-  trainerProfile      TrainerProfile?
-  trainerAssignmentsAsMember TrainerAssignment[] @relation("MemberAssignments")
-  documentSignatures  DocumentSignature[]
-  salaryRecords       StaffSalaryRecord[]
-  passwordResetTokens PasswordResetToken[]
+enum NotificationType {
+  GENERAL
+  STREAK_NUDGE
+  STATUS_CHANGE
+  PAYMENT_REMINDER
+  SUBSCRIPTION_EXPIRING
+  BIRTHDAY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET
+  PASSWORD_CHANGE
+}
+
+model User {
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  password           String
+  phone              String?
+  firstName          String
+  lastName           String
+  role               Role       @default(MEMBER)
+  status             UserStatus @default(ACTIVE)
+  mustChangePassword Boolean    @default(false)
+  gender             Gender?
+  displayPicture     String?
+  birthday           DateTime?  @db.Date
+  tosAcceptedAt      DateTime?
+  waiverAcceptedAt   DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  subscriptionsOwned         MemberSubscription[] @relation("SubscriptionOwner")
+  subscriptionMembers        SubscriptionMember[]
+  attendances                Attendance[]
+  streak                     Streak?
+  trainerProfile             TrainerProfile?
+  trainerAssignmentsAsMember TrainerAssignment[]  @relation("MemberAssignments")
+  salaryRecords              StaffSalaryRecord[]
+  passwordResetTokens        PasswordResetToken[]
+  auditLogs                  AuditLog[]
+  createdSubscriptions       MemberSubscription[] @relation("SubscriptionCreator")
+  notifications              Notification[]       @relation("UserNotifications")
+  pushTokens                 PushToken[]          @relation("UserPushTokens")
+  banners                    Banner[]              @relation("UserBanners")
+  bannerInteractions         BannerInteraction[]   @relation("UserBannerInteractions")
 }
 
 model SubscriptionPlan {
-  id           String   @id @default(uuid())
-  name         String
-  price        Float
-  currency     String   @default("KES")
+  id              String          @id @default(uuid())
+  name            String
+  price           Float
+  currency        String          @default("KES")
   billingInterval BillingInterval @default(MONTHLY)
-  description  String?
-  maxMembers   Int      @default(1)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  description     String?
+  maxMembers      Int             @default(1)
+  maxFreezeDays   Int             @default(0)
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   subscriptions MemberSubscription[]
 }
 
 model MemberSubscription {
-  id                String             @id @default(uuid())
-  primaryMemberId   String
-  planId            String
-  startDate         DateTime
-  endDate           DateTime
+  id                        String             @id @default(uuid())
+  primaryMemberId           String
+  planId                    String
+  startDate                 DateTime
+  endDate                   DateTime
   status                    SubscriptionStatus @default(ACTIVE)
-  paymentMethod             PaymentMethod @default(MPESA)
+  paymentMethod             PaymentMethod      @default(MPESA)
   paystackAuthorizationCode String?
-  autoRenew                 Boolean       @default(true)
+  autoRenew                 Boolean            @default(true)
   nextBillingDate           DateTime?
+  freezeStartDate           DateTime?
+  freezeEndDate             DateTime?
+  frozenDaysUsed            Int                @default(0)
+  paymentNote               String?
+  createdBy                 String?
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 
-  primaryMember User               @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
-  plan          SubscriptionPlan   @relation(fields: [planId], references: [id])
+  primaryMember User                 @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
+  plan          SubscriptionPlan     @relation(fields: [planId], references: [id])
   members       SubscriptionMember[]
   payments      Payment[]
+  createdByUser User?                @relation("SubscriptionCreator", fields: [createdBy], references: [id])
 }
 
 model SubscriptionMember {
@@ -125,8 +178,10 @@ model Attendance {
   memberId    String
   checkInDate DateTime @db.Date
   checkInTime DateTime @default(now())
+  entranceId  String?
 
-  member User @relation(fields: [memberId], references: [id])
+  member   User      @relation(fields: [memberId], references: [id])
+  entrance Entrance? @relation(fields: [entranceId], references: [id])
 
   @@unique([memberId, checkInDate])
 }
@@ -134,21 +189,23 @@ model Attendance {
 model Streak {
   id              String    @id @default(uuid())
   memberId        String    @unique
-  currentStreak   Int       @default(0)
+  weeklyStreak    Int       @default(0)
   longestStreak   Int       @default(0)
+  daysThisWeek    Int       @default(0)
+  weekStart       DateTime  @db.Date
   lastCheckInDate DateTime? @db.Date
 
   member User @relation(fields: [memberId], references: [id])
 }
 
 model TrainerProfile {
-  id             String @id @default(uuid())
-  userId         String @unique
+  id             String  @id @default(uuid())
+  userId         String  @unique
   specialization String?
   bio            String?
   availability   Json?
 
-  user        User              @relation(fields: [userId], references: [id])
+  user        User                @relation(fields: [userId], references: [id])
   schedules   TrainerSchedule[]
   assignments TrainerAssignment[]
 }
@@ -175,32 +232,6 @@ model TrainerAssignment {
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id])
   member  User           @relation("MemberAssignments", fields: [memberId], references: [id])
-}
-
-model LegalDocument {
-  id         String   @id @default(uuid())
-  title      String
-  content    String
-  version    Int      @default(1)
-  isRequired Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  signatures DocumentSignature[]
-}
-
-model DocumentSignature {
-  id            String   @id @default(uuid())
-  memberId      String
-  documentId    String
-  signatureData String
-  signedAt      DateTime @default(now())
-  ipAddress     String?
-
-  member   User          @relation(fields: [memberId], references: [id])
-  document LegalDocument @relation(fields: [documentId], references: [id])
-
-  @@unique([memberId, documentId])
 }
 
 model StaffSalaryRecord {
@@ -248,6 +279,7 @@ model Payment {
   paymentMethod     PaymentMethod
   paystackReference String?       @unique
   failureReason     String?
+  paymentNote       String?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -260,4 +292,185 @@ model GymQrCode {
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   expiresAt DateTime?
+}
+
+model Entrance {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendances Attendance[]
+}
+
+enum LicenseStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+}
+
+model LicenseCache {
+  id            String        @id @default("singleton")
+  licenseKey    String
+  status        LicenseStatus @default(ACTIVE)
+  gymName       String?
+  tierName      String?
+  maxMembers    Int?
+  expiresAt     DateTime?
+  lastCheckedAt DateTime?
+  lastSuccessAt DateTime?
+  rawResponse   Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?
+  action     AuditAction
+  resource   String
+  resourceId String?
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+  userAgent  String?
+  route      String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([resource, resourceId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Notification {
+  id              String           @id @default(uuid())
+  userId          String?
+  title           String
+  body            String
+  type            NotificationType @default(GENERAL)
+  isRead          Boolean          @default(false)
+  metadata        Json?
+  pushSentCount   Int              @default(0)
+  pushFailedCount Int              @default(0)
+  createdAt       DateTime         @default(now())
+
+  user    User?              @relation("UserNotifications", fields: [userId], references: [id])
+  reads   NotificationRead[]
+  pushJob PushJob?
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+enum PushJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model PushJob {
+  id             String        @id @default(uuid())
+  notificationId String        @unique
+  status         PushJobStatus @default(PENDING)
+  cursor         String?
+  batchSize      Int           @default(500)
+  sent           Int           @default(0)
+  failed         Int           @default(0)
+  retries        Int           @default(0)
+  error          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model PushTicket {
+  id        String   @id @default(uuid())
+  ticketId  String   @unique
+  pushToken String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model NotificationRead {
+  id             String   @id @default(uuid())
+  notificationId String
+  userId         String
+  createdAt      DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+}
+
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String // ios, android
+  createdAt DateTime @default(now())
+
+  user User @relation("UserPushTokens", fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+enum BannerCtaType {
+  NONE
+  DEEP_LINK
+  EXTERNAL_URL
+}
+
+enum BannerInteractionType {
+  IMPRESSION
+  TAP
+}
+
+model Banner {
+  id            String        @id @default(uuid())
+  title         String
+  body          String?
+  imageUrl      String
+  ctaType       BannerCtaType @default(NONE)
+  ctaTarget     String?
+  ctaLabel      String?
+  discountCode  String?
+  displayOrder  Int           @default(0)
+  isPublished   Boolean       @default(false)
+  startDate     DateTime
+  endDate       DateTime
+  deletedAt     DateTime?
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  creator       User              @relation("UserBanners", fields: [createdBy], references: [id])
+  interactions  BannerInteraction[]
+
+  @@index([isPublished, startDate, endDate, deletedAt])
+  @@index([createdBy])
+}
+
+model BannerInteraction {
+  id        String                @id @default(uuid())
+  bannerId  String
+  userId    String
+  type      BannerInteractionType
+  createdAt DateTime              @default(now())
+
+  banner    Banner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  user      User   @relation("UserBannerInteractions", fields: [userId], references: [id])
+
+  @@index([bannerId, type])
+  @@index([userId])
 }
