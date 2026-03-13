@@ -118,6 +118,7 @@ model User {
   pushTokens                 PushToken[]          @relation("UserPushTokens")
   banners                    Banner[]              @relation("UserBanners")
   bannerInteractions         BannerInteraction[]   @relation("UserBannerInteractions")
+  classEnrollments           ClassEnrollment[]
 }
 
 model SubscriptionPlan {
@@ -206,20 +207,37 @@ model TrainerProfile {
   availability   Json?
 
   user        User                @relation(fields: [userId], references: [id])
-  schedules   TrainerSchedule[]
+  classes     GymClass[]
   assignments TrainerAssignment[]
 }
 
-model TrainerSchedule {
-  id          String @id @default(uuid())
-  trainerId   String
+model GymClass {
+  id          String   @id @default(uuid())
   title       String
+  description String?
   dayOfWeek   Int
   startTime   String
   endTime     String
-  maxCapacity Int    @default(10)
+  maxCapacity Int      @default(20)
+  trainerId   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id])
+  trainer     TrainerProfile?   @relation(fields: [trainerId], references: [id])
+  enrollments ClassEnrollment[]
+}
+
+model ClassEnrollment {
+  id         String   @id @default(uuid())
+  classId    String
+  memberId   String
+  enrolledAt DateTime @default(now())
+
+  gymClass GymClass @relation(fields: [classId], references: [id])
+  member   User     @relation(fields: [memberId], references: [id])
+
+  @@unique([classId, memberId])
 }
 
 model TrainerAssignment {
