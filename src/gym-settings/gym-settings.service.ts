@@ -38,8 +38,16 @@ export class GymSettingsService {
     }
     const settings = await this.prisma.gymSettings.upsert({
       where: { id: 'singleton' },
-      create: { timezone: dto.timezone ?? 'Africa/Nairobi' },
-      update: { ...(dto.timezone && { timezone: dto.timezone }) },
+      create: {
+        timezone: dto.timezone ?? 'Africa/Nairobi',
+        ...(dto.referralRewardDays !== undefined && { referralRewardDays: dto.referralRewardDays }),
+        ...(dto.maxReferralsPerCycle !== undefined && { maxReferralsPerCycle: dto.maxReferralsPerCycle }),
+      },
+      update: {
+        ...(dto.timezone && { timezone: dto.timezone }),
+        ...(dto.referralRewardDays !== undefined && { referralRewardDays: dto.referralRewardDays }),
+        ...(dto.maxReferralsPerCycle !== undefined && { maxReferralsPerCycle: dto.maxReferralsPerCycle }),
+      },
       include: { offPeakWindows: true },
     });
     this.invalidateCache();
