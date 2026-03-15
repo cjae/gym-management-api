@@ -48,6 +48,22 @@ describe('ReferralsService', () => {
         NotFoundException,
       );
     });
+
+    it('should generate and save a referral code when user has none', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ referralCode: null } as any) // initial lookup
+        .mockResolvedValueOnce(null as any); // uniqueness check
+      prisma.user.update.mockResolvedValue({} as any);
+
+      const result = await service.getMyCode('user-1');
+
+      expect(result.referralCode).toBeDefined();
+      expect(result.referralCode).toHaveLength(8);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { referralCode: expect.any(String) },
+      });
+    });
   });
 
   describe('getMyReferrals', () => {

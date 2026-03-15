@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
+import { generateReferralCode } from '../common/utils/referral-code.util';
 import { getCycleStartDate } from '../common/utils/billing.util';
 
 @Injectable()
@@ -16,6 +17,25 @@ export class ReferralsService {
       select: { referralCode: true },
     });
     if (!user) throw new NotFoundException('User not found');
+
+    if (!user.referralCode) {
+      let referralCode: string;
+      let isUnique = false;
+      while (!isUnique) {
+        referralCode = generateReferralCode();
+        const existing = await this.prisma.user.findUnique({
+          where: { referralCode },
+          select: { id: true },
+        });
+        isUnique = !existing;
+      }
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { referralCode: referralCode! },
+      });
+      return { referralCode: referralCode! };
+    }
+
     return { referralCode: user.referralCode };
   }
 
