@@ -48,3 +48,74 @@ export class PaginatedEventsResponseDto {
   @ApiProperty()
   limit: number;
 }
+
+export class SafeMemberDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  email: string;
+
+  @ApiProperty()
+  firstName: string;
+
+  @ApiProperty()
+  lastName: string;
+
+  @ApiPropertyOptional()
+  phone?: string;
+
+  @ApiProperty({ enum: ['SUPER_ADMIN', 'ADMIN', 'TRAINER', 'MEMBER'] })
+  role: string;
+
+  @ApiProperty({ enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'] })
+  status: string;
+}
+
+export class EventEnrollmentResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ format: 'uuid' })
+  eventId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  memberId: string;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty({ type: SafeMemberDto })
+  member: SafeMemberDto;
+}
+
+export class MyEventEnrollmentResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ format: 'uuid' })
+  eventId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  memberId: string;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty({ type: EventResponseDto })
+  event: EventResponseDto;
+}
+
+export class PaginatedMyEventsResponseDto {
+  @ApiProperty({ type: [MyEventEnrollmentResponseDto] })
+  data: MyEventEnrollmentResponseDto[];
+
+  @ApiProperty()
+  total: number;
+
+  @ApiProperty()
+  page: number;
+
+  @ApiProperty()
+  limit: number;
+}

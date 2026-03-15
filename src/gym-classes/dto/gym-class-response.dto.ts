@@ -48,3 +48,60 @@ export class PaginatedGymClassesResponseDto {
   @ApiProperty()
   limit: number;
 }
+
+export class SafeMemberDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  email: string;
+
+  @ApiProperty()
+  firstName: string;
+
+  @ApiProperty()
+  lastName: string;
+
+  @ApiPropertyOptional()
+  phone?: string;
+
+  @ApiProperty({ enum: ['SUPER_ADMIN', 'ADMIN', 'TRAINER', 'MEMBER'] })
+  role: string;
+
+  @ApiProperty({ enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'] })
+  status: string;
+}
+
+export class ClassEnrollmentResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ format: 'uuid' })
+  classId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  memberId: string;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty({ type: SafeMemberDto })
+  member: SafeMemberDto;
+}
+
+export class MyClassEnrollmentResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ format: 'uuid' })
+  classId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  memberId: string;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty({ type: GymClassResponseDto })
+  gymClass: GymClassResponseDto;
+}

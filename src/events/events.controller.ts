@@ -26,6 +26,8 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import {
   EventResponseDto,
   PaginatedEventsResponseDto,
+  EventEnrollmentResponseDto,
+  PaginatedMyEventsResponseDto,
 } from './dto/event-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -58,6 +60,7 @@ export class EventsController {
   @Get('my')
   @ApiOkResponse({
     description: 'Events the authenticated member is enrolled in',
+    type: PaginatedMyEventsResponseDto,
   })
   getMyEvents(
     @CurrentUser('id') memberId: string,
@@ -124,7 +127,10 @@ export class EventsController {
   @Get(':id/enrollments')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ description: 'List of enrolled members' })
+  @ApiOkResponse({
+    description: 'List of enrolled members',
+    type: [EventEnrollmentResponseDto],
+  })
   getEnrollments(@Param('id', ParseUUIDPipe) eventId: string) {
     return this.eventsService.getEnrollments(eventId);
   }

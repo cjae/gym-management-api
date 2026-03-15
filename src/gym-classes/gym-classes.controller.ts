@@ -24,6 +24,8 @@ import { UpdateGymClassDto } from './dto/update-gym-class.dto';
 import {
   GymClassResponseDto,
   PaginatedGymClassesResponseDto,
+  ClassEnrollmentResponseDto,
+  MyClassEnrollmentResponseDto,
 } from './dto/gym-class-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -57,6 +59,7 @@ export class GymClassesController {
   @Get('my')
   @ApiOkResponse({
     description: 'Classes the authenticated member is enrolled in',
+    type: [MyClassEnrollmentResponseDto],
   })
   getMyClasses(@CurrentUser('id') memberId: string) {
     return this.gymClassesService.getMyClasses(memberId);
@@ -109,7 +112,10 @@ export class GymClassesController {
   @Get(':id/enrollments')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ description: 'List of enrolled members' })
+  @ApiOkResponse({
+    description: 'List of enrolled members',
+    type: [ClassEnrollmentResponseDto],
+  })
   getEnrollments(@Param('id') classId: string) {
     return this.gymClassesService.getEnrollments(classId);
   }
