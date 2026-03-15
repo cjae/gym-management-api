@@ -60,10 +60,9 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const now = new Date();
 
-    let user: Record<string, unknown>;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        user = await this.prisma.user.create({
+        const user = await this.prisma.user.create({
           data: {
             email: dto.email,
             password: hashedPassword,
@@ -75,7 +74,45 @@ export class AuthService {
             referralCode: generateReferralCode(),
           },
         });
-        break;
+
+        // Handle referral (soft fail — invalid codes don't block registration)
+        if (dto.referralCode) {
+          try {
+            const referrer = await this.prisma.user.findUnique({
+              where: { referralCode: dto.referralCode },
+            });
+            if (
+              referrer &&
+              referrer.status === 'ACTIVE' &&
+              !referrer.deletedAt &&
+              referrer.id !== user.id
+            ) {
+              await this.prisma.$transaction([
+                this.prisma.user.update({
+                  where: { id: user.id },
+                  data: { referredById: referrer.id },
+                }),
+                this.prisma.referral.create({
+                  data: {
+                    referrerId: referrer.id,
+                    referredId: user.id,
+                  },
+                }),
+              ]);
+            }
+          } catch {
+            // Soft fail — don't block registration for referral issues
+          }
+        }
+
+        this.eventEmitter.emit('activity.registration', {
+          type: 'registration',
+          description: `${user.firstName} ${user.lastName} registered as a new member`,
+          timestamp: new Date().toISOString(),
+          metadata: { memberId: user.id },
+        });
+
+        return this.generateTokens(user.id, user.email, user.role, false);
       } catch (error: unknown) {
         if (
           error instanceof Object &&
@@ -94,48 +131,7 @@ export class AuthService {
       }
     }
 
-    if (!user) {
-      throw new InternalServerErrorException('Failed to create user');
-    }
-
-    // Handle referral (soft fail — invalid codes don't block registration)
-    if (dto.referralCode) {
-      try {
-        const referrer = await this.prisma.user.findUnique({
-          where: { referralCode: dto.referralCode },
-        });
-        if (
-          referrer &&
-          referrer.status === 'ACTIVE' &&
-          !referrer.deletedAt &&
-          referrer.id !== user.id
-        ) {
-          await this.prisma.$transaction([
-            this.prisma.user.update({
-              where: { id: user.id },
-              data: { referredById: referrer.id },
-            }),
-            this.prisma.referral.create({
-              data: {
-                referrerId: referrer.id,
-                referredId: user.id,
-              },
-            }),
-          ]);
-        }
-      } catch {
-        // Soft fail — don't block registration for referral issues
-      }
-    }
-
-    this.eventEmitter.emit('activity.registration', {
-      type: 'registration',
-      description: `${String(user.firstName)} ${String(user.lastName)} registered as a new member`,
-      timestamp: new Date().toISOString(),
-      metadata: { memberId: user.id },
-    });
-
-    return this.generateTokens(user.id, user.email, user.role, false);
+    throw new InternalServerErrorException('Failed to create user');
   }
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
