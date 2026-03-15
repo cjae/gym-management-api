@@ -210,9 +210,7 @@ export class ImportsService {
     // Pre-fetch subscription plans if any rows reference them (case-insensitive)
     const planNames = [
       ...new Set(
-        rows
-          .filter((r) => r.plan_name)
-          .map((r) => r.plan_name!.toLowerCase()),
+        rows.filter((r) => r.plan_name).map((r) => r.plan_name!.toLowerCase()),
       ),
     ];
     const plans =
@@ -335,7 +333,9 @@ export class ImportsService {
             });
             continue;
           }
-          const endDate = new Date(row.subscription_end_date + 'T23:59:59+03:00');
+          const endDate = new Date(
+            row.subscription_end_date + 'T23:59:59+03:00',
+          );
           if (isNaN(endDate.getTime())) {
             errors.push({
               row: rowNum,
@@ -464,14 +464,12 @@ export class ImportsService {
               field: 'payment_reference',
               message: 'Payment reference already exists',
             });
-          } else if (
-            Array.isArray(target) &&
-            target.includes('referralCode')
-          ) {
+          } else if (Array.isArray(target) && target.includes('referralCode')) {
             errors.push({
               row: rowNum,
               field: 'system',
-              message: 'Referral code collision — retry the import for this row',
+              message:
+                'Referral code collision — retry the import for this row',
             });
           } else {
             errors.push({
@@ -525,9 +523,7 @@ export class ImportsService {
 
   @Cron(CronExpression.EVERY_10_MINUTES, { timeZone: 'Africa/Nairobi' })
   async cleanupStaleImportJobs() {
-    const staleThreshold = new Date(
-      Date.now() - STALE_JOB_MINUTES * 60 * 1000,
-    );
+    const staleThreshold = new Date(Date.now() - STALE_JOB_MINUTES * 60 * 1000);
 
     const staleJobs = await this.prisma.importJob.updateMany({
       where: {

@@ -188,11 +188,7 @@ describe('ImportsService', () => {
       prisma.importJob.update.mockResolvedValue({} as any);
       emailService.sendImportReportEmail.mockResolvedValue(undefined);
 
-      await service.importMembers(
-        maliciousFile,
-        adminUser.id,
-        adminUser.email,
-      );
+      await service.importMembers(maliciousFile, adminUser.id, adminUser.email);
 
       expect(prisma.importJob.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -253,8 +249,8 @@ describe('ImportsService', () => {
     it('should return the import job', async () => {
       const mockJob = {
         id: 'job-1',
-        type: 'MEMBERS',
-        status: 'COMPLETED',
+        type: 'MEMBERS' as const,
+        status: 'COMPLETED' as const,
         fileName: 'members.csv',
         totalRows: 10,
         importedCount: 8,
