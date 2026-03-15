@@ -31,6 +31,7 @@ import { AuditLogModule } from './audit-logs/audit-logs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BannersModule } from './banners/banners.module';
 import { GymSettingsModule } from './gym-settings/gym-settings.module';
+import { ReferralsModule } from './referrals/referrals.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { GymSettingsModule } from './gym-settings/gym-settings.module';
     NotificationsModule,
     BannersModule,
     GymSettingsModule,
+    ReferralsModule,
   ],
   controllers: [AppController],
   providers: [
