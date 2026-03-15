@@ -9,26 +9,26 @@ async function main() {
 
   // Super Admin
   const superAdmin = await prisma.user.create({
-    data: { email: 'admin@gym.co.ke', password: hash, firstName: 'Super', lastName: 'Admin', role: 'SUPER_ADMIN', mustChangePassword: true },
+    data: { email: 'admin@gym.co.ke', password: hash, firstName: 'Super', lastName: 'Admin', role: 'SUPER_ADMIN', mustChangePassword: true, referralCode: 'SADMIN01' },
   });
 
   // Admins
   const admin1 = await prisma.user.create({
-    data: { email: 'frontdesk1@gym.co.ke', password: hash, firstName: 'Jane', lastName: 'Wanjiku', role: 'ADMIN', mustChangePassword: true },
+    data: { email: 'frontdesk1@gym.co.ke', password: hash, firstName: 'Jane', lastName: 'Wanjiku', role: 'ADMIN', mustChangePassword: true, referralCode: 'ADMIN001' },
   });
   const admin2 = await prisma.user.create({
-    data: { email: 'frontdesk2@gym.co.ke', password: hash, firstName: 'John', lastName: 'Kamau', role: 'ADMIN', mustChangePassword: true },
+    data: { email: 'frontdesk2@gym.co.ke', password: hash, firstName: 'John', lastName: 'Kamau', role: 'ADMIN', mustChangePassword: true, referralCode: 'ADMIN002' },
   });
 
   // Trainers
   const trainer1 = await prisma.user.create({
-    data: { email: 'trainer1@gym.co.ke', password: hash, firstName: 'Mike', lastName: 'Ochieng', role: 'TRAINER' },
+    data: { email: 'trainer1@gym.co.ke', password: hash, firstName: 'Mike', lastName: 'Ochieng', role: 'TRAINER', referralCode: 'TRAIN001' },
   });
   const trainer2 = await prisma.user.create({
-    data: { email: 'trainer2@gym.co.ke', password: hash, firstName: 'Faith', lastName: 'Njeri', role: 'TRAINER' },
+    data: { email: 'trainer2@gym.co.ke', password: hash, firstName: 'Faith', lastName: 'Njeri', role: 'TRAINER', referralCode: 'TRAIN002' },
   });
   const trainer3 = await prisma.user.create({
-    data: { email: 'trainer3@gym.co.ke', password: hash, firstName: 'David', lastName: 'Mwangi', role: 'TRAINER' },
+    data: { email: 'trainer3@gym.co.ke', password: hash, firstName: 'David', lastName: 'Mwangi', role: 'TRAINER', referralCode: 'TRAIN003' },
   });
 
   // Trainer profiles
@@ -46,7 +46,7 @@ async function main() {
   const members: User[] = [];
   for (let i = 1; i <= 10; i++) {
     const member = await prisma.user.create({
-      data: { email: `member${i}@example.com`, password: hash, firstName: `Member`, lastName: `${i}`, role: 'MEMBER', phone: `+2547000000${i.toString().padStart(2, '0')}` },
+      data: { email: `member${i}@example.com`, password: hash, firstName: `Member`, lastName: `${i}`, role: 'MEMBER', phone: `+2547000000${i.toString().padStart(2, '0')}`, referralCode: `MEMBER${i.toString().padStart(2, '0')}` },
     });
     members.push(member);
   }
@@ -286,6 +286,22 @@ async function main() {
     data: { memberId: members[3].id, weeklyStreak: 8, longestStreak: 15, daysThisWeek: 4, weekStart: monday, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
   });
 
+  // ── Referrals (Member 1 referred 4 & 5 completed, Member 2 referred 6 pending) ──
+  await prisma.user.update({ where: { id: members[3].id }, data: { referredById: members[0].id } });
+  await prisma.referral.create({
+    data: { referrerId: members[0].id, referredId: members[3].id, status: 'COMPLETED', rewardDays: 7, completedAt: daysAgo(2) },
+  });
+
+  await prisma.user.update({ where: { id: members[4].id }, data: { referredById: members[0].id } });
+  await prisma.referral.create({
+    data: { referrerId: members[0].id, referredId: members[4].id, status: 'COMPLETED', rewardDays: 7, completedAt: daysAgo(1) },
+  });
+
+  await prisma.user.update({ where: { id: members[5].id }, data: { referredById: members[1].id } });
+  await prisma.referral.create({
+    data: { referrerId: members[1].id, referredId: members[5].id, status: 'PENDING' },
+  });
+
   // Active QR code
   await prisma.gymQrCode.create({
     data: { code: crypto.randomBytes(32).toString('hex'), isActive: true },
@@ -296,6 +312,8 @@ async function main() {
     data: {
       id: 'singleton',
       timezone: 'Africa/Nairobi',
+      referralRewardDays: 7,
+      maxReferralsPerCycle: 3,
       offPeakWindows: {
         create: [
           { startTime: '06:00', endTime: '10:00' },
