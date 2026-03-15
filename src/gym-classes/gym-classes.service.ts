@@ -234,6 +234,7 @@ export class GymClassesService {
         gymClass: {
           include: {
             trainer: { include: { user: { select: safeUserSelect } } },
+            _count: { select: { enrollments: true } },
           },
         },
       },

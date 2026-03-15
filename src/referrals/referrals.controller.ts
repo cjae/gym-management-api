@@ -1,10 +1,11 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOkResponse,
   ApiUnauthorizedResponse,
   ApiForbiddenResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 import { ReferralsService } from './referrals.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -51,5 +52,13 @@ export class ReferralsController {
   @ApiOkResponse({ type: ReferralStatsResponseDto })
   getStats(@CurrentUser() user: { id: string }) {
     return this.referralsService.getStats(user.id);
+  }
+
+  @Get('stats/:userId')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiParam({ name: 'userId', description: 'ID of the user to fetch referral stats for' })
+  @ApiOkResponse({ type: ReferralStatsResponseDto })
+  getUserStats(@Param('userId') userId: string) {
+    return this.referralsService.getStats(userId);
   }
 }

@@ -28,6 +28,9 @@ export class EventResponseDto {
   @ApiProperty()
   isActive: boolean;
 
+  @ApiProperty({ description: 'Enrollment count', example: { enrollments: 5 } })
+  _count: { enrollments: number };
+
   @ApiProperty()
   createdAt: Date;
 
