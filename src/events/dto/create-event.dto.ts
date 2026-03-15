@@ -18,13 +18,18 @@ export class CreateEventDto {
   @MaxLength(255)
   title: string;
 
-  @ApiPropertyOptional({ example: 'A community outdoor fitness event at Uhuru Park' })
+  @ApiPropertyOptional({
+    example: 'A community outdoor fitness event at Uhuru Park',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1000)
   description?: string;
 
-  @ApiProperty({ example: '2026-04-15', description: 'Event date (YYYY-MM-DD)' })
+  @ApiProperty({
+    example: '2026-04-15',
+    description: 'Event date (YYYY-MM-DD)',
+  })
   @IsDateString()
   date: string;
 

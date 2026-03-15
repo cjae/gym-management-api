@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
@@ -62,10 +63,9 @@ export class UsersService {
     const tempPassword = randomBytes(9).toString('base64url').slice(0, 12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    let user: Record<string, unknown>;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        user = await this.prisma.user.create({
+        const user = await this.prisma.user.create({
           data: {
             email: dto.email,
             password: hashedPassword,
@@ -80,7 +80,13 @@ export class UsersService {
           },
           select: safeUserSelect,
         });
-        break;
+
+        // Send welcome email (fire-and-forget)
+        this.emailService
+          .sendWelcomeEmail(dto.email, dto.firstName, tempPassword)
+          .catch(() => {});
+
+        return user;
       } catch (error: unknown) {
         if (
           error instanceof Object &&
@@ -103,12 +109,7 @@ export class UsersService {
       }
     }
 
-    // Send welcome email (fire-and-forget)
-    this.emailService
-      .sendWelcomeEmail(dto.email, dto.firstName, tempPassword)
-      .catch(() => {});
-
-    return user;
+    throw new InternalServerErrorException('Failed to create user');
   }
 
   async findAll(

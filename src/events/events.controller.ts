@@ -68,10 +68,7 @@ export class EventsController {
   @Get(':id')
   @ApiOkResponse({ type: EventResponseDto })
   @ApiNotFoundResponse({ description: 'Event not found' })
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser('role') role: string,
-  ) {
+  findOne(@Param('id') id: string, @CurrentUser('role') role: string) {
     const includeEnrollments = role === 'ADMIN' || role === 'SUPER_ADMIN';
     return this.eventsService.findOne(id, includeEnrollments);
   }
@@ -110,10 +107,7 @@ export class EventsController {
   @Roles('MEMBER')
   @ApiOkResponse({ description: 'Unenrolled from event' })
   @ApiBadRequestResponse({ description: 'Cannot unenroll from past event' })
-  unenroll(
-    @Param('id') eventId: string,
-    @CurrentUser('id') memberId: string,
-  ) {
+  unenroll(@Param('id') eventId: string, @CurrentUser('id') memberId: string) {
     return this.eventsService.unenroll(eventId, memberId);
   }
 

@@ -7,7 +7,9 @@ import {
   IsDateString,
   IsBoolean,
   Equals,
+  Matches,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -54,6 +56,12 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   @MaxLength(8)
+  @Matches(/^[A-Z0-9]{1,8}$/, {
+    message: 'Referral code must be 1-8 uppercase alphanumeric characters',
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
   referralCode?: string;
 
   @ApiPropertyOptional({

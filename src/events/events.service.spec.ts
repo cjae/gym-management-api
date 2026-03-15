@@ -134,7 +134,9 @@ describe('EventsService', () => {
 
     it('should throw NotFoundException when event not found', async () => {
       prisma.event.findUnique.mockResolvedValue(null);
-      await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw NotFoundException for inactive event', async () => {
@@ -142,7 +144,9 @@ describe('EventsService', () => {
         ...mockEvent,
         isActive: false,
       } as any);
-      await expect(service.findOne('event-1')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('event-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -155,7 +159,9 @@ describe('EventsService', () => {
       } as any);
       prisma.event.update.mockResolvedValue(updated as any);
 
-      const result = await service.update('event-1', { title: 'Indoor Bootcamp' });
+      const result = await service.update('event-1', {
+        title: 'Indoor Bootcamp',
+      });
       expect(result.title).toBe('Indoor Bootcamp');
     });
 
@@ -211,7 +217,9 @@ describe('EventsService', () => {
 
     it('should throw NotFoundException when event not found', async () => {
       prisma.event.findUnique.mockResolvedValue(null);
-      await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -317,7 +325,9 @@ describe('EventsService', () => {
   describe('getEnrollments', () => {
     it('should return enrollments for an event', async () => {
       prisma.event.findUnique.mockResolvedValue(mockEvent as any);
-      prisma.eventEnrollment.findMany.mockResolvedValue([mockEnrollment] as any);
+      prisma.eventEnrollment.findMany.mockResolvedValue([
+        mockEnrollment,
+      ] as any);
 
       const result = await service.getEnrollments('event-1');
       expect(result).toEqual([mockEnrollment]);
