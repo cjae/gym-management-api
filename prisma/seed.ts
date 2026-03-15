@@ -291,6 +291,33 @@ async function main() {
     data: { code: crypto.randomBytes(32).toString('hex'), isActive: true },
   });
 
+  // Gym Settings with off-peak windows
+  await prisma.gymSettings.create({
+    data: {
+      id: 'singleton',
+      timezone: 'Africa/Nairobi',
+      offPeakWindows: {
+        create: [
+          { startTime: '06:00', endTime: '10:00' },
+          { startTime: '14:00', endTime: '17:00' },
+        ],
+      },
+    },
+  });
+
+  // Off-peak subscription plan
+  await prisma.subscriptionPlan.create({
+    data: {
+      name: 'Off-Peak Monthly',
+      price: 2000,
+      currency: 'KES',
+      billingInterval: 'MONTHLY',
+      description: 'Monthly membership restricted to off-peak hours (6-10am, 2-5pm)',
+      maxMembers: 1,
+      isOffPeak: true,
+    },
+  });
+
   console.log('Seed data created successfully');
 }
 
