@@ -31,11 +31,19 @@ export class EventsService {
   ) {}
 
   async create(dto: CreateEventDto) {
+    const eventDate = new Date(dto.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (eventDate < today) {
+      throw new BadRequestException('Cannot create an event in the past');
+    }
+
     return this.prisma.event.create({
       data: {
         title: dto.title,
         description: dto.description,
-        date: new Date(dto.date),
+        date: eventDate,
         startTime: dto.startTime,
         endTime: dto.endTime,
         location: dto.location,
@@ -94,7 +102,7 @@ export class EventsService {
       },
     });
 
-    if (!existing) {
+    if (!existing || !existing.isActive) {
       throw new NotFoundException('Event not found');
     }
 
@@ -134,7 +142,7 @@ export class EventsService {
       },
     });
 
-    if (!existing) {
+    if (!existing || !existing.isActive) {
       throw new NotFoundException('Event not found');
     }
 
@@ -152,10 +160,17 @@ export class EventsService {
 
   async enroll(eventId: string, memberId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const event = await tx.event.findUnique({
-        where: { id: eventId },
-        include: { _count: { select: { enrollments: true } } },
-      });
+      // Lock the event row to prevent concurrent over-enrollment
+      const events = await tx.$queryRaw<
+        {
+          id: string;
+          date: Date;
+          maxCapacity: number;
+          isActive: boolean;
+        }[]
+      >`SELECT id, date, "maxCapacity", "isActive" FROM "Event" WHERE id = ${eventId} FOR UPDATE`;
+
+      const event = events[0];
 
       if (!event || !event.isActive) {
         throw new NotFoundException('Event not found or is inactive');
@@ -167,7 +182,11 @@ export class EventsService {
         throw new BadRequestException('Cannot enroll in a past event');
       }
 
-      if (event._count.enrollments >= event.maxCapacity) {
+      const enrollmentCount = await tx.eventEnrollment.count({
+        where: { eventId },
+      });
+
+      if (enrollmentCount >= event.maxCapacity) {
         throw new ConflictException('Event is full');
       }
 
@@ -192,7 +211,7 @@ export class EventsService {
       where: { id: eventId },
     });
 
-    if (!event) {
+    if (!event || !event.isActive) {
       throw new NotFoundException('Event not found');
     }
 
@@ -202,9 +221,13 @@ export class EventsService {
       throw new BadRequestException('Cannot unenroll from a past event');
     }
 
-    await this.prisma.eventEnrollment.deleteMany({
+    const result = await this.prisma.eventEnrollment.deleteMany({
       where: { eventId, memberId },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException('Not enrolled in this event');
+    }
   }
 
   async getEnrollments(eventId: string) {

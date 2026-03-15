@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -68,7 +69,7 @@ export class EventsController {
   @Get(':id')
   @ApiOkResponse({ type: EventResponseDto })
   @ApiNotFoundResponse({ description: 'Event not found' })
-  findOne(@Param('id') id: string, @CurrentUser('role') role: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('role') role: string) {
     const includeEnrollments = role === 'ADMIN' || role === 'SUPER_ADMIN';
     return this.eventsService.findOne(id, includeEnrollments);
   }
@@ -78,7 +79,7 @@ export class EventsController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: EventResponseDto })
   @ApiNotFoundResponse({ description: 'Event not found' })
-  update(@Param('id') id: string, @Body() dto: UpdateEventDto) {
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDto) {
     return this.eventsService.update(id, dto);
   }
 
@@ -87,7 +88,7 @@ export class EventsController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ description: 'Event deactivated' })
   @ApiNotFoundResponse({ description: 'Event not found' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.eventsService.remove(id);
   }
 
@@ -98,7 +99,7 @@ export class EventsController {
   @ApiNotFoundResponse({ description: 'Event not found or inactive' })
   @ApiConflictResponse({ description: 'Event is full' })
   @ApiBadRequestResponse({ description: 'Cannot enroll in past event' })
-  enroll(@Param('id') eventId: string, @CurrentUser('id') memberId: string) {
+  enroll(@Param('id', ParseUUIDPipe) eventId: string, @CurrentUser('id') memberId: string) {
     return this.eventsService.enroll(eventId, memberId);
   }
 
@@ -107,7 +108,7 @@ export class EventsController {
   @Roles('MEMBER')
   @ApiOkResponse({ description: 'Unenrolled from event' })
   @ApiBadRequestResponse({ description: 'Cannot unenroll from past event' })
-  unenroll(@Param('id') eventId: string, @CurrentUser('id') memberId: string) {
+  unenroll(@Param('id', ParseUUIDPipe) eventId: string, @CurrentUser('id') memberId: string) {
     return this.eventsService.unenroll(eventId, memberId);
   }
 
@@ -115,7 +116,7 @@ export class EventsController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ description: 'List of enrolled members' })
-  getEnrollments(@Param('id') eventId: string) {
+  getEnrollments(@Param('id', ParseUUIDPipe) eventId: string) {
     return this.eventsService.getEnrollments(eventId);
   }
 }

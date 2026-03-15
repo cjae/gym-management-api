@@ -75,6 +75,17 @@ describe('EventsService', () => {
       expect(result).toEqual(mockEvent);
       expect(prisma.event.create).toHaveBeenCalled();
     });
+
+    it('should throw BadRequestException for past date', async () => {
+      await expect(
+        service.create({
+          title: 'Past Event',
+          date: '2020-01-01',
+          startTime: '09:00',
+          endTime: '11:00',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('findAll', () => {
@@ -190,6 +201,17 @@ describe('EventsService', () => {
         NotFoundException,
       );
     });
+
+    it('should throw NotFoundException for inactive event', async () => {
+      prisma.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        isActive: false,
+        enrollments: [],
+      } as any);
+      await expect(
+        service.update('event-1', { title: 'X' }),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('remove (soft delete)', () => {
@@ -221,14 +243,30 @@ describe('EventsService', () => {
         NotFoundException,
       );
     });
+
+    it('should throw NotFoundException for already-cancelled event', async () => {
+      prisma.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        isActive: false,
+        enrollments: [],
+      } as any);
+      await expect(service.remove('event-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('enroll', () => {
     it('should enroll a member in an event within a transaction', async () => {
-      prisma.event.findUnique.mockResolvedValue({
-        ...mockEvent,
-        _count: { enrollments: 5 },
-      } as any);
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          id: mockEvent.id,
+          date: mockEvent.date,
+          maxCapacity: mockEvent.maxCapacity,
+          isActive: true,
+        },
+      ] as any);
+      prisma.eventEnrollment.count.mockResolvedValue(5);
       prisma.eventEnrollment.create.mockResolvedValue(mockEnrollment as any);
 
       const result = await service.enroll('event-1', 'member-1');
@@ -238,11 +276,22 @@ describe('EventsService', () => {
     });
 
     it('should throw NotFoundException for inactive event', async () => {
-      prisma.event.findUnique.mockResolvedValue({
-        ...mockEvent,
-        isActive: false,
-        _count: { enrollments: 0 },
-      } as any);
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          id: mockEvent.id,
+          date: mockEvent.date,
+          maxCapacity: mockEvent.maxCapacity,
+          isActive: false,
+        },
+      ] as any);
+
+      await expect(service.enroll('event-1', 'member-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw NotFoundException when event not found', async () => {
+      prisma.$queryRaw.mockResolvedValue([] as any);
 
       await expect(service.enroll('event-1', 'member-1')).rejects.toThrow(
         NotFoundException,
@@ -250,11 +299,15 @@ describe('EventsService', () => {
     });
 
     it('should throw ConflictException when event is at capacity', async () => {
-      prisma.event.findUnique.mockResolvedValue({
-        ...mockEvent,
-        maxCapacity: 50,
-        _count: { enrollments: 50 },
-      } as any);
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          id: mockEvent.id,
+          date: mockEvent.date,
+          maxCapacity: 50,
+          isActive: true,
+        },
+      ] as any);
+      prisma.eventEnrollment.count.mockResolvedValue(50);
 
       await expect(service.enroll('event-1', 'member-1')).rejects.toThrow(
         ConflictException,
@@ -262,11 +315,14 @@ describe('EventsService', () => {
     });
 
     it('should throw BadRequestException for past event', async () => {
-      prisma.event.findUnique.mockResolvedValue({
-        ...mockEvent,
-        date: pastDate,
-        _count: { enrollments: 0 },
-      } as any);
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          id: mockEvent.id,
+          date: pastDate,
+          maxCapacity: 50,
+          isActive: true,
+        },
+      ] as any);
 
       await expect(service.enroll('event-1', 'member-1')).rejects.toThrow(
         BadRequestException,
@@ -274,10 +330,15 @@ describe('EventsService', () => {
     });
 
     it('should throw ConflictException for duplicate enrollment', async () => {
-      prisma.event.findUnique.mockResolvedValue({
-        ...mockEvent,
-        _count: { enrollments: 5 },
-      } as any);
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          id: mockEvent.id,
+          date: mockEvent.date,
+          maxCapacity: 50,
+          isActive: true,
+        },
+      ] as any);
+      prisma.eventEnrollment.count.mockResolvedValue(5);
       prisma.eventEnrollment.create.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
           code: 'P2002',
@@ -310,6 +371,16 @@ describe('EventsService', () => {
       );
     });
 
+    it('should throw NotFoundException for inactive event', async () => {
+      prisma.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        isActive: false,
+      } as any);
+      await expect(service.unenroll('event-1', 'member-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
     it('should throw BadRequestException for past event', async () => {
       prisma.event.findUnique.mockResolvedValue({
         ...mockEvent,
@@ -318,6 +389,15 @@ describe('EventsService', () => {
 
       await expect(service.unenroll('event-1', 'member-1')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('should throw NotFoundException when not enrolled', async () => {
+      prisma.event.findUnique.mockResolvedValue(mockEvent as any);
+      prisma.eventEnrollment.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.unenroll('event-1', 'member-1')).rejects.toThrow(
+        NotFoundException,
       );
     });
   });
