@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpsertGymSettingsDto {
@@ -8,5 +8,6 @@ export class UpsertGymSettingsDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   timezone?: string;
 }

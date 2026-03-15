@@ -29,7 +29,7 @@ Singleton enforced at service level. Holds gym-wide configuration.
 | createdAt | DateTime | Auto |
 | updatedAt | DateTime | Auto |
 
-Multiple windows supported. Day-specific windows override universal ones for that day. Overnight windows supported (startTime > endTime means crosses midnight).
+Multiple windows supported. Day-specific windows are additive with universal (null day) windows — on a given day, all matching windows apply. Overnight windows supported (startTime > endTime means crosses midnight).
 
 ### New: DayOfWeek enum
 
