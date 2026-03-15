@@ -336,6 +336,57 @@ async function main() {
     },
   });
 
+  // ── Events (upcoming community events) ──
+  const event1 = await prisma.event.create({
+    data: {
+      title: 'Outdoor Bootcamp',
+      description: 'Community outdoor fitness event at Uhuru Park. All fitness levels welcome!',
+      date: daysFromNow(7),
+      startTime: '07:00',
+      endTime: '09:00',
+      location: 'Uhuru Park, Nairobi',
+      maxCapacity: 100,
+    },
+  });
+
+  const event2 = await prisma.event.create({
+    data: {
+      title: 'Nutrition Workshop',
+      description: 'Learn about meal prep and sports nutrition from our certified nutritionist.',
+      date: daysFromNow(14),
+      startTime: '14:00',
+      endTime: '16:00',
+      location: 'Studio A',
+      maxCapacity: 30,
+    },
+  });
+
+  const event3 = await prisma.event.create({
+    data: {
+      title: 'Members BBQ & Social',
+      description: 'End-of-month social event for all gym members. Food and drinks provided!',
+      date: daysFromNow(21),
+      startTime: '12:00',
+      endTime: '15:00',
+      location: 'Gym Rooftop',
+      maxCapacity: 80,
+    },
+  });
+
+  // Enroll some members in events
+  await prisma.eventEnrollment.createMany({
+    data: [
+      { eventId: event1.id, memberId: members[0].id },
+      { eventId: event1.id, memberId: members[1].id },
+      { eventId: event1.id, memberId: members[2].id },
+      { eventId: event2.id, memberId: members[0].id },
+      { eventId: event2.id, memberId: members[3].id },
+      { eventId: event3.id, memberId: members[1].id },
+      { eventId: event3.id, memberId: members[4].id },
+      { eventId: event3.id, memberId: members[5].id },
+    ],
+  });
+
   console.log('Seed data created successfully');
 }
 
