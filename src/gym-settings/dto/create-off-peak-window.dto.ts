@@ -12,14 +12,20 @@ export class CreateOffPeakWindowDto {
   @IsEnum(DayOfWeek)
   dayOfWeek?: DayOfWeek;
 
-  @ApiProperty({ example: '06:00', description: 'Start time in HH:mm 24h format' })
+  @ApiProperty({
+    example: '06:00',
+    description: 'Start time in HH:mm 24h format',
+  })
   @IsString()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'startTime must be in HH:mm format (00:00-23:59)',
   })
   startTime: string;
 
-  @ApiProperty({ example: '10:00', description: 'End time in HH:mm 24h format' })
+  @ApiProperty({
+    example: '10:00',
+    description: 'End time in HH:mm 24h format',
+  })
   @IsString()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'endTime must be in HH:mm format (00:00-23:59)',

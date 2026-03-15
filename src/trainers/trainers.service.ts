@@ -34,7 +34,10 @@ export class TrainersService {
   async findAll(page: number = 1, limit: number = 20) {
     const [data, total] = await Promise.all([
       this.prisma.trainerProfile.findMany({
-        include: { user: { select: safeUserSelect }, classes: { where: { isActive: true } } },
+        include: {
+          user: { select: safeUserSelect },
+          classes: { where: { isActive: true } },
+        },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -106,7 +109,10 @@ export class TrainersService {
       where: { memberId, endDate: null },
       include: {
         trainer: {
-          include: { user: { select: safeUserSelect }, classes: { where: { isActive: true } } },
+          include: {
+            user: { select: safeUserSelect },
+            classes: { where: { isActive: true } },
+          },
         },
       },
     });

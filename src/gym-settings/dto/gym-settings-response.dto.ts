@@ -4,7 +4,17 @@ class OffPeakWindowResponseDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiPropertyOptional({ enum: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] })
+  @ApiPropertyOptional({
+    enum: [
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+      'SUNDAY',
+    ],
+  })
   dayOfWeek?: string;
 
   @ApiProperty({ example: '06:00' })

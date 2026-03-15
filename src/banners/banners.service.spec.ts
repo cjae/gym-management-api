@@ -183,9 +183,16 @@ describe('BannersService', () => {
           where: expect.objectContaining({
             isPublished: true,
             deletedAt: null,
+            startDate: { lte: expect.any(Date) },
+            endDate: { gt: expect.any(Date) },
           }),
           orderBy: { displayOrder: 'asc' },
-          take: 10,
+          take: 5,
+          select: expect.objectContaining({
+            id: true,
+            title: true,
+            imageUrl: true,
+          }),
         }),
       );
       expect(result).toEqual([mockBanner]);

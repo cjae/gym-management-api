@@ -263,7 +263,10 @@ describe('AuditInterceptor', () => {
       url: '/api/v1/gym-classes/class-1',
       controllerName: 'GymClassesController',
     });
-    const handler = createMockCallHandler({ id: 'class-1', title: 'Evening HIIT' });
+    const handler = createMockCallHandler({
+      id: 'class-1',
+      title: 'Evening HIIT',
+    });
 
     const result$ = await interceptor.intercept(context, handler);
     await lastValueFrom(result$);

@@ -211,10 +211,7 @@ export class AttendanceService {
     };
   }
 
-  private async validateOffPeakWindow(
-    memberId: string,
-    entranceId?: string,
-  ) {
+  private async validateOffPeakWindow(memberId: string, entranceId?: string) {
     const settings = await this.gymSettingsService.getCachedSettings();
     if (!settings || settings.offPeakWindows.length === 0) {
       throw new BadRequestException(
@@ -271,14 +268,23 @@ export class AttendanceService {
     if (!isWithinWindow) {
       const windowDescriptions = applicableWindows
         .map(
-          (w: { startTime: string; endTime: string; dayOfWeek: string | null }) =>
+          (w: {
+            startTime: string;
+            endTime: string;
+            dayOfWeek: string | null;
+          }) =>
             `${w.startTime}-${w.endTime}${w.dayOfWeek ? ` (${w.dayOfWeek})` : ''}`,
         )
         .join(', ');
 
       const member = await this.prisma.user.findUnique({
         where: { id: memberId },
-        select: { id: true, firstName: true, lastName: true, displayPicture: true },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          displayPicture: true,
+        },
       });
       this.eventEmitter.emit('check_in.result', {
         type: 'check_in_result',
