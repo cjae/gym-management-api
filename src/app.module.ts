@@ -30,6 +30,7 @@ import { LicenseGuard } from './licensing/licensing.guard';
 import { AuditLogModule } from './audit-logs/audit-logs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BannersModule } from './banners/banners.module';
+import { GymSettingsModule } from './gym-settings/gym-settings.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { BannersModule } from './banners/banners.module';
     AuditLogModule,
     NotificationsModule,
     BannersModule,
+    GymSettingsModule,
   ],
   controllers: [AppController],
   providers: [
