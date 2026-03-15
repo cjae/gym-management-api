@@ -88,9 +88,9 @@ describe('ImportsService', () => {
       );
     });
 
-    it('should strip CSV injection characters', async () => {
+    it('should strip all leading CSV injection characters', async () => {
       const buffer = Buffer.from(
-        'email,first_name,last_name\njane@example.com,=Jane,+Doe',
+        'email,first_name,last_name\njane@example.com,=+Jane,-@Doe',
       );
 
       const result = await service.validateAndParseCsv(buffer);
@@ -142,6 +142,7 @@ describe('ImportsService', () => {
 
       // Mock dependencies used by background processImport
       prisma.user.findMany.mockResolvedValue([]);
+      prisma.payment.findMany.mockResolvedValue([]);
       prisma.user.create.mockResolvedValue({ id: 'user-1' } as any);
       prisma.importJob.update.mockResolvedValue({} as any);
       emailService.sendImportReportEmail.mockResolvedValue(undefined);
@@ -154,6 +155,80 @@ describe('ImportsService', () => {
 
       expect(result.status).toBe('PROCESSING');
       expect(prisma.importJob.create).toHaveBeenCalled();
+    });
+
+    it('should sanitize path traversal in file names', async () => {
+      const maliciousFile = {
+        buffer: Buffer.from(
+          'email,first_name,last_name\njane@example.com,Jane,Doe',
+        ),
+        originalname: '../../../etc/passwd',
+      } as Express.Multer.File;
+
+      prisma.importJob.findFirst.mockResolvedValue(null);
+      prisma.importJob.create.mockResolvedValue({
+        id: 'job-1',
+        type: 'MEMBERS',
+        status: 'PROCESSING',
+        fileName: 'passwd',
+        totalRows: 1,
+        importedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        initiatedById: adminUser.id,
+        errors: null,
+        skipped: null,
+        completedAt: null,
+      });
+
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.payment.findMany.mockResolvedValue([]);
+      prisma.importJob.update.mockResolvedValue({} as any);
+      emailService.sendImportReportEmail.mockResolvedValue(undefined);
+
+      await service.importMembers(
+        maliciousFile,
+        adminUser.id,
+        adminUser.email,
+      );
+
+      expect(prisma.importJob.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            fileName: 'passwd',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('cleanupStaleImportJobs', () => {
+    it('should mark stale PROCESSING jobs as FAILED', async () => {
+      prisma.importJob.updateMany.mockResolvedValue({ count: 2 });
+
+      await service.cleanupStaleImportJobs();
+
+      expect(prisma.importJob.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'PROCESSING',
+            createdAt: expect.objectContaining({ lt: expect.any(Date) }),
+          }),
+          data: expect.objectContaining({
+            status: 'FAILED',
+          }),
+        }),
+      );
+    });
+
+    it('should do nothing when no stale jobs exist', async () => {
+      prisma.importJob.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.cleanupStaleImportJobs();
+
+      expect(prisma.importJob.updateMany).toHaveBeenCalled();
     });
   });
 

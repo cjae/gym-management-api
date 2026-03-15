@@ -4,11 +4,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { parse } from 'csv-parse/sync';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
+import * as path from 'path';
 import { generateReferralCode } from '../common/utils/referral-code.util';
 import { Gender, PaymentMethod, SubscriptionStatus } from '@prisma/client';
 
@@ -28,13 +30,15 @@ interface CsvRow {
 const REQUIRED_HEADERS = ['email', 'first_name', 'last_name'];
 const SUBSCRIPTION_HEADERS = ['plan_name', 'subscription_end_date'];
 const MAX_ROWS = 500;
+const MAX_FILENAME_LENGTH = 255;
+const STALE_JOB_MINUTES = 30;
 const VALID_GENDERS = Object.values(Gender);
 const VALID_PAYMENT_METHODS: string[] = [
   PaymentMethod.MPESA_OFFLINE,
   PaymentMethod.BANK_TRANSFER,
   PaymentMethod.COMPLIMENTARY,
 ];
-const CSV_INJECTION_CHARS = /^[=+\-@]/;
+const CSV_INJECTION_CHARS = /^[=+\-@]+/;
 const SANITIZE_EXEMPT_FIELDS = new Set(['email', 'phone', 'payment_reference']);
 
 @Injectable()
@@ -48,6 +52,12 @@ export class ImportsService {
 
   private sanitize(value: string): string {
     return value.replace(CSV_INJECTION_CHARS, '').trim();
+  }
+
+  private sanitizeFileName(name: string): string {
+    // Strip path components and truncate
+    const basename = path.basename(name);
+    return basename.slice(0, MAX_FILENAME_LENGTH);
   }
 
   async validateAndParseCsv(buffer: Buffer): Promise<CsvRow[]> {
@@ -116,32 +126,38 @@ export class ImportsService {
     adminId: string,
     adminEmail: string,
   ) {
-    // Check for active import by this admin
-    const activeJob = await this.prisma.importJob.findFirst({
-      where: { initiatedById: adminId, status: 'PROCESSING' },
-    });
-    if (activeJob) {
-      throw new BadRequestException(
-        'You already have an import in progress. Please wait for it to complete.',
-      );
-    }
-
     const rows = await this.validateAndParseCsv(file.buffer);
+    const safeFileName = this.sanitizeFileName(file.originalname);
 
-    const job = await this.prisma.importJob.create({
-      data: {
-        type: 'MEMBERS',
-        status: 'PROCESSING',
-        fileName: file.originalname,
-        totalRows: rows.length,
-        initiatedById: adminId,
-      },
+    // Atomically check for active job and create new one using a transaction
+    const job = await this.prisma.$transaction(async (tx) => {
+      const activeJob = await tx.importJob.findFirst({
+        where: { initiatedById: adminId, status: 'PROCESSING' },
+      });
+      if (activeJob) {
+        throw new BadRequestException(
+          'You already have an import in progress. Please wait for it to complete.',
+        );
+      }
+
+      return tx.importJob.create({
+        data: {
+          type: 'MEMBERS',
+          status: 'PROCESSING',
+          fileName: safeFileName,
+          totalRows: rows.length,
+          initiatedById: adminId,
+        },
+      });
     });
 
     // Kick off background processing
     setImmediate(() => {
       this.processImport(job.id, rows, adminEmail).catch((error) => {
-        this.logger.error(`Import job ${job.id} crashed: ${error.message}`);
+        this.logger.error(
+          `Import job ${job.id} crashed: ${error.message}`,
+          error.stack,
+        );
         this.prisma.importJob
           .update({
             where: { id: job.id },
@@ -150,12 +166,18 @@ export class ImportsService {
           .catch(() => {});
         this.emailService
           .sendImportReportEmail(adminEmail, {
-            fileName: file.originalname,
+            fileName: safeFileName,
             totalRows: rows.length,
             importedCount: 0,
             skippedCount: 0,
             errorCount: rows.length,
-            errors: [{ row: 0, field: 'system', message: error.message }],
+            errors: [
+              {
+                row: 0,
+                field: 'system',
+                message: 'Import failed due to an internal error',
+              },
+            ],
             skipped: [],
             failed: true,
           })
@@ -185,20 +207,42 @@ export class ImportsService {
       existingUsers.map((u) => u.email.toLowerCase()),
     );
 
-    // Pre-fetch subscription plans if any rows reference them
+    // Pre-fetch subscription plans if any rows reference them (case-insensitive)
     const planNames = [
-      ...new Set(rows.filter((r) => r.plan_name).map((r) => r.plan_name!)),
+      ...new Set(
+        rows
+          .filter((r) => r.plan_name)
+          .map((r) => r.plan_name!.toLowerCase()),
+      ),
     ];
     const plans =
       planNames.length > 0
         ? await this.prisma.subscriptionPlan.findMany({
-            where: { name: { in: planNames } },
+            where: {
+              name: { in: planNames, mode: 'insensitive' },
+            },
           })
         : [];
-    const planMap = new Map(plans.map((p) => [p.name, p]));
+    const planMap = new Map(plans.map((p) => [p.name.toLowerCase(), p]));
 
-    // Track emails seen in this CSV to handle intra-CSV duplicates
+    // Pre-fetch existing payment references for uniqueness check
+    const csvRefs = rows
+      .map((r) => r.payment_reference)
+      .filter((ref): ref is string => !!ref);
+    const existingRefSet = new Set<string>();
+    if (csvRefs.length > 0) {
+      const existingPayments = await this.prisma.payment.findMany({
+        where: { paystackReference: { in: csvRefs } },
+        select: { paystackReference: true },
+      });
+      for (const p of existingPayments) {
+        if (p.paystackReference) existingRefSet.add(p.paystackReference);
+      }
+    }
+
+    // Track emails and payment references seen in this CSV to handle intra-CSV duplicates
     const seenEmails = new Set<string>();
+    const seenRefs = new Set<string>();
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -253,7 +297,8 @@ export class ImportsService {
         }
 
         // Validate gender if provided
-        if (row.gender && !VALID_GENDERS.includes(row.gender as Gender)) {
+        const gender = row.gender || undefined;
+        if (gender && !VALID_GENDERS.includes(gender as Gender)) {
           errors.push({
             row: rowNum,
             field: 'gender',
@@ -265,7 +310,7 @@ export class ImportsService {
         // Validate subscription fields
         let plan: (typeof plans)[0] | undefined;
         if (row.plan_name) {
-          plan = planMap.get(row.plan_name);
+          plan = planMap.get(row.plan_name.toLowerCase());
           if (!plan) {
             errors.push({
               row: rowNum,
@@ -290,7 +335,7 @@ export class ImportsService {
             });
             continue;
           }
-          const endDate = new Date(row.subscription_end_date);
+          const endDate = new Date(row.subscription_end_date + 'T23:59:59+03:00');
           if (isNaN(endDate.getTime())) {
             errors.push({
               row: rowNum,
@@ -322,6 +367,27 @@ export class ImportsService {
           continue;
         }
 
+        // Validate payment_reference uniqueness
+        if (row.payment_reference) {
+          if (seenRefs.has(row.payment_reference)) {
+            errors.push({
+              row: rowNum,
+              field: 'payment_reference',
+              message: 'Duplicate payment reference in CSV',
+            });
+            continue;
+          }
+          if (existingRefSet.has(row.payment_reference)) {
+            errors.push({
+              row: rowNum,
+              field: 'payment_reference',
+              message: 'Payment reference already exists',
+            });
+            continue;
+          }
+          seenRefs.add(row.payment_reference);
+        }
+
         // Generate temp password
         const tempPassword = randomBytes(9).toString('base64url').slice(0, 12);
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
@@ -335,7 +401,7 @@ export class ImportsService {
               firstName: row.first_name,
               lastName: row.last_name,
               phone: row.phone || undefined,
-              gender: (row.gender as Gender) || undefined,
+              gender: (gender as Gender) || undefined,
               role: 'MEMBER',
               mustChangePassword: true,
               referralCode: generateReferralCode(),
@@ -344,7 +410,9 @@ export class ImportsService {
 
           if (plan) {
             const startDate = new Date();
-            const endDate = new Date(row.subscription_end_date!);
+            const endDate = new Date(
+              row.subscription_end_date! + 'T23:59:59+03:00',
+            );
             const paymentMethod =
               (row.payment_method as PaymentMethod) ||
               PaymentMethod.COMPLIMENTARY;
@@ -383,18 +451,40 @@ export class ImportsService {
 
         importedCount++;
       } catch (error: any) {
-        // Handle referralCode uniqueness collision
+        this.logger.error(
+          `Import row ${rowNum} failed: ${error.message}`,
+          error.stack,
+        );
+        // Handle uniqueness collision with specific field identification
         if (error?.code === 'P2002') {
-          errors.push({
-            row: rowNum,
-            field: 'system',
-            message: 'Uniqueness conflict — retry the import for this row',
-          });
+          const target = error?.meta?.target;
+          if (Array.isArray(target) && target.includes('paystackReference')) {
+            errors.push({
+              row: rowNum,
+              field: 'payment_reference',
+              message: 'Payment reference already exists',
+            });
+          } else if (
+            Array.isArray(target) &&
+            target.includes('referralCode')
+          ) {
+            errors.push({
+              row: rowNum,
+              field: 'system',
+              message: 'Referral code collision — retry the import for this row',
+            });
+          } else {
+            errors.push({
+              row: rowNum,
+              field: 'system',
+              message: 'Uniqueness conflict — a duplicate record exists',
+            });
+          }
         } else {
           errors.push({
             row: rowNum,
             field: 'system',
-            message: error.message || 'Unknown error',
+            message: 'Failed to import row due to an internal error',
           });
         }
       }
@@ -431,6 +521,30 @@ export class ImportsService {
     this.logger.log(
       `Import job ${jobId} completed: ${importedCount} imported, ${skipped.length} skipped, ${errors.length} errors`,
     );
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES, { timeZone: 'Africa/Nairobi' })
+  async cleanupStaleImportJobs() {
+    const staleThreshold = new Date(
+      Date.now() - STALE_JOB_MINUTES * 60 * 1000,
+    );
+
+    const staleJobs = await this.prisma.importJob.updateMany({
+      where: {
+        status: 'PROCESSING',
+        createdAt: { lt: staleThreshold },
+      },
+      data: {
+        status: 'FAILED',
+        completedAt: new Date(),
+      },
+    });
+
+    if (staleJobs.count > 0) {
+      this.logger.warn(
+        `Cleaned up ${staleJobs.count} stale PROCESSING import job(s)`,
+      );
+    }
   }
 
   async findAll(page: number = 1, limit: number = 20) {
