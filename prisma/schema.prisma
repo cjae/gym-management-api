@@ -85,6 +85,16 @@ enum AuditAction {
   PASSWORD_CHANGE
 }
 
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -130,6 +140,7 @@ model SubscriptionPlan {
   description     String?
   maxMembers      Int             @default(1)
   maxFreezeDays   Int             @default(0)
+  isOffPeak       Boolean         @default(false)
   isActive        Boolean         @default(true)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -363,6 +374,27 @@ model AuditLog {
   @@index([resource, resourceId])
   @@index([action])
   @@index([createdAt])
+}
+
+model GymSettings {
+  id        String   @id @default("singleton")
+  timezone  String   @default("Africa/Nairobi")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offPeakWindows OffPeakWindow[]
+}
+
+model OffPeakWindow {
+  id            String     @id @default(uuid())
+  gymSettingsId String
+  dayOfWeek     DayOfWeek?
+  startTime     String     // HH:mm 24h format
+  endTime       String     // HH:mm 24h format
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  gymSettings GymSettings @relation(fields: [gymSettingsId], references: [id])
 }
 
 model Notification {
