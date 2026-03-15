@@ -50,7 +50,7 @@ export class UpdateProfileDto {
 
   @ApiPropertyOptional({
     example: '2000-03-10',
-    description: 'Birthday (only month and day are used, year is ignored)',
+    description: 'Date of birth (YYYY-MM-DD)',
   })
   @IsOptional()
   @IsDateString()

@@ -99,7 +99,11 @@ export class AuthService {
         const referrer = await this.prisma.user.findUnique({
           where: { referralCode: dto.referralCode },
         });
-        if (referrer && referrer.status === 'ACTIVE' && referrer.id !== user.id) {
+        if (
+          referrer &&
+          referrer.status === 'ACTIVE' &&
+          referrer.id !== user.id
+        ) {
           await this.prisma.$transaction([
             this.prisma.user.update({
               where: { id: user.id },

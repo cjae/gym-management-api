@@ -40,13 +40,21 @@ export class GymSettingsService {
       where: { id: 'singleton' },
       create: {
         timezone: dto.timezone ?? 'Africa/Nairobi',
-        ...(dto.referralRewardDays !== undefined && { referralRewardDays: dto.referralRewardDays }),
-        ...(dto.maxReferralsPerCycle !== undefined && { maxReferralsPerCycle: dto.maxReferralsPerCycle }),
+        ...(dto.referralRewardDays !== undefined && {
+          referralRewardDays: dto.referralRewardDays,
+        }),
+        ...(dto.maxReferralsPerCycle !== undefined && {
+          maxReferralsPerCycle: dto.maxReferralsPerCycle,
+        }),
       },
       update: {
         ...(dto.timezone && { timezone: dto.timezone }),
-        ...(dto.referralRewardDays !== undefined && { referralRewardDays: dto.referralRewardDays }),
-        ...(dto.maxReferralsPerCycle !== undefined && { maxReferralsPerCycle: dto.maxReferralsPerCycle }),
+        ...(dto.referralRewardDays !== undefined && {
+          referralRewardDays: dto.referralRewardDays,
+        }),
+        ...(dto.maxReferralsPerCycle !== undefined && {
+          maxReferralsPerCycle: dto.maxReferralsPerCycle,
+        }),
       },
       include: { offPeakWindows: true },
     });

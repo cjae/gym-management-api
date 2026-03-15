@@ -358,13 +358,14 @@ export class PaymentsService {
 
     if (!referral || referral.status !== 'PENDING') return;
 
-    const referrerSubscription =
-      await this.prisma.memberSubscription.findFirst({
+    const referrerSubscription = await this.prisma.memberSubscription.findFirst(
+      {
         where: {
           primaryMemberId: referral.referrerId,
           status: 'ACTIVE',
         },
-      });
+      },
+    );
 
     const settings = await this.gymSettingsService.getCachedSettings();
     const rewardDays = settings?.referralRewardDays ?? 7;

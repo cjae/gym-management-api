@@ -34,7 +34,10 @@ export class GymSettingsResponseDto {
   @ApiProperty({ example: 7, description: 'Free days per referral' })
   referralRewardDays: number;
 
-  @ApiProperty({ example: 3, description: 'Max referrals rewarded per billing cycle' })
+  @ApiProperty({
+    example: 3,
+    description: 'Max referrals rewarded per billing cycle',
+  })
   maxReferralsPerCycle: number;
 
   @ApiProperty({ type: [OffPeakWindowResponseDto] })
