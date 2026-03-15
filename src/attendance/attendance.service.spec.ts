@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 /** Return Monday 00:00 for the week containing `date`. */
@@ -39,6 +40,10 @@ describe('AttendanceService', () => {
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        {
+          provide: GymSettingsService,
+          useValue: { getCachedSettings: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
     service = module.get<AttendanceService>(AttendanceService);
@@ -91,6 +96,11 @@ describe('AttendanceService', () => {
     prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
+      subscriptionId: 'sub-1',
+    } as any);
+    prisma.memberSubscription.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      plan: { isOffPeak: false },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
@@ -134,6 +144,11 @@ describe('AttendanceService', () => {
     prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
+      subscriptionId: 'sub-1',
+    } as any);
+    prisma.memberSubscription.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      plan: { isOffPeak: false },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue({
       id: 'att-1',
@@ -187,6 +202,11 @@ describe('AttendanceService', () => {
     prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
+      subscriptionId: 'sub-1',
+    } as any);
+    prisma.memberSubscription.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      plan: { isOffPeak: false },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
@@ -253,6 +273,11 @@ describe('AttendanceService', () => {
     prisma.subscriptionMember.findFirst.mockResolvedValue({
       id: 'sm-1',
       memberId: 'member-1',
+      subscriptionId: 'sub-1',
+    } as any);
+    prisma.memberSubscription.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      plan: { isOffPeak: false },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
@@ -278,6 +303,97 @@ describe('AttendanceService', () => {
     });
   });
 
+  it('should reject off-peak member checking in during peak hours', async () => {
+    prisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
+      id: 'sm-1',
+      memberId: 'member-1',
+      subscriptionId: 'sub-1',
+    } as any);
+    prisma.memberSubscription.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      plan: { isOffPeak: true },
+    } as any);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'member-1',
+      firstName: 'John',
+      lastName: 'Doe',
+      displayPicture: null,
+    } as any);
+
+    const mockGymSettingsService = {
+      getCachedSettings: jest.fn().mockResolvedValue({
+        timezone: 'Africa/Nairobi',
+        offPeakWindows: [
+          { dayOfWeek: null, startTime: '06:00', endTime: '10:00' },
+        ],
+      }),
+    };
+    (service as any).gymSettingsService = mockGymSettingsService;
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-15T11:00:00Z')); // 14:00 EAT (peak)
+
+    await expect(
+      service.checkIn('member-1', { qrCode: 'valid' }),
+    ).rejects.toThrow(BadRequestException);
+
+    jest.useRealTimers();
+  });
+
+  it('should allow off-peak member checking in during off-peak hours', async () => {
+    prisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
+      id: 'sm-1',
+      memberId: 'member-1',
+      subscriptionId: 'sub-1',
+    } as any);
+    prisma.memberSubscription.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      plan: { isOffPeak: true },
+    } as any);
+
+    const mockGymSettingsService = {
+      getCachedSettings: jest.fn().mockResolvedValue({
+        timezone: 'Africa/Nairobi',
+        offPeakWindows: [
+          { dayOfWeek: null, startTime: '06:00', endTime: '10:00' },
+        ],
+      }),
+    };
+    (service as any).gymSettingsService = mockGymSettingsService;
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-15T05:00:00Z')); // 08:00 EAT (off-peak)
+
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({} as any);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Smith',
+      displayPicture: null,
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue(null);
+    prisma.streak.upsert.mockResolvedValue({
+      weeklyStreak: 0,
+      longestStreak: 0,
+      daysThisWeek: 1,
+      weekStart: new Date(),
+    } as any);
+
+    const result = await service.checkIn('member-1', { qrCode: 'valid' });
+    expect(result.alreadyCheckedIn).toBe(false);
+
+    jest.useRealTimers();
+  });
+
   describe('weekly streak logic', () => {
     /** Helper: set up mocks so checkIn reaches updateStreak. */
     function setupCheckInMocks() {
@@ -288,6 +404,11 @@ describe('AttendanceService', () => {
       prisma.subscriptionMember.findFirst.mockResolvedValue({
         id: 'sm-1',
         memberId: 'member-1',
+        subscriptionId: 'sub-1',
+      } as any);
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        id: 'sub-1',
+        plan: { isOffPeak: false },
       } as any);
       prisma.attendance.findUnique.mockResolvedValue(null);
       prisma.attendance.create.mockResolvedValue({} as any);

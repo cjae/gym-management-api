@@ -7,6 +7,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { CheckInDto } from './dto/check-in.dto';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class AttendanceService {
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
     private readonly notificationsService: NotificationsService,
+    private readonly gymSettingsService: GymSettingsService,
   ) {}
 
   async checkIn(memberId: string, dto: CheckInDto) {
@@ -88,6 +90,16 @@ export class AttendanceService {
         timestamp: new Date().toISOString(),
       });
       throw new ForbiddenException('No active subscription');
+    }
+
+    // Check off-peak restriction
+    const subscription = await this.prisma.memberSubscription.findUnique({
+      where: { id: activeMembership.subscriptionId },
+      include: { plan: { select: { isOffPeak: true } } },
+    });
+
+    if (subscription?.plan.isOffPeak) {
+      await this.validateOffPeakWindow(memberId, entranceId);
     }
 
     // 3. Record attendance (idempotent per day)
@@ -197,6 +209,95 @@ export class AttendanceService {
       daysThisWeek: streak.daysThisWeek,
       daysRequired: this.DAYS_REQUIRED_PER_WEEK,
     };
+  }
+
+  private async validateOffPeakWindow(
+    memberId: string,
+    entranceId?: string,
+  ) {
+    const settings = await this.gymSettingsService.getCachedSettings();
+    if (!settings || settings.offPeakWindows.length === 0) {
+      throw new BadRequestException(
+        'Off-peak hours not configured. Contact gym admin.',
+      );
+    }
+
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: settings.timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      weekday: 'long',
+    });
+
+    const parts = formatter.formatToParts(now);
+    const hour = parseInt(parts.find((p) => p.type === 'hour')!.value, 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')!.value, 10);
+    const currentMinutes = hour * 60 + minute;
+
+    const weekdayName = parts.find((p) => p.type === 'weekday')!.value;
+    const dayOfWeekMap: Record<string, string> = {
+      Monday: 'MONDAY',
+      Tuesday: 'TUESDAY',
+      Wednesday: 'WEDNESDAY',
+      Thursday: 'THURSDAY',
+      Friday: 'FRIDAY',
+      Saturday: 'SATURDAY',
+      Sunday: 'SUNDAY',
+    };
+    const currentDay = dayOfWeekMap[weekdayName];
+
+    const applicableWindows = settings.offPeakWindows.filter(
+      (w: { dayOfWeek: string | null }) =>
+        w.dayOfWeek === null || w.dayOfWeek === currentDay,
+    );
+
+    const isWithinWindow = applicableWindows.some(
+      (w: { startTime: string; endTime: string }) => {
+        const [sh, sm] = w.startTime.split(':').map(Number);
+        const [eh, em] = w.endTime.split(':').map(Number);
+        const start = sh * 60 + sm;
+        const end = eh * 60 + em;
+
+        if (start <= end) {
+          return currentMinutes >= start && currentMinutes < end;
+        } else {
+          return currentMinutes >= start || currentMinutes < end;
+        }
+      },
+    );
+
+    if (!isWithinWindow) {
+      const windowDescriptions = applicableWindows
+        .map(
+          (w: { startTime: string; endTime: string; dayOfWeek: string | null }) =>
+            `${w.startTime}-${w.endTime}${w.dayOfWeek ? ` (${w.dayOfWeek})` : ''}`,
+        )
+        .join(', ');
+
+      const member = await this.prisma.user.findUnique({
+        where: { id: memberId },
+        select: { id: true, firstName: true, lastName: true, displayPicture: true },
+      });
+      this.eventEmitter.emit('check_in.result', {
+        type: 'check_in_result',
+        member: {
+          id: memberId,
+          firstName: member?.firstName ?? null,
+          lastName: member?.lastName ?? null,
+          displayPicture: member?.displayPicture ?? null,
+        },
+        success: false,
+        message: 'Outside off-peak hours',
+        entranceId,
+        timestamp: new Date().toISOString(),
+      });
+
+      throw new BadRequestException(
+        `Check-in restricted to off-peak hours: ${windowDescriptions}`,
+      );
+    }
   }
 
   private getMondayOfWeek(date: Date): Date {
