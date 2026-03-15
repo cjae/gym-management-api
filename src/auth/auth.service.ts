@@ -21,6 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { safeUserSelect } from '../common/constants/safe-user-select';
+import { generateReferralCode } from '../common/utils/referral-code.util';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 
@@ -57,17 +58,40 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const now = new Date();
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        phone: dto.phone,
-        tosAcceptedAt: now,
-        waiverAcceptedAt: now,
-      },
-    });
+
+    let user: Record<string, unknown>;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            email: dto.email,
+            password: hashedPassword,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            tosAcceptedAt: now,
+            waiverAcceptedAt: now,
+            referralCode: generateReferralCode(),
+          },
+        });
+        break;
+      } catch (error: unknown) {
+        if (
+          error instanceof Object &&
+          'code' in error &&
+          error.code === 'P2002' &&
+          'meta' in error &&
+          error.meta instanceof Object &&
+          'target' in error.meta &&
+          Array.isArray(error.meta.target) &&
+          error.meta.target.includes('referralCode')
+        ) {
+          if (attempt === 2) throw error;
+          continue;
+        }
+        throw error;
+      }
+    }
 
     this.eventEmitter.emit('activity.registration', {
       type: 'registration',
