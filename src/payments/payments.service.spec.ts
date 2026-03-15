@@ -5,6 +5,9 @@ import { PaymentsService } from './payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -26,6 +29,18 @@ describe('PaymentsService', () => {
     emit: jest.fn(),
   };
 
+  const mockGymSettingsService = {
+    getCachedSettings: jest.fn(),
+  };
+
+  const mockNotificationsService = {
+    create: jest.fn(),
+  };
+
+  const mockEmailService = {
+    sendReferralRewardEmail: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -33,6 +48,9 @@ describe('PaymentsService', () => {
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: GymSettingsService, useValue: mockGymSettingsService },
+        { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: EmailService, useValue: mockEmailService },
       ],
     }).compile();
 

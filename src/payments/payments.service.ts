@@ -8,6 +8,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
 import {
   PaymentConfig,
   getPaymentConfigName,
@@ -59,6 +62,9 @@ export class PaymentsService {
     private prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly gymSettingsService: GymSettingsService,
+    private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
   ) {
     const paymentConfig = this.configService.get<PaymentConfig>(
       getPaymentConfigName(),
@@ -213,6 +219,12 @@ export class PaymentsService {
             where: { id: subscriptionId },
             data: updateData,
           });
+
+          // Process referral reward if applicable
+          this.processReferralReward(subscription.primaryMemberId).catch(
+            (err) =>
+              this.logger.error(`Failed to process referral reward: ${err}`),
+          );
         }
       }
 
@@ -333,5 +345,103 @@ export class PaymentsService {
       skip: (page - 1) * limit,
       take: limit,
     });
+  }
+
+  private async processReferralReward(payingUserId: string) {
+    const referral = await this.prisma.referral.findUnique({
+      where: { referredId: payingUserId },
+      include: {
+        referrer: true,
+        referred: true,
+      },
+    });
+
+    if (!referral || referral.status !== 'PENDING') return;
+
+    const referrerSubscription =
+      await this.prisma.memberSubscription.findFirst({
+        where: {
+          primaryMemberId: referral.referrerId,
+          status: 'ACTIVE',
+        },
+      });
+
+    const settings = await this.gymSettingsService.getCachedSettings();
+    const rewardDays = settings?.referralRewardDays ?? 7;
+    const maxPerCycle = settings?.maxReferralsPerCycle ?? 3;
+
+    let earnedDays = 0;
+    if (referrerSubscription) {
+      const cycleStart = referrerSubscription.startDate;
+      const completedInCycle = await this.prisma.referral.count({
+        where: {
+          referrerId: referral.referrerId,
+          status: 'COMPLETED',
+          rewardDays: { gt: 0 },
+          completedAt: { gte: cycleStart },
+        },
+      });
+
+      if (completedInCycle < maxPerCycle) {
+        earnedDays = rewardDays;
+
+        const newEndDate = new Date(referrerSubscription.endDate);
+        newEndDate.setDate(newEndDate.getDate() + rewardDays);
+        const newBillingDate = referrerSubscription.nextBillingDate
+          ? new Date(referrerSubscription.nextBillingDate)
+          : null;
+        if (newBillingDate) {
+          newBillingDate.setDate(newBillingDate.getDate() + rewardDays);
+        }
+
+        await this.prisma.memberSubscription.update({
+          where: { id: referrerSubscription.id },
+          data: {
+            endDate: newEndDate,
+            ...(newBillingDate && { nextBillingDate: newBillingDate }),
+          },
+        });
+      }
+    }
+
+    await this.prisma.referral.update({
+      where: { id: referral.id },
+      data: {
+        status: 'COMPLETED',
+        rewardDays: earnedDays,
+        completedAt: new Date(),
+      },
+    });
+
+    if (earnedDays > 0) {
+      const referredName = `${referral.referred.firstName} ${referral.referred.lastName}`;
+
+      this.notificationsService
+        .create({
+          userId: referral.referrerId,
+          title: 'Referral reward earned!',
+          body: `${referredName} joined — you earned ${earnedDays} free days!`,
+          type: 'REFERRAL_REWARD',
+          metadata: {
+            referredId: referral.referredId,
+            referredName,
+            rewardDays: earnedDays,
+          },
+        })
+        .catch((err) =>
+          this.logger.error(`Failed to send referral notification: ${err}`),
+        );
+
+      this.emailService
+        .sendReferralRewardEmail(
+          referral.referrer.email,
+          referral.referrer.firstName,
+          referredName,
+          earnedDays,
+        )
+        .catch((err) =>
+          this.logger.error(`Failed to send referral email: ${err}`),
+        );
+    }
   }
 }
