@@ -58,15 +58,22 @@ export class EventsController {
   @ApiOkResponse({
     description: 'Events the authenticated member is enrolled in',
   })
-  getMyEvents(@CurrentUser('id') memberId: string) {
-    return this.eventsService.getMyEvents(memberId);
+  getMyEvents(
+    @CurrentUser('id') memberId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.eventsService.getMyEvents(memberId, query.page, query.limit);
   }
 
   @Get(':id')
   @ApiOkResponse({ type: EventResponseDto })
   @ApiNotFoundResponse({ description: 'Event not found' })
-  findOne(@Param('id') id: string) {
-    return this.eventsService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser('role') role: string,
+  ) {
+    const includeEnrollments = role === 'ADMIN' || role === 'SUPER_ADMIN';
+    return this.eventsService.findOne(id, includeEnrollments);
   }
 
   @Patch(':id')

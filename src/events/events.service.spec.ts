@@ -51,6 +51,9 @@ describe('EventsService', () => {
     service = module.get<EventsService>(EventsService);
     prisma = module.get(PrismaService);
     emailService = module.get(EmailService);
+
+    // Interactive transactions: call the callback with prisma mock
+    prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
   });
 
   it('should be defined', () => {
@@ -96,10 +99,37 @@ describe('EventsService', () => {
   });
 
   describe('findOne', () => {
-    it('should return an event by id', async () => {
-      prisma.event.findUnique.mockResolvedValue(mockEvent as any);
+    it('should return an event with enrollment count (default)', async () => {
+      prisma.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        _count: { enrollments: 5 },
+      } as any);
+
       const result = await service.findOne('event-1');
-      expect(result).toEqual(mockEvent);
+
+      expect(result).toEqual(
+        expect.objectContaining({ id: 'event-1', _count: { enrollments: 5 } }),
+      );
+      expect(prisma.event.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            _count: { select: { enrollments: true } },
+          }),
+        }),
+      );
+    });
+
+    it('should include full enrollments when requested', async () => {
+      const eventWithEnrollments = {
+        ...mockEvent,
+        _count: { enrollments: 1 },
+        enrollments: [{ member: { id: 'member-1', email: 'a@b.com' } }],
+      };
+      prisma.event.findUnique.mockResolvedValue(eventWithEnrollments as any);
+
+      const result = await service.findOne('event-1', true);
+
+      expect(result).toEqual(eventWithEnrollments);
     });
 
     it('should throw NotFoundException when event not found', async () => {
@@ -186,7 +216,7 @@ describe('EventsService', () => {
   });
 
   describe('enroll', () => {
-    it('should enroll a member in an event', async () => {
+    it('should enroll a member in an event within a transaction', async () => {
       prisma.event.findUnique.mockResolvedValue({
         ...mockEvent,
         _count: { enrollments: 5 },
@@ -194,7 +224,9 @@ describe('EventsService', () => {
       prisma.eventEnrollment.create.mockResolvedValue(mockEnrollment as any);
 
       const result = await service.enroll('event-1', 'member-1');
+
       expect(result).toEqual(mockEnrollment);
+      expect(prisma.$transaction).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException for inactive event', async () => {
@@ -300,13 +332,41 @@ describe('EventsService', () => {
   });
 
   describe('getMyEvents', () => {
-    it('should return events a member is enrolled in', async () => {
+    it('should return paginated events a member is enrolled in', async () => {
       prisma.eventEnrollment.findMany.mockResolvedValue([
         { ...mockEnrollment, event: mockEvent },
       ] as any);
+      prisma.eventEnrollment.count.mockResolvedValue(1);
 
-      const result = await service.getMyEvents('member-1');
-      expect(result).toHaveLength(1);
+      const result = await service.getMyEvents('member-1', 1, 20);
+
+      expect(result).toEqual({
+        data: [{ ...mockEnrollment, event: mockEvent }],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      expect(prisma.eventEnrollment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 0,
+          take: 20,
+        }),
+      );
+    });
+
+    it('should respect page and limit params', async () => {
+      prisma.eventEnrollment.findMany.mockResolvedValue([] as any);
+      prisma.eventEnrollment.count.mockResolvedValue(0);
+
+      const result = await service.getMyEvents('member-1', 2, 10);
+
+      expect(result).toEqual({ data: [], total: 0, page: 2, limit: 10 });
+      expect(prisma.eventEnrollment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 10,
+          take: 10,
+        }),
+      );
     });
   });
 });

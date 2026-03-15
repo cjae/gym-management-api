@@ -64,13 +64,16 @@ export class EventsService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, includeEnrollments: boolean = false) {
     const event = await this.prisma.event.findUnique({
       where: { id },
       include: {
-        enrollments: {
-          include: { member: { select: safeUserSelect } },
-        },
+        _count: { select: { enrollments: true } },
+        ...(includeEnrollments && {
+          enrollments: {
+            include: { member: { select: safeUserSelect } },
+          },
+        }),
       },
     });
 
@@ -148,38 +151,40 @@ export class EventsService {
   }
 
   async enroll(eventId: string, memberId: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      include: { _count: { select: { enrollments: true } } },
-    });
-
-    if (!event || !event.isActive) {
-      throw new NotFoundException('Event not found or is inactive');
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (event.date < today) {
-      throw new BadRequestException('Cannot enroll in a past event');
-    }
-
-    if (event._count.enrollments >= event.maxCapacity) {
-      throw new ConflictException('Event is full');
-    }
-
-    try {
-      return await this.prisma.eventEnrollment.create({
-        data: { eventId, memberId },
+    return this.prisma.$transaction(async (tx) => {
+      const event = await tx.event.findUnique({
+        where: { id: eventId },
+        include: { _count: { select: { enrollments: true } } },
       });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Already enrolled in this event');
+
+      if (!event || !event.isActive) {
+        throw new NotFoundException('Event not found or is inactive');
       }
-      throw error;
-    }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (event.date < today) {
+        throw new BadRequestException('Cannot enroll in a past event');
+      }
+
+      if (event._count.enrollments >= event.maxCapacity) {
+        throw new ConflictException('Event is full');
+      }
+
+      try {
+        return await tx.eventEnrollment.create({
+          data: { eventId, memberId },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException('Already enrolled in this event');
+        }
+        throw error;
+      }
+    });
   }
 
   async unenroll(eventId: string, memberId: string) {
@@ -217,15 +222,24 @@ export class EventsService {
     });
   }
 
-  async getMyEvents(memberId: string) {
-    return this.prisma.eventEnrollment.findMany({
-      where: {
-        memberId,
-        event: { isActive: true },
-      },
-      include: { event: true },
-      orderBy: { event: { date: 'asc' } },
-    });
+  async getMyEvents(memberId: string, page: number = 1, limit: number = 20) {
+    const where = {
+      memberId,
+      event: { isActive: true },
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.eventEnrollment.findMany({
+        where,
+        include: { event: true },
+        orderBy: { event: { date: 'asc' } },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.eventEnrollment.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   private notifyEventUpdate(
@@ -262,7 +276,9 @@ export class EventsService {
           },
         )
         .catch((err) =>
-          this.logger.error(`Failed to send event update email: ${err.message}`),
+          this.logger.error(
+            `Failed to send event update email: ${err.message}`,
+          ),
         );
     }
   }
@@ -290,7 +306,9 @@ export class EventsService {
           },
         )
         .catch((err) =>
-          this.logger.error(`Failed to send event cancelled email: ${err.message}`),
+          this.logger.error(
+            `Failed to send event cancelled email: ${err.message}`,
+          ),
         );
     }
   }
