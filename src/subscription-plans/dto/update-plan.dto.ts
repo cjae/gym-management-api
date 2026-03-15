@@ -51,4 +51,12 @@ export class UpdatePlanDto {
   @IsInt()
   @Min(0)
   maxFreezeDays?: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Whether this plan is restricted to off-peak hours',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isOffPeak?: boolean;
 }

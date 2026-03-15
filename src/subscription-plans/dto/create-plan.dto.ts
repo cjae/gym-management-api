@@ -5,6 +5,7 @@ import {
   IsInt,
   Min,
   IsEnum,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BillingInterval } from '@prisma/client';
@@ -42,4 +43,12 @@ export class CreatePlanDto {
   @IsInt()
   @Min(0)
   maxFreezeDays?: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Whether this plan is restricted to off-peak hours',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isOffPeak?: boolean;
 }
