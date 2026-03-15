@@ -15,7 +15,10 @@ import {
   PaymentConfig,
   getPaymentConfigName,
 } from '../common/config/payment.config';
-import { getNextBillingDate } from '../common/utils/billing.util';
+import {
+  getNextBillingDate,
+  getCycleStartDate,
+} from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
 import { Payment, Prisma } from '@prisma/client';
 import axios from 'axios';
@@ -348,6 +351,14 @@ export class PaymentsService {
   }
 
   private async processReferralReward(payingUserId: string) {
+    // Atomically claim the referral to prevent double-rewarding on duplicate webhooks
+    const claimed = await this.prisma.referral.updateMany({
+      where: { referredId: payingUserId, status: 'PENDING' },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+
+    if (claimed.count === 0) return;
+
     const referral = await this.prisma.referral.findUnique({
       where: { referredId: payingUserId },
       include: {
@@ -356,7 +367,15 @@ export class PaymentsService {
       },
     });
 
-    if (!referral || referral.status !== 'PENDING') return;
+    if (!referral) return;
+
+    // Skip reward if referrer is inactive or deleted
+    if (
+      referral.referrer.status !== 'ACTIVE' ||
+      referral.referrer.deletedAt !== null
+    ) {
+      return;
+    }
 
     const referrerSubscription = await this.prisma.memberSubscription.findFirst(
       {
@@ -364,6 +383,7 @@ export class PaymentsService {
           primaryMemberId: referral.referrerId,
           status: 'ACTIVE',
         },
+        include: { plan: true },
       },
     );
 
@@ -373,13 +393,20 @@ export class PaymentsService {
 
     let earnedDays = 0;
     if (referrerSubscription) {
-      const cycleStart = referrerSubscription.startDate;
+      // Derive current billing cycle start from nextBillingDate - interval
+      const cycleStart = getCycleStartDate(
+        referrerSubscription.nextBillingDate,
+        referrerSubscription.startDate,
+        referrerSubscription.plan.billingInterval,
+      );
+
       const completedInCycle = await this.prisma.referral.count({
         where: {
           referrerId: referral.referrerId,
           status: 'COMPLETED',
           rewardDays: { gt: 0 },
           completedAt: { gte: cycleStart },
+          id: { not: referral.id },
         },
       });
 
@@ -405,13 +432,10 @@ export class PaymentsService {
       }
     }
 
+    // Update reward days on the already-claimed referral
     await this.prisma.referral.update({
       where: { id: referral.id },
-      data: {
-        status: 'COMPLETED',
-        rewardDays: earnedDays,
-        completedAt: new Date(),
-      },
+      data: { rewardDays: earnedDays },
     });
 
     if (earnedDays > 0) {

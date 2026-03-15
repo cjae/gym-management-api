@@ -112,6 +112,8 @@ describe('ReferralsService', () => {
         primaryMemberId: 'user-1',
         status: 'ACTIVE',
         startDate: new Date('2026-03-01'),
+        nextBillingDate: new Date('2026-04-01'),
+        plan: { billingInterval: 'MONTHLY' },
       };
 
       prisma.referral.count

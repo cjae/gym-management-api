@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
+import { getCycleStartDate } from '../common/utils/billing.util';
 
 @Injectable()
 export class ReferralsService {
@@ -70,17 +71,23 @@ export class ReferralsService {
         }),
         this.prisma.memberSubscription.findFirst({
           where: { primaryMemberId: userId, status: 'ACTIVE' },
+          include: { plan: true },
         }),
       ]);
 
     let referralsThisCycle = 0;
     if (subscription) {
+      const cycleStart = getCycleStartDate(
+        subscription.nextBillingDate,
+        subscription.startDate,
+        subscription.plan.billingInterval,
+      );
       referralsThisCycle = await this.prisma.referral.count({
         where: {
           referrerId: userId,
           status: 'COMPLETED',
           rewardDays: { gt: 0 },
-          completedAt: { gte: subscription.startDate },
+          completedAt: { gte: cycleStart },
         },
       });
     }

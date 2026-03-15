@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -93,6 +94,10 @@ export class AuthService {
       }
     }
 
+    if (!user) {
+      throw new InternalServerErrorException('Failed to create user');
+    }
+
     // Handle referral (soft fail — invalid codes don't block registration)
     if (dto.referralCode) {
       try {
@@ -102,6 +107,7 @@ export class AuthService {
         if (
           referrer &&
           referrer.status === 'ACTIVE' &&
+          !referrer.deletedAt &&
           referrer.id !== user.id
         ) {
           await this.prisma.$transaction([
@@ -124,7 +130,7 @@ export class AuthService {
 
     this.eventEmitter.emit('activity.registration', {
       type: 'registration',
-      description: `${user.firstName} ${user.lastName} registered as a new member`,
+      description: `${String(user.firstName)} ${String(user.lastName)} registered as a new member`,
       timestamp: new Date().toISOString(),
       metadata: { memberId: user.id },
     });
