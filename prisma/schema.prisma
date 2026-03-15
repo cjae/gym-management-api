@@ -135,6 +135,7 @@ model User {
   banners                    Banner[]              @relation("UserBanners")
   bannerInteractions         BannerInteraction[]   @relation("UserBannerInteractions")
   classEnrollments           ClassEnrollment[]
+  eventEnrollments           EventEnrollment[]
   referralCode               String?          @unique
   referredById               String?
   referredBy                 User?            @relation("UserReferrals", fields: [referredById], references: [id])
@@ -261,6 +262,34 @@ model ClassEnrollment {
   member   User     @relation(fields: [memberId], references: [id])
 
   @@unique([classId, memberId])
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  date        DateTime @db.Date
+  startTime   String   // HH:mm 24h format
+  endTime     String   // HH:mm 24h format
+  location    String?
+  maxCapacity Int      @default(50)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments EventEnrollment[]
+}
+
+model EventEnrollment {
+  id         String   @id @default(uuid())
+  eventId    String
+  memberId   String
+  enrolledAt DateTime @default(now())
+
+  event  Event @relation(fields: [eventId], references: [id])
+  member User  @relation(fields: [memberId], references: [id])
+
+  @@unique([eventId, memberId])
 }
 
 model TrainerAssignment {
