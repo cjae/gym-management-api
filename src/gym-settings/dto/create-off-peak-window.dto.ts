@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsEnum, Matches } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DayOfWeek } from '@prisma/client';
 
@@ -17,6 +23,7 @@ export class CreateOffPeakWindowDto {
     description: 'Start time in HH:mm 24h format',
   })
   @IsString()
+  @MaxLength(5)
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'startTime must be in HH:mm format (00:00-23:59)',
   })
@@ -27,6 +34,7 @@ export class CreateOffPeakWindowDto {
     description: 'End time in HH:mm 24h format',
   })
   @IsString()
+  @MaxLength(5)
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'endTime must be in HH:mm format (00:00-23:59)',
   })

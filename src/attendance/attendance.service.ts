@@ -65,6 +65,9 @@ export class AttendanceService {
         memberId,
         subscription: { status: 'ACTIVE', endDate: { gte: new Date() } },
       },
+      include: {
+        subscription: { include: { plan: { select: { isOffPeak: true } } } },
+      },
     });
     if (!activeMembership) {
       const failedMember = await this.prisma.user.findUnique({
@@ -93,12 +96,7 @@ export class AttendanceService {
     }
 
     // Check off-peak restriction
-    const subscription = await this.prisma.memberSubscription.findUnique({
-      where: { id: activeMembership.subscriptionId },
-      include: { plan: { select: { isOffPeak: true } } },
-    });
-
-    if (subscription?.plan.isOffPeak) {
+    if (activeMembership.subscription.plan.isOffPeak) {
       await this.validateOffPeakWindow(memberId, entranceId);
     }
 
@@ -222,9 +220,9 @@ export class AttendanceService {
     const now = new Date();
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: settings.timezone,
+      hourCycle: 'h23',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false,
       weekday: 'long',
     });
 

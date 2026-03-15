@@ -97,10 +97,7 @@ describe('AttendanceService', () => {
       id: 'sm-1',
       memberId: 'member-1',
       subscriptionId: 'sub-1',
-    } as any);
-    prisma.memberSubscription.findUnique.mockResolvedValue({
-      id: 'sub-1',
-      plan: { isOffPeak: false },
+      subscription: { plan: { isOffPeak: false } },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
@@ -145,10 +142,7 @@ describe('AttendanceService', () => {
       id: 'sm-1',
       memberId: 'member-1',
       subscriptionId: 'sub-1',
-    } as any);
-    prisma.memberSubscription.findUnique.mockResolvedValue({
-      id: 'sub-1',
-      plan: { isOffPeak: false },
+      subscription: { plan: { isOffPeak: false } },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue({
       id: 'att-1',
@@ -203,10 +197,7 @@ describe('AttendanceService', () => {
       id: 'sm-1',
       memberId: 'member-1',
       subscriptionId: 'sub-1',
-    } as any);
-    prisma.memberSubscription.findUnique.mockResolvedValue({
-      id: 'sub-1',
-      plan: { isOffPeak: false },
+      subscription: { plan: { isOffPeak: false } },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
@@ -274,10 +265,7 @@ describe('AttendanceService', () => {
       id: 'sm-1',
       memberId: 'member-1',
       subscriptionId: 'sub-1',
-    } as any);
-    prisma.memberSubscription.findUnique.mockResolvedValue({
-      id: 'sub-1',
-      plan: { isOffPeak: false },
+      subscription: { plan: { isOffPeak: false } },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
@@ -312,10 +300,7 @@ describe('AttendanceService', () => {
       id: 'sm-1',
       memberId: 'member-1',
       subscriptionId: 'sub-1',
-    } as any);
-    prisma.memberSubscription.findUnique.mockResolvedValue({
-      id: 'sub-1',
-      plan: { isOffPeak: true },
+      subscription: { plan: { isOffPeak: true } },
     } as any);
     prisma.user.findUnique.mockResolvedValue({
       id: 'member-1',
@@ -353,10 +338,7 @@ describe('AttendanceService', () => {
       id: 'sm-1',
       memberId: 'member-1',
       subscriptionId: 'sub-1',
-    } as any);
-    prisma.memberSubscription.findUnique.mockResolvedValue({
-      id: 'sub-1',
-      plan: { isOffPeak: true },
+      subscription: { plan: { isOffPeak: true } },
     } as any);
 
     const mockGymSettingsService = {
@@ -405,10 +387,7 @@ describe('AttendanceService', () => {
         id: 'sm-1',
         memberId: 'member-1',
         subscriptionId: 'sub-1',
-      } as any);
-      prisma.memberSubscription.findUnique.mockResolvedValue({
-        id: 'sub-1',
-        plan: { isOffPeak: false },
+        subscription: { plan: { isOffPeak: false } },
       } as any);
       prisma.attendance.findUnique.mockResolvedValue(null);
       prisma.attendance.create.mockResolvedValue({} as any);

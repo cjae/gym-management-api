@@ -79,8 +79,7 @@ describe('GymSettingsService', () => {
     });
 
     it('should auto-create settings if none exist', async () => {
-      prisma.gymSettings.findUnique.mockResolvedValue(null);
-      prisma.gymSettings.create.mockResolvedValue({
+      prisma.gymSettings.upsert.mockResolvedValue({
         id: 'singleton',
       } as any);
       prisma.offPeakWindow.create.mockResolvedValue({
@@ -92,11 +91,15 @@ describe('GymSettingsService', () => {
         startTime: '06:00',
         endTime: '10:00',
       });
-      expect(prisma.gymSettings.create).toHaveBeenCalled();
+      expect(prisma.gymSettings.upsert).toHaveBeenCalledWith({
+        where: { id: 'singleton' },
+        create: { timezone: 'Africa/Nairobi' },
+        update: {},
+      });
     });
 
     it('should reject same start and end time', async () => {
-      prisma.gymSettings.findUnique.mockResolvedValue({
+      prisma.gymSettings.upsert.mockResolvedValue({
         id: 'singleton',
       } as any);
       await expect(

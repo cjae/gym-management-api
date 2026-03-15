@@ -3,14 +3,17 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { GymSettings, OffPeakWindow } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertGymSettingsDto } from './dto/upsert-gym-settings.dto';
 import { CreateOffPeakWindowDto } from './dto/create-off-peak-window.dto';
 
+type GymSettingsWithWindows = GymSettings & { offPeakWindows: OffPeakWindow[] };
+
 @Injectable()
 export class GymSettingsService {
   private cache: {
-    settings: any;
+    settings: GymSettingsWithWindows;
     cachedAt: number;
   } | null = null;
 
@@ -44,14 +47,11 @@ export class GymSettingsService {
   }
 
   async addOffPeakWindow(dto: CreateOffPeakWindowDto) {
-    let settings = await this.prisma.gymSettings.findUnique({
+    await this.prisma.gymSettings.upsert({
       where: { id: 'singleton' },
+      create: { timezone: 'Africa/Nairobi' },
+      update: {},
     });
-    if (!settings) {
-      settings = await this.prisma.gymSettings.create({
-        data: { timezone: 'Africa/Nairobi' },
-      });
-    }
 
     if (dto.startTime === dto.endTime) {
       throw new BadRequestException('startTime and endTime cannot be the same');

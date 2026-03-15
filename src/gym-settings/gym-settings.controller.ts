@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -60,7 +61,7 @@ export class GymSettingsController {
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ description: 'Off-peak window removed' })
   @ApiNotFoundResponse({ description: 'Window not found' })
-  removeOffPeakWindow(@Param('id') id: string) {
+  removeOffPeakWindow(@Param('id', ParseUUIDPipe) id: string) {
     return this.gymSettingsService.removeOffPeakWindow(id);
   }
 }
