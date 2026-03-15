@@ -71,6 +71,7 @@ enum NotificationType {
   PAYMENT_REMINDER
   SUBSCRIPTION_EXPIRING
   BIRTHDAY
+  REFERRAL_REWARD
 }
 
 enum AuditAction {
@@ -83,6 +84,11 @@ enum AuditAction {
   PASSWORD_RESET_REQUEST
   PASSWORD_RESET
   PASSWORD_CHANGE
+}
+
+enum ReferralStatus {
+  PENDING
+  COMPLETED
 }
 
 enum DayOfWeek {
@@ -129,6 +135,12 @@ model User {
   banners                    Banner[]              @relation("UserBanners")
   bannerInteractions         BannerInteraction[]   @relation("UserBannerInteractions")
   classEnrollments           ClassEnrollment[]
+  referralCode               String?          @unique
+  referredById               String?
+  referredBy                 User?            @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals                  User[]           @relation("UserReferrals")
+  referralsMade              Referral[]       @relation("ReferrerReferrals")
+  referralReceived           Referral?        @relation("ReferredReferral")
 }
 
 model SubscriptionPlan {
@@ -378,8 +390,10 @@ model AuditLog {
 
 model GymSettings {
   id        String   @id @default("singleton")
-  timezone  String   @default("Africa/Nairobi")
-  createdAt DateTime @default(now())
+  timezone             String   @default("Africa/Nairobi")
+  referralRewardDays   Int      @default(7)
+  maxReferralsPerCycle Int      @default(3)
+  createdAt            DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   offPeakWindows OffPeakWindow[]
@@ -395,6 +409,23 @@ model OffPeakWindow {
   updatedAt     DateTime   @updatedAt
 
   gymSettings GymSettings @relation(fields: [gymSettingsId], references: [id])
+}
+
+model Referral {
+  id          String         @id @default(uuid())
+  referrerId  String
+  referredId  String         @unique
+  status      ReferralStatus @default(PENDING)
+  rewardDays  Int            @default(0)
+  completedAt DateTime?
+
+  referrer User @relation("ReferrerReferrals", fields: [referrerId], references: [id])
+  referred User @relation("ReferredReferral", fields: [referredId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([referrerId, createdAt])
 }
 
 model Notification {
