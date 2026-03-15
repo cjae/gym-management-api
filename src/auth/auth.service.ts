@@ -93,6 +93,31 @@ export class AuthService {
       }
     }
 
+    // Handle referral (soft fail — invalid codes don't block registration)
+    if (dto.referralCode) {
+      try {
+        const referrer = await this.prisma.user.findUnique({
+          where: { referralCode: dto.referralCode },
+        });
+        if (referrer && referrer.status === 'ACTIVE' && referrer.id !== user.id) {
+          await this.prisma.$transaction([
+            this.prisma.user.update({
+              where: { id: user.id },
+              data: { referredById: referrer.id },
+            }),
+            this.prisma.referral.create({
+              data: {
+                referrerId: referrer.id,
+                referredId: user.id,
+              },
+            }),
+          ]);
+        }
+      } catch {
+        // Soft fail — don't block registration for referral issues
+      }
+    }
+
     this.eventEmitter.emit('activity.registration', {
       type: 'registration',
       description: `${user.firstName} ${user.lastName} registered as a new member`,
