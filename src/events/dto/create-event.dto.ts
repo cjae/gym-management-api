@@ -4,6 +4,7 @@ import {
   IsInt,
   IsDateString,
   Min,
+  Max,
   MaxLength,
   Matches,
   Validate,
@@ -52,5 +53,6 @@ export class CreateEventDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(10000)
   maxCapacity?: number;
 }
