@@ -65,8 +65,12 @@ export class GymClassesController {
   @Get(':id')
   @ApiOkResponse({ type: GymClassResponseDto })
   @ApiNotFoundResponse({ description: 'Class not found' })
-  findOne(@Param('id') id: string) {
-    return this.gymClassesService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser('role') role: string,
+  ) {
+    const includeEnrollments = role === 'ADMIN' || role === 'SUPER_ADMIN';
+    return this.gymClassesService.findOne(id, includeEnrollments);
   }
 
   @Patch(':id')

@@ -75,14 +75,17 @@ export class GymClassesService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, includeEnrollments: boolean = false) {
     const gymClass = await this.prisma.gymClass.findUnique({
       where: { id },
       include: {
         trainer: { include: { user: { select: safeUserSelect } } },
-        enrollments: {
-          include: { member: { select: safeUserSelect } },
-        },
+        _count: { select: { enrollments: true } },
+        ...(includeEnrollments && {
+          enrollments: {
+            include: { member: { select: safeUserSelect } },
+          },
+        }),
       },
     });
 

@@ -102,12 +102,30 @@ describe('GymClassesService', () => {
   });
 
   describe('findOne', () => {
-    it('should return a gym class by id', async () => {
-      prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
+    it('should return a gym class with enrollment count (default)', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue({
+        ...mockGymClass,
+        _count: { enrollments: 5 },
+      } as any);
 
       const result = await service.findOne('class-1');
 
-      expect(result).toEqual(mockGymClass);
+      expect(result).toEqual(
+        expect.objectContaining({ id: 'class-1', _count: { enrollments: 5 } }),
+      );
+    });
+
+    it('should include full enrollments when requested', async () => {
+      const classWithEnrollments = {
+        ...mockGymClass,
+        _count: { enrollments: 1 },
+        enrollments: [{ member: { id: 'member-1', email: 'a@b.com' } }],
+      };
+      prisma.gymClass.findUnique.mockResolvedValue(classWithEnrollments as any);
+
+      const result = await service.findOne('class-1', true);
+
+      expect(result).toEqual(classWithEnrollments);
     });
 
     it('should throw NotFoundException when class not found', async () => {
