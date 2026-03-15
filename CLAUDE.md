@@ -27,15 +27,17 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 
 **Modules** (all in `src/`):
 - `prisma/` — Global PrismaService, injected everywhere
-- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints. Registration requires `acceptTos` and `acceptWaiver` (both `true`), which sets `tosAcceptedAt` and `waiverAcceptedAt` timestamps on the User.
+- `auth/` — JWT strategy (15m access tokens), login/register/forgot-password/reset-password/change-password endpoints. Registration requires `acceptTos` and `acceptWaiver` (both `true`), which sets `tosAcceptedAt` and `waiverAcceptedAt` timestamps on the User. Optional `referralCode` field during registration creates a PENDING referral record.
 - `users/` — CRUD with role-based access. Admin user creation (`POST /users`): ADMIN creates MEMBER/TRAINER, SUPER_ADMIN also creates ADMIN. Generates temp password, sets `mustChangePassword: true`, sends welcome email with credentials.
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members)
 - `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table). Member-created subscriptions start as `PENDING` until payment completes (webhook sets `ACTIVE`). Admin subscription creation (`POST /subscriptions/admin`): ADMIN/SUPER_ADMIN creates ACTIVE subscription for a MEMBER with offline payment (MPESA_OFFLINE/BANK_TRANSFER/COMPLIMENTARY), includes Payment record. Hourly cron cleans up PENDING subscriptions older than 1 hour. Freeze capability: members can freeze their subscription (up to plan's `maxFreezeDays` per billing cycle), blocking check-in and extending end date by actual frozen days on unfreeze. One freeze per billing cycle, auto-unfreeze via daily cron.
-- `payments/` — Paystack integration with webhook verification. One PENDING payment per subscription enforced (existing PENDING expired before creating new one).
+- `payments/` — Paystack integration with webhook verification. One PENDING payment per subscription enforced (existing PENDING expired before creating new one). Processes referral rewards on first successful payment (extends referrer's subscription).
+- `referrals/` — Member referral system. Each user gets a unique 8-char alphanumeric referral code on creation. New members can enter a referral code during registration (soft fail — invalid codes don't block signup). On first payment, referrer earns free subscription days (default 7, configurable via GymSettings). Per-cycle cap (default 3) prevents abuse. Endpoints: `GET /referrals/my-code`, `GET /referrals/my-referrals` (paginated), `GET /referrals/stats`. Any authenticated user can access.
 - `attendance/` — QR-based check-in, idempotent per member per day (`@@unique([memberId, checkInDate])`)
 - `qr/` — GymQrCode generation and validation
 - `trainers/` — Profiles, 1:1 member assignments
 - `gym-classes/` — Independent class scheduling with member enrollment. Classes exist as standalone weekly time slots, optionally assigned a trainer. Members self-enroll. Email notifications on time changes and cancellations. Time overlap validation prevents scheduling conflicts.
+- `events/` — One-off gym events (special classes, community events, workshops). Members enroll with capacity limits. Email notifications on changes/cancellations. No trainer assignment, no time overlap validation. `GET /events` returns upcoming events (date >= today). Free for all members.
 - `salary/` — Staff payroll, SUPER_ADMIN only
 - `email/` — Global EmailService using Mailgun + Handlebars templates (partials: header, footer, button). Logs emails when Mailgun is not configured.
 - `billing/` — Daily cron job for recurring subscription billing. Auto-charges card users via Paystack authorization codes, sends email reminders to M-Pesa users. Expires overdue subscriptions.
@@ -105,4 +107,4 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 22 spec files, 195 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using Jest. 27 spec files, 262 tests total.
