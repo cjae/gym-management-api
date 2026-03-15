@@ -3,7 +3,7 @@ import { EventsService } from './events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import {
   ConflictException,
   NotFoundException,
@@ -178,6 +178,11 @@ describe('EventsService', () => {
         expect.any(Object),
       );
     });
+
+    it('should throw NotFoundException when event not found', async () => {
+      prisma.event.findUnique.mockResolvedValue(null);
+      await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('enroll', () => {
@@ -225,6 +230,23 @@ describe('EventsService', () => {
 
       await expect(service.enroll('event-1', 'member-1')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('should throw ConflictException for duplicate enrollment', async () => {
+      prisma.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        _count: { enrollments: 5 },
+      } as any);
+      prisma.eventEnrollment.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '6.0.0',
+        }),
+      );
+
+      await expect(service.enroll('event-1', 'member-1')).rejects.toThrow(
+        ConflictException,
       );
     });
   });

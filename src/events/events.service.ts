@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -156,7 +157,9 @@ export class EventsService {
       throw new NotFoundException('Event not found or is inactive');
     }
 
-    if (event.date < new Date(new Date().toISOString().split('T')[0])) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (event.date < today) {
       throw new BadRequestException('Cannot enroll in a past event');
     }
 
@@ -164,9 +167,19 @@ export class EventsService {
       throw new ConflictException('Event is full');
     }
 
-    return this.prisma.eventEnrollment.create({
-      data: { eventId, memberId },
-    });
+    try {
+      return await this.prisma.eventEnrollment.create({
+        data: { eventId, memberId },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Already enrolled in this event');
+      }
+      throw error;
+    }
   }
 
   async unenroll(eventId: string, memberId: string) {
@@ -178,7 +191,9 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    if (event.date < new Date(new Date().toISOString().split('T')[0])) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (event.date < today) {
       throw new BadRequestException('Cannot unenroll from a past event');
     }
 
