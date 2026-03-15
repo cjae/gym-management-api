@@ -162,6 +162,19 @@ export class EmailService {
     });
   }
 
+  async sendReferralRewardEmail(
+    to: string,
+    firstName: string,
+    referredName: string,
+    rewardDays: number,
+  ): Promise<void> {
+    await this.sendEmail(to, 'You earned free days!', 'referral-reward', {
+      firstName,
+      referredName,
+      rewardDays,
+    });
+  }
+
   async sendCardPaymentFailedEmail(
     to: string,
     firstName: string,

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f0f0f0;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+    {{> header}}
+
+    <div style="padding: 32px 24px;">
+      <h2 style="color: #333333; margin: 0 0 16px 0;">You earned free days!</h2>
+      <p style="color: #555555; line-height: 1.6; margin: 0 0 8px 0;">Hi {{firstName}},</p>
+      <p style="color: #555555; line-height: 1.6; margin: 0 0 24px 0;">Great news! Your friend <strong>{{referredName}}</strong> just joined the gym. You've earned <strong>{{rewardDays}} free days</strong> on your subscription.</p>
+
+      <div style="background-color: #f5f5f5; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="color: #555555; margin: 0;"><strong>Reward:</strong> {{rewardDays}} free days added to your subscription</p>
+      </div>
+
+      <p style="color: #555555; line-height: 1.6; margin: 0 0 8px 0;">Keep referring friends to earn more free days!</p>
+    </div>
+
+    {{> footer}}
+  </div>
+</body>
+</html>
