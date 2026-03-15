@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f0f0f0;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+    {{> header}}
+
+    <div style="padding: 32px 24px;">
+      {{#if failed}}
+      <h2 style="color: #d32f2f; margin: 0 0 16px 0;">Import Failed</h2>
+      <p style="color: #555555; line-height: 1.6; margin: 0 0 24px 0;">
+        The import of <strong>{{fileName}}</strong> failed during processing.
+      </p>
+      {{else}}
+      <h2 style="color: #333333; margin: 0 0 16px 0;">Import Complete</h2>
+      <p style="color: #555555; line-height: 1.6; margin: 0 0 24px 0;">
+        The import of <strong>{{fileName}}</strong> has finished processing.
+      </p>
+      {{/if}}
+
+      <div style="background-color: #f5f5f5; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="color: #555555; margin: 0 0 8px 0;"><strong>Total Rows:</strong> {{totalRows}}</p>
+        <p style="color: #2e7d32; margin: 0 0 8px 0;"><strong>Imported:</strong> {{importedCount}}</p>
+        <p style="color: #f57c00; margin: 0 0 8px 0;"><strong>Skipped:</strong> {{skippedCount}}</p>
+        <p style="color: #d32f2f; margin: 0;"><strong>Errors:</strong> {{errorCount}}</p>
+      </div>
+
+      {{#if hasSkipped}}
+      <h3 style="color: #f57c00; margin: 0 0 12px 0;">Skipped Rows</h3>
+      <table style="width: 100%; border-collapse: collapse; margin: 0 0 24px 0; font-size: 14px;">
+        <tr style="background-color: #f5f5f5;">
+          <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Row</th>
+          <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Email</th>
+          <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Reason</th>
+        </tr>
+        {{#each skipped}}
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">{{this.row}}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">{{this.email}}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">{{this.reason}}</td>
+        </tr>
+        {{/each}}
+      </table>
+      {{/if}}
+
+      {{#if hasErrors}}
+      <h3 style="color: #d32f2f; margin: 0 0 12px 0;">Errors</h3>
+      <table style="width: 100%; border-collapse: collapse; margin: 0 0 24px 0; font-size: 14px;">
+        <tr style="background-color: #f5f5f5;">
+          <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Row</th>
+          <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Field</th>
+          <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Message</th>
+        </tr>
+        {{#each errors}}
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">{{this.row}}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">{{this.field}}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">{{this.message}}</td>
+        </tr>
+        {{/each}}
+      </table>
+      {{/if}}
+
+      {{> button url=adminUrl text="Go to Dashboard"}}
+    </div>
+
+    {{> footer}}
+  </div>
+</body>
+</html>

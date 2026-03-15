@@ -33,6 +33,7 @@ import { BannersModule } from './banners/banners.module';
 import { GymSettingsModule } from './gym-settings/gym-settings.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
+import { ImportsModule } from './imports/imports.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { EventsModule } from './events/events.module';
     BannersModule,
     GymSettingsModule,
     ReferralsModule,
+    ImportsModule,
   ],
   controllers: [AppController],
   providers: [

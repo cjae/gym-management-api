@@ -142,6 +142,7 @@ model User {
   referrals                  User[]           @relation("UserReferrals")
   referralsMade              Referral[]       @relation("ReferrerReferrals")
   referralReceived           Referral?        @relation("ReferredReferral")
+  importJobs                 ImportJob[]
 }
 
 model SubscriptionPlan {
@@ -583,4 +584,33 @@ model BannerInteraction {
 
   @@index([bannerId, type])
   @@index([userId])
+}
+
+enum ImportStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ImportType {
+  MEMBERS
+}
+
+model ImportJob {
+  id             String       @id @default(uuid())
+  type           ImportType
+  status         ImportStatus @default(PROCESSING)
+  fileName       String
+  totalRows      Int          @default(0)
+  importedCount  Int          @default(0)
+  skippedCount   Int          @default(0)
+  errorCount     Int          @default(0)
+  errors         Json?
+  skipped        Json?
+  initiatedById  String
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  initiatedBy User @relation(fields: [initiatedById], references: [id])
 }

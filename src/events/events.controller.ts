@@ -69,7 +69,10 @@ export class EventsController {
   @Get(':id')
   @ApiOkResponse({ type: EventResponseDto })
   @ApiNotFoundResponse({ description: 'Event not found' })
-  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('role') role: string) {
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('role') role: string,
+  ) {
     const includeEnrollments = role === 'ADMIN' || role === 'SUPER_ADMIN';
     return this.eventsService.findOne(id, includeEnrollments);
   }
@@ -99,7 +102,10 @@ export class EventsController {
   @ApiNotFoundResponse({ description: 'Event not found or inactive' })
   @ApiConflictResponse({ description: 'Event is full' })
   @ApiBadRequestResponse({ description: 'Cannot enroll in past event' })
-  enroll(@Param('id', ParseUUIDPipe) eventId: string, @CurrentUser('id') memberId: string) {
+  enroll(
+    @Param('id', ParseUUIDPipe) eventId: string,
+    @CurrentUser('id') memberId: string,
+  ) {
     return this.eventsService.enroll(eventId, memberId);
   }
 
@@ -108,7 +114,10 @@ export class EventsController {
   @Roles('MEMBER')
   @ApiOkResponse({ description: 'Unenrolled from event' })
   @ApiBadRequestResponse({ description: 'Cannot unenroll from past event' })
-  unenroll(@Param('id', ParseUUIDPipe) eventId: string, @CurrentUser('id') memberId: string) {
+  unenroll(
+    @Param('id', ParseUUIDPipe) eventId: string,
+    @CurrentUser('id') memberId: string,
+  ) {
     return this.eventsService.unenroll(eventId, memberId);
   }
 

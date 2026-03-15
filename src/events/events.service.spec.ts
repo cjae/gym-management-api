@@ -208,9 +208,9 @@ describe('EventsService', () => {
         isActive: false,
         enrollments: [],
       } as any);
-      await expect(
-        service.update('event-1', { title: 'X' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.update('event-1', { title: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
