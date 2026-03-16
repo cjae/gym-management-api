@@ -405,7 +405,7 @@ export class PaymentsService {
       {
         where: {
           primaryMemberId: referral.referrerId,
-          status: 'ACTIVE',
+          status: { in: ['ACTIVE', 'FROZEN'] },
         },
         include: { plan: true },
       },
