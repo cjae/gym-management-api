@@ -5,9 +5,10 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 
@@ -28,6 +29,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateEventDto) {
@@ -97,7 +99,9 @@ export class EventsService {
       where: { id },
       include: {
         enrollments: {
-          include: { member: { select: { email: true, firstName: true } } },
+          include: {
+            member: { select: { id: true, email: true, firstName: true } },
+          },
         },
       },
     });
@@ -137,7 +141,9 @@ export class EventsService {
       where: { id },
       include: {
         enrollments: {
-          include: { member: { select: { email: true, firstName: true } } },
+          include: {
+            member: { select: { id: true, email: true, firstName: true } },
+          },
         },
       },
     });
@@ -274,7 +280,9 @@ export class EventsService {
       startTime: string;
       endTime: string;
       location: string | null;
-      enrollments: { member: { email: string; firstName: string } }[];
+      enrollments: {
+        member: { id: string; email: string; firstName: string };
+      }[];
     },
     updated: {
       date: Date;
@@ -283,6 +291,9 @@ export class EventsService {
       location: string | null;
     },
   ) {
+    const newDate = updated.date.toISOString().split('T')[0];
+    const newTime = `${updated.startTime} - ${updated.endTime}`;
+
     for (const enrollment of existing.enrollments) {
       this.emailService
         .sendEmail(
@@ -295,14 +306,27 @@ export class EventsService {
             oldDate: existing.date.toISOString().split('T')[0],
             oldTime: `${existing.startTime} - ${existing.endTime}`,
             oldLocation: existing.location || 'TBD',
-            newDate: updated.date.toISOString().split('T')[0],
-            newTime: `${updated.startTime} - ${updated.endTime}`,
+            newDate,
+            newTime,
             newLocation: updated.location || 'TBD',
           },
         )
         .catch((err) =>
           this.logger.error(
             `Failed to send event update email: ${err.message}`,
+          ),
+        );
+
+      this.notificationsService
+        .create({
+          userId: enrollment.member.id,
+          title: `Event Updated: ${existing.title}`,
+          body: `Moved to ${newDate} ${newTime}`,
+          type: NotificationType.EVENT_UPDATE,
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Failed to create event update notification: ${err.message}`,
           ),
         );
     }
@@ -314,8 +338,13 @@ export class EventsService {
     startTime: string;
     endTime: string;
     location: string | null;
-    enrollments: { member: { email: string; firstName: string } }[];
+    enrollments: {
+      member: { id: string; email: string; firstName: string };
+    }[];
   }) {
+    const date = existing.date.toISOString().split('T')[0];
+    const time = `${existing.startTime} - ${existing.endTime}`;
+
     for (const enrollment of existing.enrollments) {
       this.emailService
         .sendEmail(
@@ -325,14 +354,27 @@ export class EventsService {
           {
             firstName: enrollment.member.firstName,
             eventTitle: existing.title,
-            date: existing.date.toISOString().split('T')[0],
-            time: `${existing.startTime} - ${existing.endTime}`,
+            date,
+            time,
             location: existing.location || 'TBD',
           },
         )
         .catch((err) =>
           this.logger.error(
             `Failed to send event cancelled email: ${err.message}`,
+          ),
+        );
+
+      this.notificationsService
+        .create({
+          userId: enrollment.member.id,
+          title: `Event Cancelled: ${existing.title}`,
+          body: `${date} ${time} event has been cancelled`,
+          type: NotificationType.EVENT_UPDATE,
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Failed to create event cancelled notification: ${err.message}`,
           ),
         );
     }

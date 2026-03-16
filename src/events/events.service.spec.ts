@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventsService } from './events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { Prisma, PrismaClient } from '@prisma/client';
 import {
@@ -14,6 +15,7 @@ describe('EventsService', () => {
   let service: EventsService;
   let prisma: DeepMockProxy<PrismaClient>;
   let emailService: DeepMockProxy<EmailService>;
+  let notificationsService: DeepMockProxy<NotificationsService>;
 
   const futureDate = new Date('2026-05-01');
   const pastDate = new Date('2025-01-01');
@@ -45,12 +47,18 @@ describe('EventsService', () => {
         EventsService,
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: EmailService, useValue: mockDeep<EmailService>() },
+        {
+          provide: NotificationsService,
+          useValue: mockDeep<NotificationsService>(),
+        },
       ],
     }).compile();
 
     service = module.get<EventsService>(EventsService);
     prisma = module.get(PrismaService);
     emailService = module.get(EmailService);
+    notificationsService = module.get(NotificationsService);
+    notificationsService.create.mockResolvedValue(undefined as any);
 
     // Interactive transactions: call the callback with prisma mock
     prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
@@ -180,7 +188,9 @@ describe('EventsService', () => {
       const updated = { ...mockEvent, startTime: '10:00', endTime: '12:00' };
       prisma.event.findUnique.mockResolvedValue({
         ...mockEvent,
-        enrollments: [{ member: { email: 'a@b.com', firstName: 'John' } }],
+        enrollments: [
+          { member: { id: 'member-1', email: 'a@b.com', firstName: 'John' } },
+        ],
       } as any);
       prisma.event.update.mockResolvedValue(updated as any);
       emailService.sendEmail.mockResolvedValue(undefined);
@@ -218,7 +228,9 @@ describe('EventsService', () => {
     it('should soft-delete and notify enrolled members', async () => {
       prisma.event.findUnique.mockResolvedValue({
         ...mockEvent,
-        enrollments: [{ member: { email: 'a@b.com', firstName: 'John' } }],
+        enrollments: [
+          { member: { id: 'member-1', email: 'a@b.com', firstName: 'John' } },
+        ],
       } as any);
       prisma.event.update.mockResolvedValue({
         ...mockEvent,

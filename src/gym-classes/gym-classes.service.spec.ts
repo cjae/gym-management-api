@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GymClassesService } from './gym-classes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
 import { ConflictException, NotFoundException } from '@nestjs/common';
@@ -10,6 +11,7 @@ describe('GymClassesService', () => {
   let service: GymClassesService;
   let prisma: DeepMockProxy<PrismaClient>;
   let emailService: DeepMockProxy<EmailService>;
+  let notificationsService: DeepMockProxy<NotificationsService>;
 
   const mockGymClass = {
     id: 'class-1',
@@ -38,12 +40,18 @@ describe('GymClassesService', () => {
         GymClassesService,
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: EmailService, useValue: mockDeep<EmailService>() },
+        {
+          provide: NotificationsService,
+          useValue: mockDeep<NotificationsService>(),
+        },
       ],
     }).compile();
 
     service = module.get<GymClassesService>(GymClassesService);
     prisma = module.get(PrismaService);
     emailService = module.get(EmailService);
+    notificationsService = module.get(NotificationsService);
+    notificationsService.create.mockResolvedValue(undefined as any);
   });
 
   it('should be defined', () => {
@@ -167,7 +175,9 @@ describe('GymClassesService', () => {
       const updated = { ...mockGymClass, startTime: '07:00', endTime: '08:00' };
       prisma.gymClass.findUnique.mockResolvedValue({
         ...mockGymClass,
-        enrollments: [{ member: { email: 'a@b.com', firstName: 'John' } }],
+        enrollments: [
+          { member: { id: 'member-1', email: 'a@b.com', firstName: 'John' } },
+        ],
       } as any);
       prisma.gymClass.findFirst.mockResolvedValue(null);
       prisma.gymClass.update.mockResolvedValue(updated as any);
@@ -201,7 +211,9 @@ describe('GymClassesService', () => {
     it('should soft-delete and notify enrolled members', async () => {
       prisma.gymClass.findUnique.mockResolvedValue({
         ...mockGymClass,
-        enrollments: [{ member: { email: 'a@b.com', firstName: 'John' } }],
+        enrollments: [
+          { member: { id: 'member-1', email: 'a@b.com', firstName: 'John' } },
+        ],
       } as any);
       prisma.gymClass.update.mockResolvedValue({
         ...mockGymClass,

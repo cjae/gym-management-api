@@ -56,7 +56,10 @@ export class ReferralsController {
 
   @Get('stats/:userId')
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiParam({ name: 'userId', description: 'ID of the user to fetch referral stats for' })
+  @ApiParam({
+    name: 'userId',
+    description: 'ID of the user to fetch referral stats for',
+  })
   @ApiOkResponse({ type: ReferralStatsResponseDto })
   getUserStats(@Param('userId') userId: string) {
     return this.referralsService.getStats(userId);

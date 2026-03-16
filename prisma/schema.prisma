@@ -72,6 +72,8 @@ enum NotificationType {
   SUBSCRIPTION_EXPIRING
   BIRTHDAY
   REFERRAL_REWARD
+  CLASS_UPDATE
+  EVENT_UPDATE
 }
 
 enum AuditAction {

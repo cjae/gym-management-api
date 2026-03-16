@@ -20,7 +20,7 @@ import {
   getCycleStartDate,
 } from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
-import { Payment, Prisma } from '@prisma/client';
+import { NotificationType, Payment, Prisma } from '@prisma/client';
 import axios from 'axios';
 import * as crypto from 'crypto';
 
@@ -446,7 +446,7 @@ export class PaymentsService {
           userId: referral.referrerId,
           title: 'Referral reward earned!',
           body: `${referredName} joined — you earned ${earnedDays} free days!`,
-          type: 'REFERRAL_REWARD',
+          type: NotificationType.REFERRAL_REWARD,
           metadata: {
             referredId: referral.referredId,
             referredName,

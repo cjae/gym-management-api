@@ -4,8 +4,10 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateGymClassDto } from './dto/create-gym-class.dto';
 import { UpdateGymClassDto } from './dto/update-gym-class.dto';
 
@@ -36,6 +38,7 @@ export class GymClassesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateGymClassDto) {
@@ -101,7 +104,9 @@ export class GymClassesService {
       where: { id },
       include: {
         enrollments: {
-          include: { member: { select: { email: true, firstName: true } } },
+          include: {
+            member: { select: { id: true, email: true, firstName: true } },
+          },
         },
       },
     });
@@ -155,7 +160,9 @@ export class GymClassesService {
       where: { id },
       include: {
         enrollments: {
-          include: { member: { select: { email: true, firstName: true } } },
+          include: {
+            member: { select: { id: true, email: true, firstName: true } },
+          },
         },
       },
     });
@@ -271,10 +278,15 @@ export class GymClassesService {
       dayOfWeek: number;
       startTime: string;
       endTime: string;
-      enrollments: { member: { email: string; firstName: string } }[];
+      enrollments: {
+        member: { id: string; email: string; firstName: string };
+      }[];
     },
     updated: { dayOfWeek: number; startTime: string; endTime: string },
   ) {
+    const newDay = DAY_NAMES[updated.dayOfWeek];
+    const newTime = `${updated.startTime} - ${updated.endTime}`;
+
     for (const enrollment of existing.enrollments) {
       this.emailService
         .sendEmail(
@@ -286,13 +298,26 @@ export class GymClassesService {
             classTitle: existing.title,
             oldDay: DAY_NAMES[existing.dayOfWeek],
             oldTime: `${existing.startTime} - ${existing.endTime}`,
-            newDay: DAY_NAMES[updated.dayOfWeek],
-            newTime: `${updated.startTime} - ${updated.endTime}`,
+            newDay,
+            newTime,
           },
         )
         .catch((err) =>
           this.logger.error(
             `Failed to send class update email: ${err.message}`,
+          ),
+        );
+
+      this.notificationsService
+        .create({
+          userId: enrollment.member.id,
+          title: `Class Schedule Updated: ${existing.title}`,
+          body: `Moved to ${newDay} ${newTime}`,
+          type: NotificationType.CLASS_UPDATE,
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Failed to create class update notification: ${err.message}`,
           ),
         );
     }
@@ -303,8 +328,13 @@ export class GymClassesService {
     dayOfWeek: number;
     startTime: string;
     endTime: string;
-    enrollments: { member: { email: string; firstName: string } }[];
+    enrollments: {
+      member: { id: string; email: string; firstName: string };
+    }[];
   }) {
+    const day = DAY_NAMES[existing.dayOfWeek];
+    const time = `${existing.startTime} - ${existing.endTime}`;
+
     for (const enrollment of existing.enrollments) {
       this.emailService
         .sendEmail(
@@ -314,13 +344,26 @@ export class GymClassesService {
           {
             firstName: enrollment.member.firstName,
             classTitle: existing.title,
-            day: DAY_NAMES[existing.dayOfWeek],
-            time: `${existing.startTime} - ${existing.endTime}`,
+            day,
+            time,
           },
         )
         .catch((err) =>
           this.logger.error(
             `Failed to send class cancelled email: ${err.message}`,
+          ),
+        );
+
+      this.notificationsService
+        .create({
+          userId: enrollment.member.id,
+          title: `Class Cancelled: ${existing.title}`,
+          body: `${day} ${time} class has been cancelled`,
+          type: NotificationType.CLASS_UPDATE,
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Failed to create class cancelled notification: ${err.message}`,
           ),
         );
     }
