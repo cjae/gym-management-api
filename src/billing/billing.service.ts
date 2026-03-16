@@ -128,7 +128,9 @@ export class BillingService {
         nextBillingDate: { lte: today },
       },
       include: {
-        primaryMember: true,
+        primaryMember: {
+          select: { id: true, email: true, firstName: true },
+        },
         plan: true,
       },
     });
@@ -189,7 +191,9 @@ export class BillingService {
           nextBillingDate: { lte: threeDaysFromNow, gte: now },
         },
         include: {
-          primaryMember: true,
+          primaryMember: {
+            select: { id: true, email: true, firstName: true },
+          },
           plan: true,
         },
       },
@@ -260,7 +264,9 @@ export class BillingService {
         nextBillingDate: { lt: now },
       },
       include: {
-        primaryMember: true,
+        primaryMember: {
+          select: { id: true, email: true, firstName: true },
+        },
         plan: true,
       },
     });

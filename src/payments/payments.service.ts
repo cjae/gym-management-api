@@ -172,7 +172,11 @@ export class PaymentsService {
           },
           include: {
             subscription: {
-              include: { primaryMember: true },
+              include: {
+                primaryMember: {
+                  select: { id: true, email: true, firstName: true, lastName: true },
+                },
+              },
             },
           },
         });
@@ -250,7 +254,11 @@ export class PaymentsService {
           },
           include: {
             subscription: {
-              include: { primaryMember: true },
+              include: {
+                primaryMember: {
+                  select: { id: true, email: true, firstName: true, lastName: true },
+                },
+              },
             },
           },
         });
@@ -374,8 +382,12 @@ export class PaymentsService {
     const referral = await this.prisma.referral.findUnique({
       where: { referredId: payingUserId },
       include: {
-        referrer: true,
-        referred: true,
+        referrer: {
+          select: { id: true, status: true, deletedAt: true, email: true, firstName: true },
+        },
+        referred: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
       },
     });
 
