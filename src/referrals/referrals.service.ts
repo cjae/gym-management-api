@@ -91,7 +91,11 @@ export class ReferralsService {
         }),
         this.prisma.memberSubscription.findFirst({
           where: { primaryMemberId: userId, status: 'ACTIVE' },
-          include: { plan: true },
+          select: {
+            nextBillingDate: true,
+            startDate: true,
+            plan: { select: { billingInterval: true } },
+          },
         }),
       ]);
 
