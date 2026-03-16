@@ -93,6 +93,11 @@ enum ReferralStatus {
   COMPLETED
 }
 
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
 enum DayOfWeek {
   MONDAY
   TUESDAY
@@ -145,6 +150,7 @@ model User {
   referralsMade              Referral[]       @relation("ReferrerReferrals")
   referralReceived           Referral?        @relation("ReferredReferral")
   importJobs                 ImportJob[]
+  discountRedemptions        DiscountRedemption[] @relation("UserDiscountRedemptions")
 }
 
 model SubscriptionPlan {
@@ -162,7 +168,8 @@ model SubscriptionPlan {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  subscriptions MemberSubscription[]
+  subscriptions     MemberSubscription[]
+  discountCodePlans DiscountCodePlan[]
 }
 
 model MemberSubscription {
@@ -183,14 +190,18 @@ model MemberSubscription {
   cancellationReason        String?
   paymentNote               String?
   createdBy                 String?
+  discountCodeId            String?
+  discountAmount            Float?
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 
-  primaryMember User                 @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
-  plan          SubscriptionPlan     @relation(fields: [planId], references: [id])
-  members       SubscriptionMember[]
-  payments      Payment[]
-  createdByUser User?                @relation("SubscriptionCreator", fields: [createdBy], references: [id])
+  primaryMember      User                 @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
+  plan               SubscriptionPlan     @relation(fields: [planId], references: [id])
+  members            SubscriptionMember[]
+  payments           Payment[]
+  createdByUser      User?                @relation("SubscriptionCreator", fields: [createdBy], references: [id])
+  discountCode       DiscountCode?        @relation(fields: [discountCodeId], references: [id])
+  discountRedemption DiscountRedemption?
 }
 
 model SubscriptionMember {
@@ -618,4 +629,53 @@ model ImportJob {
   updatedAt      DateTime     @updatedAt
 
   initiatedBy User @relation(fields: [initiatedById], references: [id])
+}
+
+model DiscountCode {
+  id               String       @id @default(uuid())
+  code             String       @unique
+  description      String?
+  discountType     DiscountType
+  discountValue    Float
+  maxUses          Int?
+  maxUsesPerMember Int          @default(1)
+  currentUses      Int          @default(0)
+  startDate        DateTime
+  endDate          DateTime
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  plans       DiscountCodePlan[]
+  redemptions DiscountRedemption[]
+  subscriptions MemberSubscription[]
+}
+
+model DiscountCodePlan {
+  id             String @id @default(uuid())
+  discountCodeId String
+  planId         String
+
+  discountCode DiscountCode     @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([discountCodeId, planId])
+}
+
+model DiscountRedemption {
+  id              String   @id @default(uuid())
+  discountCodeId  String
+  memberId        String
+  subscriptionId  String   @unique
+  originalAmount  Float
+  discountedAmount Float
+  createdAt       DateTime @default(now())
+
+  discountCode DiscountCode       @relation(fields: [discountCodeId], references: [id])
+  member       User               @relation("UserDiscountRedemptions", fields: [memberId], references: [id])
+  subscription MemberSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([discountCodeId, memberId, subscriptionId])
+  @@index([discountCodeId])
+  @@index([memberId])
 }
