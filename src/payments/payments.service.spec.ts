@@ -116,6 +116,39 @@ describe('PaymentsService', () => {
       expect(prisma.payment.create).toHaveBeenCalled();
     });
 
+    it('should use discounted amount when subscription has discountAmount', async () => {
+      const discountedSubscription = {
+        ...mockSubscription,
+        plan: { price: 2500 },
+        discountAmount: 500,
+      };
+      prisma.memberSubscription.findUnique.mockResolvedValue(
+        discountedSubscription as any,
+      );
+      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.create.mockResolvedValue(mockPayment as any);
+
+      await service.initializePayment(subscriptionId, email, userId);
+
+      // Payment amount should be plan.price - discountAmount = 2000
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 2000,
+          }),
+        }),
+      );
+
+      // Paystack gets amount in cents (2000 * 100 = 200000)
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          amount: 200000,
+        }),
+        expect.any(Object),
+      );
+    });
+
     it('should create payment normally when no PENDING payment exists', async () => {
       prisma.payment.findFirst.mockResolvedValue(null);
 
