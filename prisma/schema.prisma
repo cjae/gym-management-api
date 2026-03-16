@@ -180,6 +180,7 @@ model MemberSubscription {
   freezeEndDate             DateTime?
   frozenDaysUsed            Int                @default(0)
   freezeCount               Int                @default(0)
+  cancellationReason        String?
   paymentNote               String?
   createdBy                 String?
   createdAt                 DateTime           @default(now())

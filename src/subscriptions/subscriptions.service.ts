@@ -421,6 +421,7 @@ export class SubscriptionsService {
     subscriptionId: string,
     requesterId: string,
     requesterRole: string,
+    reason?: string,
   ) {
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
@@ -449,7 +450,10 @@ export class SubscriptionsService {
 
     const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
-      data: { autoRenew: false },
+      data: {
+        autoRenew: false,
+        ...(reason && { cancellationReason: reason }),
+      },
     });
 
     const memberName = `${subscription.primaryMember.firstName} ${subscription.primaryMember.lastName}`;

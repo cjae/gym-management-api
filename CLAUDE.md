@@ -95,7 +95,7 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - **Security headers**: `helmet` middleware (HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
 - **Webhook verification**: HMAC SHA-512 against raw request body (`rawBody: true` in NestFactory). Idempotency via `@unique` on `Payment.paystackReference`.
 - **IDOR protection**: Payment initialization validates subscription ownership (`primaryMemberId === userId`)
-- **Data exposure prevention**: `paystackAuthorizationCode` stripped from subscription responses, `safeUserSelect` used in trainer queries (no password hash leaks)
+- **Data exposure prevention**: **Every** service method returning data to a controller must strip sensitive fields before returning. Never return raw Prisma results. Sensitive fields: `paystackAuthorizationCode` (Subscription), `password` (User), auth tokens, signature data. Use destructuring (`const { paystackAuthorizationCode, ...safe } = result`) or `safeUserSelect`. This applies to nested includes too (e.g., payment → subscription).
 - **Role escalation prevention**: `role` field removed from `UpdateUserDto` — role changes require direct DB access
 - **JWT**: Algorithm pinned to `HS256`, 15m access tokens, separate refresh secret (`JWT_REFRESH_SECRET`), JTI-based blocklist on logout
 - **Input bounds**: All string DTO fields have `@MaxLength` constraints

@@ -22,6 +22,7 @@ import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { AddDuoMemberDto } from './dto/add-duo-member.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { FreezeSubscriptionDto } from './dto/freeze-subscription.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
 import { SubscriptionMemberResponseDto } from './dto/subscription-member-response.dto';
@@ -113,8 +114,14 @@ export class SubscriptionsController {
     @Param('id') id: string,
     @CurrentUser('id') requesterId: string,
     @CurrentUser('role') requesterRole: string,
+    @Body() dto: CancelSubscriptionDto,
   ) {
-    return this.subscriptionsService.cancel(id, requesterId, requesterRole);
+    return this.subscriptionsService.cancel(
+      id,
+      requesterId,
+      requesterRole,
+      dto.reason,
+    );
   }
 
   @Patch(':id/freeze')

@@ -46,6 +46,9 @@ export class SubscriptionResponseDto {
   })
   freezeCount: number;
 
+  @ApiPropertyOptional({ example: 'Moving to a different city' })
+  cancellationReason?: string;
+
   @ApiPropertyOptional({ example: 'M-Pesa confirmation code ABC123' })
   paymentNote?: string;
 
