@@ -377,7 +377,14 @@ export class AttendanceService {
 
   async getStreak(memberId: string) {
     const streak = await this.prisma.streak.findUnique({ where: { memberId } });
-    return streak ?? { memberId, currentStreak: 0, longestStreak: 0, lastCheckIn: null };
+    return (
+      streak ?? {
+        memberId,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastCheckIn: null,
+      }
+    );
   }
 
   async getLeaderboard(page = 1, limit = 20) {
