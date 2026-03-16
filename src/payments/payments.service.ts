@@ -107,10 +107,12 @@ export class PaymentsService {
       });
     }
 
+    const effectiveAmount = subscription.plan.price - (subscription.discountAmount ?? 0);
+
     const payment = await this.prisma.payment.create({
       data: {
         subscriptionId,
-        amount: subscription.plan.price,
+        amount: effectiveAmount,
         paymentMethod: subscription.paymentMethod,
       },
     });
@@ -119,7 +121,7 @@ export class PaymentsService {
       `${this.paystackBaseUrl}/transaction/initialize`,
       {
         email,
-        amount: subscription.plan.price * 100,
+        amount: effectiveAmount * 100,
         currency: 'KES',
         reference: `gym_${payment.id}_${Date.now()}`,
         metadata: { subscriptionId, paymentId: payment.id },

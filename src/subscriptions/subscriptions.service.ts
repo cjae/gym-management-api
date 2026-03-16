@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import {
   AdminCreateSubscriptionDto,
@@ -30,6 +31,7 @@ export class SubscriptionsService {
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
     private readonly notificationsService: NotificationsService,
+    private readonly discountCodesService: DiscountCodesService,
   ) {}
 
   async create(memberId: string, dto: CreateSubscriptionDto) {
@@ -52,6 +54,25 @@ export class SubscriptionsService {
       );
     }
 
+    let discountResult: {
+      discountCode: { id: string; discountType: string; discountValue: number; maxUses: number | null };
+      finalPrice: number;
+      originalPrice: number;
+    } | null = null;
+
+    if (dto.discountCode) {
+      discountResult = await this.discountCodesService.validateCode(
+        dto.discountCode,
+        dto.planId,
+        memberId,
+      );
+    }
+
+    const discountCodeId = discountResult?.discountCode.id ?? null;
+    const discountAmount = discountResult
+      ? discountResult.originalPrice - discountResult.finalPrice
+      : null;
+
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
 
@@ -70,35 +91,55 @@ export class SubscriptionsService {
 
     const include = { plan: true, members: true } as const;
 
-    const subscription = existingPending
-      ? await this.prisma.memberSubscription.update({
-          where: { id: existingPending.id },
-          data: {
-            planId: dto.planId,
-            startDate,
-            endDate,
-            paymentMethod: dto.paymentMethod,
-            nextBillingDate: endDate,
-          },
-          include,
-        })
-      : await this.prisma.memberSubscription.create({
-          data: {
-            primaryMemberId: memberId,
-            planId: dto.planId,
-            startDate,
-            endDate,
-            status: SubscriptionStatus.PENDING,
-            paymentMethod: dto.paymentMethod,
-            nextBillingDate: endDate,
-            members: {
-              create: {
-                memberId,
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      const sub = existingPending
+        ? await tx.memberSubscription.update({
+            where: { id: existingPending.id },
+            data: {
+              planId: dto.planId,
+              startDate,
+              endDate,
+              paymentMethod: dto.paymentMethod,
+              nextBillingDate: endDate,
+              discountCodeId,
+              discountAmount,
+            },
+            include,
+          })
+        : await tx.memberSubscription.create({
+            data: {
+              primaryMemberId: memberId,
+              planId: dto.planId,
+              startDate,
+              endDate,
+              status: SubscriptionStatus.PENDING,
+              paymentMethod: dto.paymentMethod,
+              nextBillingDate: endDate,
+              discountCodeId,
+              discountAmount,
+              members: {
+                create: {
+                  memberId,
+                },
               },
             },
-          },
-          include,
-        });
+            include,
+          });
+
+      if (discountResult) {
+        await this.discountCodesService.redeemCode(
+          tx,
+          discountResult.discountCode.id,
+          memberId,
+          sub.id,
+          discountResult.originalPrice,
+          discountResult.finalPrice,
+          discountResult.discountCode.maxUses,
+        );
+      }
+
+      return sub;
+    });
 
     const memberName = member
       ? `${member.firstName} ${member.lastName}`
@@ -171,10 +212,28 @@ export class SubscriptionsService {
       );
     }
 
+    let discountResult: any = null;
+    if (dto.discountCode && dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY) {
+      discountResult = await this.discountCodesService.validateCode(
+        dto.discountCode,
+        dto.planId,
+        dto.memberId,
+      );
+    }
+
+    const discountCodeId = discountResult?.discountCode.id ?? null;
+    const discountAmountValue = discountResult
+      ? discountResult.originalPrice - discountResult.finalPrice
+      : null;
+
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
     const amount =
-      dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY ? 0 : plan.price;
+      dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY
+        ? 0
+        : discountResult
+          ? discountResult.finalPrice
+          : plan.price;
 
     // Check for existing PENDING subscription — update it instead of creating a new one
     const existingPending = await this.prisma.memberSubscription.findFirst({
@@ -195,6 +254,8 @@ export class SubscriptionsService {
       autoRenew: false,
       createdBy: adminId,
       paymentNote: dto.paymentNote,
+      discountCodeId,
+      discountAmount: discountAmountValue,
     };
 
     const subscription = await this.prisma.$transaction(async (tx) => {
@@ -227,6 +288,18 @@ export class SubscriptionsService {
           paymentNote: dto.paymentNote,
         },
       });
+
+      if (discountResult) {
+        await this.discountCodesService.redeemCode(
+          tx,
+          discountResult.discountCode.id,
+          dto.memberId,
+          sub.id,
+          discountResult.originalPrice,
+          discountResult.finalPrice,
+          discountResult.discountCode.maxUses,
+        );
+      }
 
       return sub;
     });
@@ -695,18 +768,23 @@ export class SubscriptionsService {
 
     const ids = staleSubscriptions.map((s) => s.id);
 
-    // Delete in order: payments → subscription members → subscriptions (FK constraints)
-    await this.prisma.$transaction([
-      this.prisma.payment.deleteMany({
+    // Delete in order: reverse discounts → payments → subscription members → subscriptions (FK constraints)
+    await this.prisma.$transaction(async (tx) => {
+      // Reverse discount redemptions (decrements currentUses and deletes records)
+      for (const sub of staleSubscriptions) {
+        await this.discountCodesService.reverseRedemption(tx, sub.id);
+      }
+
+      await tx.payment.deleteMany({
         where: { subscriptionId: { in: ids } },
-      }),
-      this.prisma.subscriptionMember.deleteMany({
+      });
+      await tx.subscriptionMember.deleteMany({
         where: { subscriptionId: { in: ids } },
-      }),
-      this.prisma.memberSubscription.deleteMany({
+      });
+      await tx.memberSubscription.deleteMany({
         where: { id: { in: ids } },
-      }),
-    ]);
+      });
+    });
 
     this.logger.log(
       `Cleaned up ${staleSubscriptions.length} stale pending subscription(s)`,
