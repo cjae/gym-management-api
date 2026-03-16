@@ -34,6 +34,7 @@ import { GymSettingsModule } from './gym-settings/gym-settings.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
 import { ImportsModule } from './imports/imports.module';
+import { DiscountCodesModule } from './discount-codes/discount-codes.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { ImportsModule } from './imports/imports.module';
     GymSettingsModule,
     ReferralsModule,
     ImportsModule,
+    DiscountCodesModule,
   ],
   controllers: [AppController],
   providers: [
