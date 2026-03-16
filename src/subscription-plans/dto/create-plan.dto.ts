@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsInt,
   Min,
+  Max,
   IsEnum,
   IsBoolean,
 } from 'class-validator';
@@ -43,6 +44,16 @@ export class CreatePlanDto {
   @IsInt()
   @Min(0)
   maxFreezeDays?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Max number of freezes per billing cycle. Defaults to 1.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(52)
+  maxFreezeCount?: number;
 
   @ApiPropertyOptional({
     example: false,

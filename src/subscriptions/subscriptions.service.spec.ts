@@ -232,9 +232,15 @@ describe('SubscriptionsService', () => {
       endDate: new Date('2026-04-01'),
       nextBillingDate: new Date('2026-04-01'),
       frozenDaysUsed: 0,
+      freezeCount: 0,
       freezeStartDate: null,
       freezeEndDate: null,
-      plan: { id: 'plan-1', name: 'Monthly', maxFreezeDays: 20 },
+      plan: {
+        id: 'plan-1',
+        name: 'Monthly',
+        maxFreezeDays: 20,
+        maxFreezeCount: 1,
+      },
       primaryMember: { firstName: 'John', lastName: 'Doe' },
     };
 
@@ -266,25 +272,54 @@ describe('SubscriptionsService', () => {
       ).rejects.toThrow('This plan does not support freezing');
     });
 
-    it('should reject freeze when days exceed plan max', async () => {
+    it('should reject freeze when days exceed remaining freeze days', async () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         mockSubscription as any,
       );
 
       await expect(
         service.freeze('sub-1', 'user-1', 'MEMBER', 25),
-      ).rejects.toThrow('Freeze duration cannot exceed 20 days');
+      ).rejects.toThrow('Freeze duration cannot exceed 20 remaining days');
     });
 
-    it('should reject freeze when already used this cycle', async () => {
+    it('should reject freeze when days exceed remaining after partial use', async () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce({
         ...mockSubscription,
-        frozenDaysUsed: 10,
+        frozenDaysUsed: 15,
+        freezeCount: 1,
+        plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
+      } as any);
+
+      await expect(
+        service.freeze('sub-1', 'user-1', 'MEMBER', 10),
+      ).rejects.toThrow('Freeze duration cannot exceed 5 remaining days');
+    });
+
+    it('should reject freeze when freeze count exhausted', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        ...mockSubscription,
+        freezeCount: 1,
       } as any);
 
       await expect(
         service.freeze('sub-1', 'user-1', 'MEMBER', 5),
-      ).rejects.toThrow('Freeze already used this billing cycle');
+      ).rejects.toThrow('Maximum freeze count (1) reached this billing cycle');
+    });
+
+    it('should allow second freeze when plan allows multiple', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        ...mockSubscription,
+        frozenDaysUsed: 5,
+        freezeCount: 1,
+        plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
+      } as any);
+      prisma.memberSubscription.update.mockResolvedValueOnce({
+        ...mockSubscription,
+        status: 'FROZEN',
+      } as any);
+
+      const result = await service.freeze('sub-1', 'user-1', 'MEMBER', 10);
+      expect(result.status).toBe('FROZEN');
     });
 
     it('should reject freeze on non-active subscription', async () => {
@@ -340,9 +375,15 @@ describe('SubscriptionsService', () => {
         endDate: new Date('2026-04-01'),
         nextBillingDate: new Date('2026-04-01'),
         frozenDaysUsed: 0,
+        freezeCount: 0,
         freezeStartDate: freezeStart,
         freezeEndDate: freezeEnd,
-        plan: { id: 'plan-1', name: 'Monthly', maxFreezeDays: 20 },
+        plan: {
+          id: 'plan-1',
+          name: 'Monthly',
+          maxFreezeDays: 20,
+          maxFreezeCount: 1,
+        },
         primaryMember: { firstName: 'John', lastName: 'Doe' },
       };
 
@@ -360,6 +401,14 @@ describe('SubscriptionsService', () => {
       const result = await service.unfreeze('sub-1', 'user-1', 'MEMBER');
       expect(result.status).toBe('ACTIVE');
       expect(result.frozenDaysUsed).toBeGreaterThanOrEqual(5);
+      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            freezeCount: { increment: 1 },
+            frozenDaysUsed: { increment: expect.any(Number) },
+          }),
+        }),
+      );
     });
 
     it('should reject unfreeze on non-frozen subscription', async () => {

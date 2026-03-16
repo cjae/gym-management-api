@@ -515,14 +515,18 @@ export class SubscriptionsService {
       throw new BadRequestException('This plan does not support freezing');
     }
 
-    if (days > subscription.plan.maxFreezeDays) {
+    const remainingFreezeDays =
+      subscription.plan.maxFreezeDays - subscription.frozenDaysUsed;
+    if (days > remainingFreezeDays) {
       throw new BadRequestException(
-        `Freeze duration cannot exceed ${subscription.plan.maxFreezeDays} days`,
+        `Freeze duration cannot exceed ${remainingFreezeDays} remaining days (max ${subscription.plan.maxFreezeDays} per cycle)`,
       );
     }
 
-    if (subscription.frozenDaysUsed > 0) {
-      throw new BadRequestException('Freeze already used this billing cycle');
+    if (subscription.freezeCount >= subscription.plan.maxFreezeCount) {
+      throw new BadRequestException(
+        `Maximum freeze count (${subscription.plan.maxFreezeCount}) reached this billing cycle`,
+      );
     }
 
     const freezeStartDate = new Date();
@@ -626,7 +630,8 @@ export class SubscriptionsService {
         nextBillingDate: newNextBillingDate,
         freezeStartDate: null,
         freezeEndDate: null,
-        frozenDaysUsed: frozenDays,
+        frozenDaysUsed: { increment: frozenDays },
+        freezeCount: { increment: 1 },
       },
       include: { plan: true },
     });

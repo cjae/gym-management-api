@@ -156,6 +156,7 @@ model SubscriptionPlan {
   description     String?
   maxMembers      Int             @default(1)
   maxFreezeDays   Int             @default(0)
+  maxFreezeCount  Int             @default(1)
   isOffPeak       Boolean         @default(false)
   isActive        Boolean         @default(true)
   createdAt       DateTime        @default(now())
@@ -178,6 +179,7 @@ model MemberSubscription {
   freezeStartDate           DateTime?
   freezeEndDate             DateTime?
   frozenDaysUsed            Int                @default(0)
+  freezeCount               Int                @default(0)
   paymentNote               String?
   createdBy                 String?
   createdAt                 DateTime           @default(now())

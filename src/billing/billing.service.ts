@@ -104,7 +104,8 @@ export class BillingService {
           nextBillingDate: newNextBillingDate,
           freezeStartDate: null,
           freezeEndDate: null,
-          frozenDaysUsed: frozenDays,
+          frozenDaysUsed: { increment: frozenDays },
+          freezeCount: { increment: 1 },
         },
       });
 
