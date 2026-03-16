@@ -212,7 +212,11 @@ export class SubscriptionsService {
       );
     }
 
-    let discountResult: any = null;
+    let discountResult: {
+      discountCode: { id: string; discountType: string; discountValue: number; maxUses: number | null };
+      finalPrice: number;
+      originalPrice: number;
+    } | null = null;
     if (dto.discountCode && dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY) {
       discountResult = await this.discountCodesService.validateCode(
         dto.discountCode,
