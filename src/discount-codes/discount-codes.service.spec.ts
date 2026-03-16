@@ -1,10 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient, DiscountType } from '@prisma/client';
 import { DiscountCodesService } from './discount-codes.service';
@@ -156,9 +152,7 @@ describe('DiscountCodesService', () => {
         plans: [],
         _count: { redemptions: 0 },
       };
-      prisma.discountCode.findUnique.mockResolvedValueOnce(
-        expiredCode as any,
-      );
+      prisma.discountCode.findUnique.mockResolvedValueOnce(expiredCode as any);
 
       await expect(
         service.update('dc-1', { description: 'updated' } as any),
@@ -175,9 +169,7 @@ describe('DiscountCodesService', () => {
         plans: [],
         _count: { redemptions: 0 },
       };
-      prisma.discountCode.findUnique.mockResolvedValueOnce(
-        inactiveCode as any,
-      );
+      prisma.discountCode.findUnique.mockResolvedValueOnce(inactiveCode as any);
       prisma.discountCode.update.mockResolvedValueOnce({
         ...inactiveCode,
         description: 'updated',
@@ -217,9 +209,7 @@ describe('DiscountCodesService', () => {
         makeDiscountCode() as any,
       );
       prisma.discountRedemption.count.mockResolvedValueOnce(0);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
-        mockPlan as any,
-      );
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       const result = await service.validateCode('SAVE20', planId, memberId);
 
@@ -236,9 +226,7 @@ describe('DiscountCodesService', () => {
         }) as any,
       );
       prisma.discountRedemption.count.mockResolvedValueOnce(0);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
-        mockPlan as any,
-      );
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       const result = await service.validateCode('SAVE20', planId, memberId);
 
@@ -327,9 +315,7 @@ describe('DiscountCodesService', () => {
         }) as any,
       );
       prisma.discountRedemption.count.mockResolvedValueOnce(0);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
-        mockPlan as any,
-      );
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
@@ -346,9 +332,7 @@ describe('DiscountCodesService', () => {
         }) as any,
       );
       prisma.discountRedemption.count.mockResolvedValueOnce(0);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
-        mockPlan as any,
-      );
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       // 3000 * 0.01 = 30 KES < 50 KES minimum
       await expect(

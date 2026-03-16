@@ -11,7 +11,6 @@ import {
   IsUUID,
   MaxLength,
   Min,
-  Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DiscountType } from '@prisma/client';
