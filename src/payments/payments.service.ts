@@ -340,15 +340,26 @@ export class PaymentsService {
   }
 
   async getPaymentHistory(memberId: string, page = 1, limit = 20) {
-    return this.prisma.payment.findMany({
-      where: {
-        subscription: { primaryMemberId: memberId },
-      },
-      include: { subscription: { include: { plan: true } } },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
+    const where = { subscription: { primaryMemberId: memberId } };
+
+    const [data, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        include: { subscription: { include: { plan: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+
+    const sanitized = data.map((payment) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { paystackAuthorizationCode, ...sub } = payment.subscription;
+      return { ...payment, subscription: sub };
     });
+
+    return { data: sanitized, total, page, limit };
   }
 
   private async processReferralReward(payingUserId: string) {

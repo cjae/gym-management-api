@@ -116,7 +116,9 @@ export class SubscriptionsService {
       },
     });
 
-    return subscription;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = subscription;
+    return safe;
   }
 
   async adminCreate(adminId: string, dto: AdminCreateSubscriptionDto) {
@@ -242,7 +244,9 @@ export class SubscriptionsService {
       },
     });
 
-    return subscription;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = subscription;
+    return safe;
   }
 
   async addDuoMember(
@@ -475,7 +479,9 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = result;
+    return safe;
   }
 
   async freeze(
@@ -569,7 +575,9 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = result;
+    return safe;
   }
 
   async unfreeze(
@@ -662,7 +670,9 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = result;
+    return safe;
   }
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Africa/Nairobi' })
