@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,8 +13,6 @@ const PAYSTACK_MIN_KES = 50;
 
 @Injectable()
 export class DiscountCodesService {
-  private readonly logger = new Logger(DiscountCodesService.name);
-
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateDiscountCodeDto) {
@@ -80,7 +77,7 @@ export class DiscountCodesService {
     let where: Prisma.DiscountCodeWhereInput = {};
 
     if (filter === 'active') {
-      where = { isActive: true, endDate: { gte: now } };
+      where = { isActive: true, startDate: { lte: now }, endDate: { gte: now } };
     } else if (filter === 'expired') {
       where = { endDate: { lt: now } };
     } else if (filter === 'inactive') {
@@ -237,7 +234,10 @@ export class DiscountCodesService {
     const memberUses = await this.prisma.discountRedemption.count({
       where: { discountCodeId: discountCode.id, memberId },
     });
-    if (memberUses >= discountCode.maxUsesPerMember) {
+    if (
+      discountCode.maxUsesPerMember !== null &&
+      memberUses >= discountCode.maxUsesPerMember
+    ) {
       throw new BadRequestException(
         'You have already used this discount code the maximum number of times',
       );
