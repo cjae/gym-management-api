@@ -107,7 +107,8 @@ export class PaymentsService {
       });
     }
 
-    const effectiveAmount = subscription.plan.price - (subscription.discountAmount ?? 0);
+    const basePrice = subscription.originalPlanPrice ?? subscription.plan.price;
+    const effectiveAmount = basePrice - (subscription.discountAmount ?? 0);
 
     const payment = await this.prisma.payment.create({
       data: {
@@ -176,7 +177,12 @@ export class PaymentsService {
             subscription: {
               include: {
                 primaryMember: {
-                  select: { id: true, email: true, firstName: true, lastName: true },
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                  },
                 },
               },
             },
@@ -258,7 +264,12 @@ export class PaymentsService {
             subscription: {
               include: {
                 primaryMember: {
-                  select: { id: true, email: true, firstName: true, lastName: true },
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                  },
                 },
               },
             },
@@ -385,7 +396,13 @@ export class PaymentsService {
       where: { referredId: payingUserId },
       include: {
         referrer: {
-          select: { id: true, status: true, deletedAt: true, email: true, firstName: true },
+          select: {
+            id: true,
+            status: true,
+            deletedAt: true,
+            email: true,
+            firstName: true,
+          },
         },
         referred: {
           select: { id: true, firstName: true, lastName: true, email: true },

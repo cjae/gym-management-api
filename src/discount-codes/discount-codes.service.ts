@@ -27,7 +27,10 @@ export class DiscountCodesService {
     }
 
     // Validate percentage <= 100
-    if (dto.discountType === DiscountType.PERCENTAGE && dto.discountValue > 100) {
+    if (
+      dto.discountType === DiscountType.PERCENTAGE &&
+      dto.discountValue > 100
+    ) {
       throw new BadRequestException('Percentage discount cannot exceed 100');
     }
 
@@ -77,7 +80,11 @@ export class DiscountCodesService {
     let where: Prisma.DiscountCodeWhereInput = {};
 
     if (filter === 'active') {
-      where = { isActive: true, startDate: { lte: now }, endDate: { gte: now } };
+      where = {
+        isActive: true,
+        startDate: { lte: now },
+        endDate: { gte: now },
+      };
     } else if (filter === 'expired') {
       where = { endDate: { lt: now } };
     } else if (filter === 'inactive') {
@@ -219,7 +226,9 @@ export class DiscountCodesService {
     // 3. Check date window
     const now = new Date();
     if (now < discountCode.startDate || now > discountCode.endDate) {
-      throw new BadRequestException('Discount code is not within its valid date range');
+      throw new BadRequestException(
+        'Discount code is not within its valid date range',
+      );
     }
 
     // 4. Check global cap
@@ -227,7 +236,9 @@ export class DiscountCodesService {
       discountCode.maxUses !== null &&
       discountCode.currentUses >= discountCode.maxUses
     ) {
-      throw new BadRequestException('Discount code has reached its maximum uses');
+      throw new BadRequestException(
+        'Discount code has reached its maximum uses',
+      );
     }
 
     // 5. Check per-member cap
@@ -313,7 +324,7 @@ export class DiscountCodesService {
     }
 
     const updated = await tx.discountCode.updateMany({
-      where: whereClause as Prisma.DiscountCodeWhereInput,
+      where: whereClause,
       data: { currentUses: { increment: 1 } },
     });
 
@@ -349,8 +360,9 @@ export class DiscountCodesService {
       where: { id: redemption.id },
     });
 
-    await tx.discountCode.update({
-      where: { id: redemption.discountCodeId },
+    // Race-safe decrement: only if currentUses > 0 to prevent going negative
+    await tx.discountCode.updateMany({
+      where: { id: redemption.discountCodeId, currentUses: { gt: 0 } },
       data: { currentUses: { decrement: 1 } },
     });
   }

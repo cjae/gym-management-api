@@ -192,6 +192,7 @@ model MemberSubscription {
   createdBy                 String?
   discountCodeId            String?
   discountAmount            Float?
+  originalPlanPrice         Float?
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 

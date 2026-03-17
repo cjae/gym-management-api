@@ -54,25 +54,6 @@ export class SubscriptionsService {
       );
     }
 
-    let discountResult: {
-      discountCode: { id: string; discountType: string; discountValue: number; maxUses: number | null };
-      finalPrice: number;
-      originalPrice: number;
-    } | null = null;
-
-    if (dto.discountCode) {
-      discountResult = await this.discountCodesService.validateCode(
-        dto.discountCode,
-        dto.planId,
-        memberId,
-      );
-    }
-
-    const discountCodeId = discountResult?.discountCode.id ?? null;
-    const discountAmount = discountResult
-      ? discountResult.originalPrice - discountResult.finalPrice
-      : null;
-
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
 
@@ -92,6 +73,39 @@ export class SubscriptionsService {
     const include = { plan: true, members: true } as const;
 
     const subscription = await this.prisma.$transaction(async (tx) => {
+      // Reverse any prior discount redemption on existing PENDING subscription
+      if (existingPending) {
+        await this.discountCodesService.reverseRedemption(
+          tx,
+          existingPending.id,
+        );
+      }
+
+      // Validate discount code inside transaction to prevent TOCTOU race
+      let discountResult: {
+        discountCode: {
+          id: string;
+          discountType: string;
+          discountValue: number;
+          maxUses: number | null;
+        };
+        finalPrice: number;
+        originalPrice: number;
+      } | null = null;
+
+      if (dto.discountCode) {
+        discountResult = await this.discountCodesService.validateCode(
+          dto.discountCode,
+          dto.planId,
+          memberId,
+        );
+      }
+
+      const discountCodeId = discountResult?.discountCode.id ?? null;
+      const discountAmount = discountResult
+        ? discountResult.originalPrice - discountResult.finalPrice
+        : null;
+
       const sub = existingPending
         ? await tx.memberSubscription.update({
             where: { id: existingPending.id },
@@ -103,6 +117,7 @@ export class SubscriptionsService {
               nextBillingDate: endDate,
               discountCodeId,
               discountAmount,
+              originalPlanPrice: plan.price,
             },
             include,
           })
@@ -117,6 +132,7 @@ export class SubscriptionsService {
               nextBillingDate: endDate,
               discountCodeId,
               discountAmount,
+              originalPlanPrice: plan.price,
               members: {
                 create: {
                   memberId,
@@ -212,32 +228,8 @@ export class SubscriptionsService {
       );
     }
 
-    let discountResult: {
-      discountCode: { id: string; discountType: string; discountValue: number; maxUses: number | null };
-      finalPrice: number;
-      originalPrice: number;
-    } | null = null;
-    if (dto.discountCode && dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY) {
-      discountResult = await this.discountCodesService.validateCode(
-        dto.discountCode,
-        dto.planId,
-        dto.memberId,
-      );
-    }
-
-    const discountCodeId = discountResult?.discountCode.id ?? null;
-    const discountAmountValue = discountResult
-      ? discountResult.originalPrice - discountResult.finalPrice
-      : null;
-
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
-    const amount =
-      dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY
-        ? 0
-        : discountResult
-          ? discountResult.finalPrice
-          : plan.price;
 
     // Check for existing PENDING subscription — update it instead of creating a new one
     const existingPending = await this.prisma.memberSubscription.findFirst({
@@ -248,21 +240,65 @@ export class SubscriptionsService {
     });
 
     const txInclude = { plan: true, members: true } as const;
-    const txData = {
-      planId: dto.planId,
-      startDate,
-      endDate,
-      status: SubscriptionStatus.ACTIVE,
-      paymentMethod: dto.paymentMethod,
-      nextBillingDate: endDate,
-      autoRenew: false,
-      createdBy: adminId,
-      paymentNote: dto.paymentNote,
-      discountCodeId,
-      discountAmount: discountAmountValue,
-    };
 
     const subscription = await this.prisma.$transaction(async (tx) => {
+      // Reverse any prior discount redemption on existing PENDING subscription
+      if (existingPending) {
+        await this.discountCodesService.reverseRedemption(
+          tx,
+          existingPending.id,
+        );
+      }
+
+      // Validate discount code inside transaction to prevent TOCTOU race
+      let discountResult: {
+        discountCode: {
+          id: string;
+          discountType: string;
+          discountValue: number;
+          maxUses: number | null;
+        };
+        finalPrice: number;
+        originalPrice: number;
+      } | null = null;
+      if (
+        dto.discountCode &&
+        dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY
+      ) {
+        discountResult = await this.discountCodesService.validateCode(
+          dto.discountCode,
+          dto.planId,
+          dto.memberId,
+        );
+      }
+
+      const discountCodeId = discountResult?.discountCode.id ?? null;
+      const discountAmountValue = discountResult
+        ? discountResult.originalPrice - discountResult.finalPrice
+        : null;
+
+      const amount =
+        dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY
+          ? 0
+          : discountResult
+            ? discountResult.finalPrice
+            : plan.price;
+
+      const txData = {
+        planId: dto.planId,
+        startDate,
+        endDate,
+        status: SubscriptionStatus.ACTIVE,
+        paymentMethod: dto.paymentMethod,
+        nextBillingDate: endDate,
+        autoRenew: false,
+        createdBy: adminId,
+        paymentNote: dto.paymentNote,
+        discountCodeId,
+        discountAmount: discountAmountValue,
+        originalPlanPrice: plan.price,
+      };
+
       const sub = existingPending
         ? await tx.memberSubscription.update({
             where: { id: existingPending.id },

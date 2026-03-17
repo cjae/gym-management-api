@@ -94,7 +94,11 @@ export class DiscountCodesController {
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   getRedemptions(@Param('id') id: string, @Query() query: PaginationQueryDto) {
-    return this.discountCodesService.getRedemptions(id, query.page, query.limit);
+    return this.discountCodesService.getRedemptions(
+      id,
+      query.page,
+      query.limit,
+    );
   }
 
   @Post('validate')

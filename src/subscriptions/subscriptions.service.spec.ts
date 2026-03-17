@@ -673,11 +673,18 @@ describe('SubscriptionsService', () => {
 
     it('should create subscription with discount code', async () => {
       const discountResult = {
-        discountCode: { id: 'dc-1', discountType: 'PERCENTAGE', discountValue: 20, maxUses: null },
+        discountCode: {
+          id: 'dc-1',
+          discountType: 'PERCENTAGE',
+          discountValue: 20,
+          maxUses: null,
+        },
         finalPrice: 4000,
         originalPrice: 5000,
       };
-      mockDiscountCodesService.validateCode.mockResolvedValueOnce(discountResult);
+      mockDiscountCodesService.validateCode.mockResolvedValueOnce(
+        discountResult,
+      );
       mockDiscountCodesService.redeemCode.mockResolvedValueOnce({});
 
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
@@ -746,15 +753,24 @@ describe('SubscriptionsService', () => {
 
     it('should create admin subscription with discount code', async () => {
       const discountResult = {
-        discountCode: { id: 'dc-1', discountType: 'PERCENTAGE', discountValue: 20, maxUses: null },
+        discountCode: {
+          id: 'dc-1',
+          discountType: 'PERCENTAGE',
+          discountValue: 20,
+          maxUses: null,
+        },
         finalPrice: 4000,
         originalPrice: 5000,
       };
-      mockDiscountCodesService.validateCode.mockResolvedValueOnce(discountResult);
+      mockDiscountCodesService.validateCode.mockResolvedValueOnce(
+        discountResult,
+      );
       mockDiscountCodesService.redeemCode.mockResolvedValueOnce({});
 
       prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
       prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
       prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
       prisma.memberSubscription.create.mockResolvedValueOnce({
@@ -796,7 +812,9 @@ describe('SubscriptionsService', () => {
 
     it('should skip discount for COMPLIMENTARY admin subscriptions', async () => {
       prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlanActive as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
       prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
       prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
       prisma.memberSubscription.create.mockResolvedValueOnce({

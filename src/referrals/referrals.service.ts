@@ -90,7 +90,10 @@ export class ReferralsService {
           _sum: { rewardDays: true },
         }),
         this.prisma.memberSubscription.findFirst({
-          where: { primaryMemberId: userId, status: { in: ['ACTIVE', 'FROZEN'] } },
+          where: {
+            primaryMemberId: userId,
+            status: { in: ['ACTIVE', 'FROZEN'] },
+          },
           select: {
             nextBillingDate: true,
             startDate: true,
