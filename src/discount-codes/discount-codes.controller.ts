@@ -79,7 +79,10 @@ export class DiscountCodesController {
   @ApiOkResponse({ description: 'Discount code updated' })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDiscountCodeDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateDiscountCodeDto,
+  ) {
     return this.discountCodesService.update(id, dto);
   }
 
@@ -97,7 +100,10 @@ export class DiscountCodesController {
   @ApiOkResponse({ description: 'Paginated list of redemptions' })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  getRedemptions(@Param('id', ParseUUIDPipe) id: string, @Query() query: PaginationQueryDto) {
+  getRedemptions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: PaginationQueryDto,
+  ) {
     return this.discountCodesService.getRedemptions(
       id,
       query.page,

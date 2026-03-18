@@ -63,9 +63,9 @@ describe('FeatureGuard', () => {
 
     await guard.canActivate(context);
 
-    expect(reflector.getAllAndOverride).toHaveBeenCalledWith('requiredFeature', [
-      mockHandler,
-      mockClass,
-    ]);
+    expect(reflector.getAllAndOverride).toHaveBeenCalledWith(
+      'requiredFeature',
+      [mockHandler, mockClass],
+    );
   });
 });
