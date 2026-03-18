@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { DashboardResponseDto } from './dto/dashboard-response.dto';
@@ -43,6 +44,7 @@ export class AnalyticsController {
   }
 
   @Get('expiring-memberships')
+  @RequiresFeature('analytics')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'Get expiring memberships',
@@ -55,6 +57,7 @@ export class AnalyticsController {
   }
 
   @Get('revenue')
+  @RequiresFeature('analytics')
   @Roles('SUPER_ADMIN')
   @ApiOperation({
     summary: 'Get revenue trends',
@@ -71,6 +74,7 @@ export class AnalyticsController {
   }
 
   @Get('attendance')
+  @RequiresFeature('analytics')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'Get attendance trends',
@@ -83,6 +87,7 @@ export class AnalyticsController {
   }
 
   @Get('subscriptions')
+  @RequiresFeature('analytics')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'Get subscription trends',
@@ -95,6 +100,7 @@ export class AnalyticsController {
   }
 
   @Get('members')
+  @RequiresFeature('analytics')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'Get member growth trends',

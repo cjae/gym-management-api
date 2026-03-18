@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { TodayAttendanceQueryDto } from './dto/today-attendance-query.dto';
 import { PaginatedAttendanceResponseDto } from './dto/paginated-attendance-response.dto';
@@ -45,12 +46,14 @@ export class AttendanceController {
   }
 
   @Get('streak')
+  @RequiresFeature('attendance-streaks')
   @ApiOkResponse({ type: StreakResponseDto })
   streak(@CurrentUser('id') memberId: string) {
     return this.attendanceService.getStreak(memberId);
   }
 
   @Get('leaderboard')
+  @RequiresFeature('attendance-streaks')
   @ApiOkResponse({ type: PaginatedLeaderboardResponseDto })
   leaderboard(@Query() query: PaginationQueryDto) {
     return this.attendanceService.getLeaderboard(query.page, query.limit);
