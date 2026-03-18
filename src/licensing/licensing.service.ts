@@ -14,6 +14,10 @@ export class LicensingService implements OnModuleInit {
   private readonly licenseKey: string;
   private readonly licenseServerUrl: string;
 
+  private cachedFeatures: string[] | null = null;
+  private featuresCachedAt: number = 0;
+  private static readonly FEATURES_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -104,6 +108,8 @@ export class LicensingService implements OnModuleInit {
       });
 
       this.logger.log(`License validated: ${data.status}`);
+      this.cachedFeatures = (data.features as string[]) ?? [];
+      this.featuresCachedAt = Date.now();
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const status = error.response.status;
@@ -141,11 +147,20 @@ export class LicensingService implements OnModuleInit {
   }
 
   async getFeatures(): Promise<string[]> {
+    const now = Date.now();
+    if (
+      this.cachedFeatures !== null &&
+      now - this.featuresCachedAt < LicensingService.FEATURES_CACHE_TTL_MS
+    ) {
+      return this.cachedFeatures;
+    }
+
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
     });
-    if (!cache?.features) return [];
-    return cache.features as string[];
+    this.cachedFeatures = cache?.features ? (cache.features as string[]) : [];
+    this.featuresCachedAt = now;
+    return this.cachedFeatures;
   }
 
   async hasFeature(key: string): Promise<boolean> {
