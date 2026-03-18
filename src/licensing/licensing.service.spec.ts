@@ -125,6 +125,7 @@ describe('LicensingService', () => {
           tierName: 'Growth',
           maxMembers: 100,
           expiresAt: '2026-04-10T00:00:00Z',
+          features: ['referrals', 'analytics'],
         },
       });
       prisma.licenseCache.upsert.mockResolvedValue({} as any);
@@ -141,8 +142,14 @@ describe('LicensingService', () => {
       expect(prisma.licenseCache.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'singleton' },
-          update: expect.objectContaining({ status: 'ACTIVE' }),
-          create: expect.objectContaining({ status: 'ACTIVE' }),
+          update: expect.objectContaining({
+            status: 'ACTIVE',
+            features: ['referrals', 'analytics'],
+          }),
+          create: expect.objectContaining({
+            status: 'ACTIVE',
+            features: ['referrals', 'analytics'],
+          }),
         }),
       );
     });
@@ -268,6 +275,75 @@ describe('LicensingService', () => {
       prisma.licenseCache.findUnique.mockResolvedValue(null);
       const result = await service.getMemberLimit();
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getFeatures', () => {
+    it('should return features from cached license', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        features: ['referrals', 'analytics'],
+      } as any);
+      const result = await service.getFeatures();
+      expect(result).toEqual(['referrals', 'analytics']);
+    });
+
+    it('should return empty array when no cache exists', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
+      const result = await service.getFeatures();
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when features is null', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        features: null,
+      } as any);
+      const result = await service.getFeatures();
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('hasFeature', () => {
+    it('should return true when feature is in cached list', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        features: ['referrals', 'analytics'],
+      } as any);
+      const result = await service.hasFeature('referrals');
+      expect(result).toBe(true);
+    });
+
+    it('should return false when feature is not in cached list', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        features: ['referrals'],
+      } as any);
+      const result = await service.hasFeature('salary');
+      expect(result).toBe(false);
+    });
+
+    it('should return true for any feature in dev mode (unconfigured)', async () => {
+      mockConfigService.get.mockReturnValue({
+        licenseKey: '',
+        licenseServerUrl: '',
+      });
+      const devService = new LicensingService(
+        prisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
+      );
+      const result = await devService.hasFeature('anything');
+      expect(result).toBe(true);
+    });
+
+    it('should return false when no cache and license is configured', async () => {
+      mockConfigService.get.mockReturnValue({
+        licenseKey: 'test-license-key',
+        licenseServerUrl: 'https://license.example.com',
+      });
+      const configuredService = new LicensingService(
+        prisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
+      );
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
+      const result = await configuredService.hasFeature('referrals');
+      expect(result).toBe(false);
     });
   });
 });
