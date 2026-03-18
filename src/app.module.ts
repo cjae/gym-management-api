@@ -27,6 +27,7 @@ import { EntrancesModule } from './entrances/entrances.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 import { LicensingModule } from './licensing/licensing.module';
 import { LicenseGuard } from './licensing/licensing.guard';
+import { FeatureGuard } from './licensing/feature.guard';
 import { AuditLogModule } from './audit-logs/audit-logs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BannersModule } from './banners/banners.module';
@@ -85,6 +86,10 @@ import { DiscountCodesModule } from './discount-codes/discount-codes.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: FeatureGuard,
     },
     AppService,
   ],
