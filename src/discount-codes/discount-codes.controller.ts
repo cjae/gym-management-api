@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { DiscountCodesService } from './discount-codes.service';
 import { CreateDiscountCodeDto } from './dto/create-discount-code.dto';
@@ -34,6 +35,7 @@ import { ValidateDiscountCodeDto } from './dto/validate-discount-code.dto';
 @ApiTags('Discount Codes')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@RequiresFeature('discount-codes')
 @Controller('discount-codes')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DiscountCodesController {

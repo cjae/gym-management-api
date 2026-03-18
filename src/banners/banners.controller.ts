@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { MessageResponseDto } from '../common/dto/message-response.dto';
 import { BannersService } from './banners.service';
@@ -38,6 +39,7 @@ import { BannerAnalyticsResponseDto } from './dto/banner-analytics-response.dto'
 @ApiTags('Banners')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@RequiresFeature('banners')
 @Controller('banners')
 @UseGuards(JwtAuthGuard)
 export class BannersController {

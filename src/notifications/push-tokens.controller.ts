@@ -10,11 +10,13 @@ import { NotificationsService } from './notifications.service';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { RemovePushTokenDto } from './dto/remove-push-token.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Push Tokens')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+@RequiresFeature('notifications')
 @Controller('push-tokens')
 @UseGuards(JwtAuthGuard)
 export class PushTokensController {

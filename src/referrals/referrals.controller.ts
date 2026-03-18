@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import {
   ReferralCodeResponseDto,
@@ -23,6 +24,7 @@ import { ReferralStatsResponseDto } from './dto/referral-stats-response.dto';
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @ApiForbiddenResponse({ description: 'Only members can access referrals' })
+@RequiresFeature('referrals')
 @Controller('referrals')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('MEMBER')
