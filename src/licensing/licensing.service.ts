@@ -129,6 +129,8 @@ export class LicensingService implements OnModuleInit {
               lastCheckedAt: now,
             },
           });
+          this.cachedFeatures = null;
+          this.featuresCachedAt = 0;
           return;
         }
       }

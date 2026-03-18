@@ -332,6 +332,59 @@ describe('LicensingService', () => {
       expect(result).toBe(true);
     });
 
+    it('should clear in-memory feature cache after 401/403 rejection', async () => {
+      // Create a fresh service with known config to avoid test ordering issues
+      mockConfigService.get.mockReturnValue({
+        licenseKey: 'test-license-key',
+        licenseServerUrl: 'https://license.example.com',
+      });
+      const svc = new LicensingService(
+        prisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
+      );
+
+      // 1. Pre-populate the in-memory cache via getFeatures()
+      prisma.licenseCache.findUnique.mockResolvedValueOnce({
+        features: ['referrals', 'analytics'],
+      } as any);
+      const features = await svc.getFeatures();
+      expect(features).toEqual(['referrals', 'analytics']);
+
+      // Verify hasFeature uses the in-memory cache (no additional DB call)
+      const hasReferrals = await svc.hasFeature('referrals');
+      expect(hasReferrals).toBe(true);
+      expect(prisma.licenseCache.findUnique).toHaveBeenCalledTimes(1);
+
+      // 2. Trigger a 401 rejection via validateLicense()
+      prisma.user.count.mockResolvedValue(25);
+      const error = {
+        isAxiosError: true,
+        response: { status: 401 },
+      };
+      mockedAxios.post.mockRejectedValue(error);
+      (mockedAxios.isAxiosError as unknown) = jest.fn().mockReturnValue(true);
+      prisma.licenseCache.upsert.mockResolvedValue({} as any);
+
+      await svc.validateLicense();
+
+      // Verify the DB was updated to SUSPENDED
+      expect(prisma.licenseCache.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ status: 'SUSPENDED' }),
+        }),
+      );
+
+      // 3. Verify that subsequent hasFeature() hits the DB again (cache was cleared)
+      prisma.licenseCache.findUnique.mockResolvedValueOnce({
+        features: [],
+      } as any);
+
+      const hasReferralsAfter = await svc.hasFeature('referrals');
+      expect(hasReferralsAfter).toBe(false);
+      // findUnique should have been called again (cache was invalidated)
+      expect(prisma.licenseCache.findUnique).toHaveBeenCalledTimes(2);
+    });
+
     it('should return false when no cache and license is configured', async () => {
       mockConfigService.get.mockReturnValue({
         licenseKey: 'test-license-key',
