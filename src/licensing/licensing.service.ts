@@ -82,6 +82,7 @@ export class LicensingService implements OnModuleInit {
           gymName: data.gymName,
           tierName: data.tierName,
           maxMembers: data.maxMembers,
+          features: data.features ?? [],
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
           lastSuccessAt: now,
@@ -94,6 +95,7 @@ export class LicensingService implements OnModuleInit {
           gymName: data.gymName,
           tierName: data.tierName,
           maxMembers: data.maxMembers,
+          features: data.features ?? [],
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
           lastSuccessAt: now,
@@ -136,6 +138,21 @@ export class LicensingService implements OnModuleInit {
       where: { id: 'singleton' },
     });
     return cache?.maxMembers ?? null;
+  }
+
+  async getFeatures(): Promise<string[]> {
+    const cache = await this.prisma.licenseCache.findUnique({
+      where: { id: 'singleton' },
+    });
+    if (!cache?.features) return [];
+    return cache.features as string[];
+  }
+
+  async hasFeature(key: string): Promise<boolean> {
+    if (!this.isConfigured()) return true;
+
+    const features = await this.getFeatures();
+    return features.includes(key);
   }
 
   async onModuleInit(): Promise<void> {

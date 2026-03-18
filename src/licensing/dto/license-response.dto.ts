@@ -4,4 +4,5 @@ export class LicenseResponseDto {
   tierName?: string;
   maxMembers?: number;
   expiresAt?: string;
+  features?: string[];
 }
