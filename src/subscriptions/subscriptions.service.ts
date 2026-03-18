@@ -88,6 +88,7 @@ export class SubscriptionsService {
           discountType: string;
           discountValue: number;
           maxUses: number | null;
+          maxUsesPerMember: number | null;
         };
         finalPrice: number;
         originalPrice: number;
@@ -151,6 +152,7 @@ export class SubscriptionsService {
           discountResult.originalPrice,
           discountResult.finalPrice,
           discountResult.discountCode.maxUses,
+          discountResult.discountCode.maxUsesPerMember,
         );
       }
 
@@ -257,6 +259,7 @@ export class SubscriptionsService {
           discountType: string;
           discountValue: number;
           maxUses: number | null;
+          maxUsesPerMember: number | null;
         };
         finalPrice: number;
         originalPrice: number;
@@ -338,6 +341,7 @@ export class SubscriptionsService {
           discountResult.originalPrice,
           discountResult.finalPrice,
           discountResult.discountCode.maxUses,
+          discountResult.discountCode.maxUsesPerMember,
         );
       }
 

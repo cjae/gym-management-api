@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient, DiscountType } from '@prisma/client';
 import { DiscountCodesService } from './discount-codes.service';
@@ -159,6 +163,46 @@ describe('DiscountCodesService', () => {
       ).rejects.toThrow('Cannot update an expired discount code');
     });
 
+    it('should reject maxUses below current redemption count', async () => {
+      const activeCode = {
+        id: 'dc-1',
+        code: 'POPULAR',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-12-31'),
+        currentUses: 5,
+        plans: [],
+        _count: { redemptions: 5 },
+      };
+      prisma.discountCode.findUnique.mockResolvedValueOnce(activeCode as any);
+
+      await expect(
+        service.update('dc-1', { maxUses: 3 } as any),
+      ).rejects.toThrow(
+        'maxUses cannot be less than current redemption count (5)',
+      );
+    });
+
+    it('should allow maxUses equal to current redemption count', async () => {
+      const activeCode = {
+        id: 'dc-1',
+        code: 'POPULAR',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-12-31'),
+        currentUses: 5,
+        plans: [],
+        _count: { redemptions: 5 },
+      };
+      prisma.discountCode.findUnique.mockResolvedValueOnce(activeCode as any);
+      prisma.discountCode.update.mockResolvedValueOnce({
+        ...activeCode,
+        maxUses: 5,
+      } as any);
+
+      const result = await service.update('dc-1', { maxUses: 5 } as any);
+
+      expect(result.maxUses).toBe(5);
+    });
+
     it('should allow updates on inactive but non-expired codes', async () => {
       const inactiveCode = {
         id: 'dc-1',
@@ -238,7 +282,7 @@ describe('DiscountCodesService', () => {
 
       await expect(
         service.validateCode('INVALID', planId, memberId),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should reject inactive code', async () => {
@@ -248,7 +292,7 @@ describe('DiscountCodesService', () => {
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
-      ).rejects.toThrow('Discount code is not active');
+      ).rejects.toThrow('Discount code is invalid or unavailable');
     });
 
     it('should reject expired code', async () => {
@@ -258,7 +302,7 @@ describe('DiscountCodesService', () => {
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
-      ).rejects.toThrow('Discount code is not within its valid date range');
+      ).rejects.toThrow('Discount code is invalid or unavailable');
     });
 
     it('should reject code not yet valid', async () => {
@@ -268,7 +312,7 @@ describe('DiscountCodesService', () => {
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
-      ).rejects.toThrow('Discount code is not within its valid date range');
+      ).rejects.toThrow('Discount code is invalid or unavailable');
     });
 
     it('should reject code at global usage limit', async () => {
@@ -278,7 +322,7 @@ describe('DiscountCodesService', () => {
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
-      ).rejects.toThrow('Discount code has reached its maximum uses');
+      ).rejects.toThrow('Discount code is invalid or unavailable');
     });
 
     it('should reject code at per-member limit', async () => {
@@ -338,6 +382,118 @@ describe('DiscountCodesService', () => {
       await expect(
         service.validateCode('SAVE20', planId, memberId),
       ).rejects.toThrow('below the minimum of 50 KES');
+    });
+  });
+
+  describe('redeemCode', () => {
+    const discountCodeId = 'dc-1';
+    const memberId = 'member-1';
+    const subscriptionId = 'sub-1';
+    const originalAmount = 3000;
+    const discountedAmount = 2400;
+
+    it('should redeem code successfully when no per-member cap', async () => {
+      prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.discountRedemption.create.mockResolvedValueOnce({
+        id: 'redemption-1',
+        discountCodeId,
+        memberId,
+        subscriptionId,
+      } as any);
+
+      const result = await service.redeemCode(
+        prisma,
+        discountCodeId,
+        memberId,
+        subscriptionId,
+        originalAmount,
+        discountedAmount,
+        null,
+        null,
+      );
+
+      expect(result.id).toBe('redemption-1');
+      expect(prisma.discountRedemption.count).not.toHaveBeenCalled();
+    });
+
+    it('should redeem code successfully when under per-member cap', async () => {
+      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+      prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.discountRedemption.create.mockResolvedValueOnce({
+        id: 'redemption-1',
+        discountCodeId,
+        memberId,
+        subscriptionId,
+      } as any);
+
+      const result = await service.redeemCode(
+        prisma,
+        discountCodeId,
+        memberId,
+        subscriptionId,
+        originalAmount,
+        discountedAmount,
+        null,
+        2,
+      );
+
+      expect(result.id).toBe('redemption-1');
+      expect(prisma.discountRedemption.count).toHaveBeenCalledWith({
+        where: { discountCodeId, memberId },
+      });
+    });
+
+    it('should reject when per-member cap is reached (race condition guard)', async () => {
+      prisma.discountRedemption.count.mockResolvedValueOnce(1);
+
+      await expect(
+        service.redeemCode(
+          prisma,
+          discountCodeId,
+          memberId,
+          subscriptionId,
+          originalAmount,
+          discountedAmount,
+          null,
+          1,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should throw correct message when per-member cap is reached', async () => {
+      prisma.discountRedemption.count.mockResolvedValueOnce(2);
+
+      await expect(
+        service.redeemCode(
+          prisma,
+          discountCodeId,
+          memberId,
+          subscriptionId,
+          originalAmount,
+          discountedAmount,
+          null,
+          1,
+        ),
+      ).rejects.toThrow(
+        'You have already used this discount code the maximum number of times',
+      );
+    });
+
+    it('should reject when global cap is reached', async () => {
+      prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.redeemCode(
+          prisma,
+          discountCodeId,
+          memberId,
+          subscriptionId,
+          originalAmount,
+          discountedAmount,
+          10,
+          null,
+        ),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

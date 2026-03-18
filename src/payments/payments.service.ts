@@ -221,6 +221,9 @@ export class PaymentsService {
             nextBillingDate,
             frozenDaysUsed: 0,
             freezeCount: 0,
+            // Clear discount fields after first payment so renewals charge full price
+            discountAmount: null,
+            originalPlanPrice: null,
           };
 
           // Save card authorization for future recurring charges

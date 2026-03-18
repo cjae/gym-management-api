@@ -4,11 +4,13 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -66,7 +68,7 @@ export class DiscountCodesController {
   @ApiOkResponse({ description: 'Discount code details' })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.discountCodesService.findOne(id);
   }
 
@@ -75,7 +77,7 @@ export class DiscountCodesController {
   @ApiOkResponse({ description: 'Discount code updated' })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  update(@Param('id') id: string, @Body() dto: UpdateDiscountCodeDto) {
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDiscountCodeDto) {
     return this.discountCodesService.update(id, dto);
   }
 
@@ -84,7 +86,7 @@ export class DiscountCodesController {
   @ApiOkResponse({ description: 'Discount code deactivated' })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
-  deactivate(@Param('id') id: string) {
+  deactivate(@Param('id', ParseUUIDPipe) id: string) {
     return this.discountCodesService.deactivate(id);
   }
 
@@ -93,7 +95,7 @@ export class DiscountCodesController {
   @ApiOkResponse({ description: 'Paginated list of redemptions' })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  getRedemptions(@Param('id') id: string, @Query() query: PaginationQueryDto) {
+  getRedemptions(@Param('id', ParseUUIDPipe) id: string, @Query() query: PaginationQueryDto) {
     return this.discountCodesService.getRedemptions(
       id,
       query.page,
@@ -102,6 +104,7 @@ export class DiscountCodesController {
   }
 
   @Post('validate')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOkResponse({ description: 'Discount code validation result' })
   @ApiNotFoundResponse({ description: 'Discount code or plan not found' })
   validate(

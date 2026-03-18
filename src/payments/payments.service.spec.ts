@@ -165,4 +165,81 @@ describe('PaymentsService', () => {
       expect(prisma.payment.create).toHaveBeenCalled();
     });
   });
+
+  describe('handleWebhook', () => {
+    const paystackSecretKey = 'sk_test_xxx';
+
+    function buildWebhookPayload(body: object) {
+      const raw = Buffer.from(JSON.stringify(body));
+      const crypto = require('crypto');
+      const signature = crypto
+        .createHmac('sha512', paystackSecretKey)
+        .update(raw)
+        .digest('hex');
+      return { raw, signature };
+    }
+
+    it('should clear discountAmount and originalPlanPrice after first successful payment', async () => {
+      const subscriptionId = 'sub-1';
+      const paymentId = 'pay-1';
+      const reference = 'ref_test_123';
+
+      const body = {
+        event: 'charge.success',
+        data: {
+          reference,
+          metadata: { subscriptionId, paymentId },
+          channel: 'card',
+          authorization: { authorization_code: 'AUTH_abc' },
+        },
+      };
+      const { raw, signature } = buildWebhookPayload(body);
+
+      // No duplicate reference
+      prisma.payment.findFirst.mockResolvedValue(null);
+
+      // Payment update
+      prisma.payment.update.mockResolvedValue({
+        id: paymentId,
+        amount: 2000,
+        currency: 'KES',
+        subscription: {
+          primaryMember: {
+            id: 'user-1',
+            email: 'test@test.com',
+            firstName: 'John',
+            lastName: 'Doe',
+          },
+        },
+      } as any);
+
+      // Subscription lookup
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        id: subscriptionId,
+        primaryMemberId: 'user-1',
+        discountAmount: 500,
+        originalPlanPrice: 2500,
+        plan: { price: 2500, billingInterval: 'MONTHLY' },
+      } as any);
+
+      // Subscription update
+      prisma.memberSubscription.update.mockResolvedValue({} as any);
+
+      // Referral lookup (no pending referral)
+      prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.handleWebhook(raw, signature);
+
+      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: subscriptionId },
+          data: expect.objectContaining({
+            status: 'ACTIVE',
+            discountAmount: null,
+            originalPlanPrice: null,
+          }),
+        }),
+      );
+    });
+  });
 });

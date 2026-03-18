@@ -131,6 +131,22 @@ export class DiscountCodesService {
       throw new BadRequestException('Cannot update an expired discount code');
     }
 
+    // discountType and discountValue are intentionally immutable after creation.
+    // The UpdateDiscountCodeDto does not include these fields, and the global
+    // ValidationPipe (whitelist: true) strips unknown properties, so they cannot
+    // be changed via this endpoint.
+
+    // Prevent setting maxUses below current redemption count
+    if (
+      dto.maxUses !== undefined &&
+      dto.maxUses !== null &&
+      existing.currentUses > dto.maxUses
+    ) {
+      throw new BadRequestException(
+        `maxUses cannot be less than current redemption count (${existing.currentUses})`,
+      );
+    }
+
     // Validate date range
     const effectiveStart = dto.startDate
       ? new Date(dto.startDate)
@@ -215,20 +231,18 @@ export class DiscountCodesService {
       include: { plans: true },
     });
     if (!discountCode) {
-      throw new NotFoundException('Discount code not found');
+      throw new BadRequestException('Discount code is invalid or unavailable');
     }
 
     // 2. Check active
     if (!discountCode.isActive) {
-      throw new BadRequestException('Discount code is not active');
+      throw new BadRequestException('Discount code is invalid or unavailable');
     }
 
     // 3. Check date window
     const now = new Date();
     if (now < discountCode.startDate || now > discountCode.endDate) {
-      throw new BadRequestException(
-        'Discount code is not within its valid date range',
-      );
+      throw new BadRequestException('Discount code is invalid or unavailable');
     }
 
     // 4. Check global cap
@@ -236,9 +250,7 @@ export class DiscountCodesService {
       discountCode.maxUses !== null &&
       discountCode.currentUses >= discountCode.maxUses
     ) {
-      throw new BadRequestException(
-        'Discount code has reached its maximum uses',
-      );
+      throw new BadRequestException('Discount code is invalid or unavailable');
     }
 
     // 5. Check per-member cap
@@ -302,6 +314,7 @@ export class DiscountCodesService {
         discountType: discountCode.discountType,
         discountValue: discountCode.discountValue,
         maxUses: discountCode.maxUses,
+        maxUsesPerMember: discountCode.maxUsesPerMember,
       },
       finalPrice,
       originalPrice: plan.price,
@@ -316,7 +329,20 @@ export class DiscountCodesService {
     originalAmount: number,
     discountedAmount: number,
     maxUses: number | null,
+    maxUsesPerMember: number | null,
   ) {
+    // Race-safe per-member cap check (within transaction)
+    if (maxUsesPerMember !== null) {
+      const memberUses = await tx.discountRedemption.count({
+        where: { discountCodeId, memberId },
+      });
+      if (memberUses >= maxUsesPerMember) {
+        throw new ConflictException(
+          'You have already used this discount code the maximum number of times',
+        );
+      }
+    }
+
     // Race-safe conditional increment
     const whereClause: Prisma.DiscountCodeWhereInput = { id: discountCodeId };
     if (maxUses !== null) {
