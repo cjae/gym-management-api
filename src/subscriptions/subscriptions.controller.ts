@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -125,6 +126,7 @@ export class SubscriptionsController {
   }
 
   @Patch(':id/freeze')
+  @RequiresFeature('subscription-freeze')
   @ApiOkResponse({ type: SubscriptionResponseDto })
   @ApiNotFoundResponse({ description: 'Subscription not found' })
   @ApiForbiddenResponse({ description: 'Not subscription owner or admin' })
@@ -144,6 +146,7 @@ export class SubscriptionsController {
   }
 
   @Patch(':id/unfreeze')
+  @RequiresFeature('subscription-freeze')
   @ApiOkResponse({ type: SubscriptionResponseDto })
   @ApiNotFoundResponse({ description: 'Subscription not found' })
   @ApiForbiddenResponse({ description: 'Not subscription owner or admin' })
