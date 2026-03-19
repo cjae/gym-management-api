@@ -3,6 +3,7 @@ export class LicenseResponseDto {
   gymName?: string;
   tierName?: string;
   maxMembers?: number;
+  maxAdmins?: number;
   expiresAt?: string;
   features?: string[];
 }

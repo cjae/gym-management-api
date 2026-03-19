@@ -59,6 +59,24 @@ export class UsersService {
       }
     }
 
+    // License admin limit check
+    if (dto.role === 'ADMIN') {
+      const maxAdmins = await this.licensingService.getAdminLimit();
+      if (maxAdmins !== null) {
+        const currentCount = await this.prisma.user.count({
+          where: {
+            role: { in: ['ADMIN', 'SUPER_ADMIN'] },
+            deletedAt: null,
+          },
+        });
+        if (currentCount >= maxAdmins) {
+          throw new ForbiddenException(
+            'Admin limit reached for your subscription tier.',
+          );
+        }
+      }
+    }
+
     // Generate temp password
     const tempPassword = randomBytes(9).toString('base64url').slice(0, 12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);

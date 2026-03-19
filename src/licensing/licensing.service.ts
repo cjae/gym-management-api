@@ -86,6 +86,7 @@ export class LicensingService implements OnModuleInit {
           gymName: data.gymName,
           tierName: data.tierName,
           maxMembers: data.maxMembers,
+          maxAdmins: data.maxAdmins,
           features: data.features ?? [],
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
@@ -99,6 +100,7 @@ export class LicensingService implements OnModuleInit {
           gymName: data.gymName,
           tierName: data.tierName,
           maxMembers: data.maxMembers,
+          maxAdmins: data.maxAdmins,
           features: data.features ?? [],
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
@@ -146,6 +148,13 @@ export class LicensingService implements OnModuleInit {
       where: { id: 'singleton' },
     });
     return cache?.maxMembers ?? null;
+  }
+
+  async getAdminLimit(): Promise<number | null> {
+    const cache = await this.prisma.licenseCache.findUnique({
+      where: { id: 'singleton' },
+    });
+    return cache?.maxAdmins ?? null;
   }
 
   async getFeatures(): Promise<string[]> {

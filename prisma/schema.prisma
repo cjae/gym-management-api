@@ -405,6 +405,7 @@ model LicenseCache {
   gymName       String?
   tierName      String?
   maxMembers    Int?
+  maxAdmins     Int?
   features      Json?
   expiresAt     DateTime?
   lastCheckedAt DateTime?

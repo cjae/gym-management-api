@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -33,6 +34,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('trainers')
+@RequiresFeature('trainer-management')
 @UseGuards(JwtAuthGuard)
 export class TrainersController {
   constructor(private readonly trainersService: TrainersService) {}
