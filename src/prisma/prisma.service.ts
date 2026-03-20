@@ -15,13 +15,15 @@ export class PrismaService
 {
   constructor(configService: ConfigService) {
     const { url } = configService.get<DatabaseConfig>(getDatabaseConfigName())!;
-    const useSSL = url?.includes('sslmode=')
-      || process.env.NODE_ENV === 'production';
+    const useSSL =
+      url?.includes('sslmode=') || process.env.NODE_ENV === 'production';
     // Strip sslmode from URL — pg treats sslmode=require as verify-full,
     // which rejects self-signed certs. We handle SSL explicitly instead.
-    const cleanUrl = url?.replace(/[?&]sslmode=[^&]*/g, (match) =>
-      match.startsWith('?') ? '?' : '',
-    ).replace(/\?$/, '');
+    const cleanUrl = url
+      ?.replace(/[?&]sslmode=[^&]*/g, (match) =>
+        match.startsWith('?') ? '?' : '',
+      )
+      .replace(/\?$/, '');
     const pool = new pg.Pool({
       connectionString: cleanUrl,
       ...(useSSL && { ssl: { rejectUnauthorized: false } }),
