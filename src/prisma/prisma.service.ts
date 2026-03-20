@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 import {
   DatabaseConfig,
   getDatabaseConfigName,
@@ -14,10 +15,11 @@ export class PrismaService
 {
   constructor(configService: ConfigService) {
     const { url } = configService.get<DatabaseConfig>(getDatabaseConfigName())!;
-    const adapter = new PrismaPg({
+    const pool = new pg.Pool({
       connectionString: url,
       ssl: { rejectUnauthorized: false },
     });
+    const adapter = new PrismaPg(pool);
     super({ adapter });
   }
 
