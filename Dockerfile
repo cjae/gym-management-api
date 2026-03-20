@@ -9,6 +9,7 @@ RUN yarn install --frozen-lockfile
 
 # Generate Prisma client
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN npx prisma generate
 
 # Build application
@@ -24,11 +25,12 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile --production && yarn cache clean
 
-# Copy Prisma schema and generate client for production
+# Copy Prisma schema, config, and generate client for production
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN npx prisma generate
 
-# Copy built application
+# Copy built application (includes compiled prisma.config.js)
 COPY --from=builder /app/dist ./dist
 
 # Copy email templates (Handlebars)
