@@ -1,0 +1,20 @@
+{{> header}}
+
+<h2>Hi {{firstName}},</h2>
+
+<p>The schedule for <strong>{{classTitle}}</strong> has been updated.</p>
+
+<table style="border-collapse: collapse; margin: 16px 0;">
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">Previous</td>
+    <td style="padding: 8px 16px;">{{oldDay}} {{oldTime}}</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">New</td>
+    <td style="padding: 8px 16px;">{{newDay}} {{newTime}}</td>
+  </tr>
+</table>
+
+<p>Please update your schedule accordingly.</p>
+
+{{> footer}}

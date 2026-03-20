@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
@@ -16,6 +17,7 @@ import {
   safeUserSelect,
   safeUserWithSubscriptionSelect,
 } from '../common/constants/safe-user-select';
+import { generateReferralCode } from '../common/utils/referral-code.util';
 
 @Injectable()
 export class UsersService {
@@ -57,43 +59,75 @@ export class UsersService {
       }
     }
 
+    // License admin limit check
+    if (dto.role === 'ADMIN') {
+      const maxAdmins = await this.licensingService.getAdminLimit();
+      if (maxAdmins !== null) {
+        const currentCount = await this.prisma.user.count({
+          where: {
+            role: { in: ['ADMIN', 'SUPER_ADMIN'] },
+            deletedAt: null,
+          },
+        });
+        if (currentCount >= maxAdmins) {
+          throw new ForbiddenException(
+            'Admin limit reached for your subscription tier.',
+          );
+        }
+      }
+    }
+
     // Generate temp password
     const tempPassword = randomBytes(9).toString('base64url').slice(0, 12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    let user: Record<string, unknown>;
-    try {
-      user = await this.prisma.user.create({
-        data: {
-          email: dto.email,
-          password: hashedPassword,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          phone: dto.phone,
-          role: dto.role,
-          gender: dto.gender,
-          birthday: dto.birthday ? new Date(dto.birthday) : undefined,
-          mustChangePassword: true,
-        },
-        select: safeUserSelect,
-      });
-    } catch (error: unknown) {
-      if (
-        error instanceof Object &&
-        'code' in error &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Email already registered');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const user = await this.prisma.user.create({
+          data: {
+            email: dto.email,
+            password: hashedPassword,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            role: dto.role,
+            gender: dto.gender,
+            birthday: dto.birthday ? new Date(dto.birthday) : undefined,
+            mustChangePassword: true,
+            referralCode: generateReferralCode(),
+          },
+          select: safeUserSelect,
+        });
+
+        // Send welcome email (fire-and-forget)
+        this.emailService
+          .sendWelcomeEmail(dto.email, dto.firstName, tempPassword)
+          .catch(() => {});
+
+        return user;
+      } catch (error: unknown) {
+        if (
+          error instanceof Object &&
+          'code' in error &&
+          error.code === 'P2002'
+        ) {
+          if (
+            'meta' in error &&
+            error.meta instanceof Object &&
+            'target' in error.meta &&
+            Array.isArray(error.meta.target) &&
+            error.meta.target.includes('referralCode')
+          ) {
+            if (attempt === 2) throw error;
+            continue;
+          }
+          throw new ConflictException('Email already registered');
+        }
+        throw error;
       }
-      throw error;
     }
 
-    // Send welcome email (fire-and-forget)
-    this.emailService
-      .sendWelcomeEmail(dto.email, dto.firstName, tempPassword)
-      .catch(() => {});
-
-    return user;
+    throw new InternalServerErrorException('Failed to create user');
   }
 
   async findAll(

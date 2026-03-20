@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { AdminPaymentMethod } from './dto/admin-create-subscription.dto';
 import { MemberPaymentMethod } from './dto/create-subscription.dto';
 
@@ -19,6 +20,12 @@ describe('SubscriptionsService', () => {
     create: jest.fn().mockResolvedValue({}),
   };
 
+  const mockDiscountCodesService = {
+    validateCode: jest.fn(),
+    redeemCode: jest.fn(),
+    reverseRedemption: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -26,6 +33,7 @@ describe('SubscriptionsService', () => {
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: DiscountCodesService, useValue: mockDiscountCodesService },
       ],
     }).compile();
 
@@ -216,7 +224,8 @@ describe('SubscriptionsService', () => {
 
       await service.findAll(1, 20);
 
-      const findManyCall = prisma.memberSubscription.findMany.mock.calls[0]?.[0];
+      const findManyCall =
+        prisma.memberSubscription.findMany.mock.calls[0]?.[0];
       expect(findManyCall?.where).toEqual(
         expect.objectContaining({ status: { not: 'PENDING' } }),
       );
@@ -231,9 +240,15 @@ describe('SubscriptionsService', () => {
       endDate: new Date('2026-04-01'),
       nextBillingDate: new Date('2026-04-01'),
       frozenDaysUsed: 0,
+      freezeCount: 0,
       freezeStartDate: null,
       freezeEndDate: null,
-      plan: { id: 'plan-1', name: 'Monthly', maxFreezeDays: 20 },
+      plan: {
+        id: 'plan-1',
+        name: 'Monthly',
+        maxFreezeDays: 20,
+        maxFreezeCount: 1,
+      },
       primaryMember: { firstName: 'John', lastName: 'Doe' },
     };
 
@@ -265,25 +280,54 @@ describe('SubscriptionsService', () => {
       ).rejects.toThrow('This plan does not support freezing');
     });
 
-    it('should reject freeze when days exceed plan max', async () => {
+    it('should reject freeze when days exceed remaining freeze days', async () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         mockSubscription as any,
       );
 
       await expect(
         service.freeze('sub-1', 'user-1', 'MEMBER', 25),
-      ).rejects.toThrow('Freeze duration cannot exceed 20 days');
+      ).rejects.toThrow('Freeze duration cannot exceed 20 remaining days');
     });
 
-    it('should reject freeze when already used this cycle', async () => {
+    it('should reject freeze when days exceed remaining after partial use', async () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce({
         ...mockSubscription,
-        frozenDaysUsed: 10,
+        frozenDaysUsed: 15,
+        freezeCount: 1,
+        plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
+      } as any);
+
+      await expect(
+        service.freeze('sub-1', 'user-1', 'MEMBER', 10),
+      ).rejects.toThrow('Freeze duration cannot exceed 5 remaining days');
+    });
+
+    it('should reject freeze when freeze count exhausted', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        ...mockSubscription,
+        freezeCount: 1,
       } as any);
 
       await expect(
         service.freeze('sub-1', 'user-1', 'MEMBER', 5),
-      ).rejects.toThrow('Freeze already used this billing cycle');
+      ).rejects.toThrow('Maximum freeze count (1) reached this billing cycle');
+    });
+
+    it('should allow second freeze when plan allows multiple', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        ...mockSubscription,
+        frozenDaysUsed: 5,
+        freezeCount: 1,
+        plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
+      } as any);
+      prisma.memberSubscription.update.mockResolvedValueOnce({
+        ...mockSubscription,
+        status: 'FROZEN',
+      } as any);
+
+      const result = await service.freeze('sub-1', 'user-1', 'MEMBER', 10);
+      expect(result.status).toBe('FROZEN');
     });
 
     it('should reject freeze on non-active subscription', async () => {
@@ -339,9 +383,15 @@ describe('SubscriptionsService', () => {
         endDate: new Date('2026-04-01'),
         nextBillingDate: new Date('2026-04-01'),
         frozenDaysUsed: 0,
+        freezeCount: 0,
         freezeStartDate: freezeStart,
         freezeEndDate: freezeEnd,
-        plan: { id: 'plan-1', name: 'Monthly', maxFreezeDays: 20 },
+        plan: {
+          id: 'plan-1',
+          name: 'Monthly',
+          maxFreezeDays: 20,
+          maxFreezeCount: 1,
+        },
         primaryMember: { firstName: 'John', lastName: 'Doe' },
       };
 
@@ -359,6 +409,14 @@ describe('SubscriptionsService', () => {
       const result = await service.unfreeze('sub-1', 'user-1', 'MEMBER');
       expect(result.status).toBe('ACTIVE');
       expect(result.frozenDaysUsed).toBeGreaterThanOrEqual(5);
+      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            freezeCount: { increment: 1 },
+            frozenDaysUsed: { increment: expect.any(Number) },
+          }),
+        }),
+      );
     });
 
     it('should reject unfreeze on non-frozen subscription', async () => {
@@ -588,6 +646,196 @@ describe('SubscriptionsService', () => {
         paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
       });
 
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 0,
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('create with discount code', () => {
+    const mockPlan = {
+      id: 'plan-1',
+      name: 'Monthly',
+      billingInterval: 'MONTHLY',
+      price: 5000,
+      maxMembers: 1,
+      maxFreezeDays: 0,
+      isActive: true,
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should create subscription with discount code', async () => {
+      const discountResult = {
+        discountCode: {
+          id: 'dc-1',
+          discountType: 'PERCENTAGE',
+          discountValue: 20,
+          maxUses: null,
+        },
+        finalPrice: 4000,
+        originalPrice: 5000,
+      };
+      mockDiscountCodesService.validateCode.mockResolvedValueOnce(
+        discountResult,
+      );
+      mockDiscountCodesService.redeemCode.mockResolvedValueOnce({});
+
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
+      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValueOnce({
+        firstName: 'Jane',
+        lastName: 'Doe',
+      } as any);
+      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.create.mockResolvedValueOnce({
+        id: 'sub-1',
+        primaryMemberId: 'user-1',
+        planId: 'plan-1',
+        status: 'PENDING',
+        discountCodeId: 'dc-1',
+        discountAmount: 1000,
+      } as any);
+
+      const result = await service.create('user-1', {
+        planId: 'plan-1',
+        paymentMethod: MemberPaymentMethod.MPESA,
+        discountCode: 'SAVE20',
+      });
+
+      expect(mockDiscountCodesService.validateCode).toHaveBeenCalledWith(
+        'SAVE20',
+        'plan-1',
+        'user-1',
+      );
+      expect(result.discountCodeId).toBe('dc-1');
+      expect(result.discountAmount).toBe(1000);
+      expect(prisma.memberSubscription.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            discountCodeId: 'dc-1',
+            discountAmount: 1000,
+          }),
+        }),
+      );
+      expect(mockDiscountCodesService.redeemCode).toHaveBeenCalled();
+    });
+  });
+
+  describe('adminCreate with discount code', () => {
+    const adminId = 'admin-1';
+    const mockMember = {
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'MEMBER',
+      status: 'ACTIVE',
+    };
+    const mockPlanActive = {
+      id: 'plan-1',
+      name: 'Monthly',
+      billingInterval: 'MONTHLY',
+      price: 5000,
+      maxMembers: 1,
+      maxFreezeDays: 0,
+      isActive: true,
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should create admin subscription with discount code', async () => {
+      const discountResult = {
+        discountCode: {
+          id: 'dc-1',
+          discountType: 'PERCENTAGE',
+          discountValue: 20,
+          maxUses: null,
+        },
+        finalPrice: 4000,
+        originalPrice: 5000,
+      };
+      mockDiscountCodesService.validateCode.mockResolvedValueOnce(
+        discountResult,
+      );
+      mockDiscountCodesService.redeemCode.mockResolvedValueOnce({});
+
+      prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
+      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.create.mockResolvedValueOnce({
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'MPESA_OFFLINE',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+        discountCodeId: 'dc-1',
+        discountAmount: 1000,
+      } as any);
+      prisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' } as any);
+
+      const result = await service.adminCreate(adminId, {
+        memberId: 'member-1',
+        planId: 'plan-1',
+        paymentMethod: AdminPaymentMethod.MPESA_OFFLINE,
+        paymentReference: 'REF-123',
+        discountCode: 'SAVE20',
+      });
+
+      expect(mockDiscountCodesService.validateCode).toHaveBeenCalledWith(
+        'SAVE20',
+        'plan-1',
+        'member-1',
+      );
+      expect(result.discountCodeId).toBe('dc-1');
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 4000, // discounted price
+          }),
+        }),
+      );
+      expect(mockDiscountCodesService.redeemCode).toHaveBeenCalled();
+    });
+
+    it('should skip discount for COMPLIMENTARY admin subscriptions', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
+      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.create.mockResolvedValueOnce({
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'COMPLIMENTARY',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+      } as any);
+      prisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' } as any);
+
+      await service.adminCreate(adminId, {
+        memberId: 'member-1',
+        planId: 'plan-1',
+        paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
+        discountCode: 'SAVE20',
+      });
+
+      expect(mockDiscountCodesService.validateCode).not.toHaveBeenCalled();
       expect(prisma.payment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

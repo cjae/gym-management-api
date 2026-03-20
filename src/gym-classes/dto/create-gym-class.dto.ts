@@ -4,31 +4,25 @@ import {
   Min,
   Max,
   IsOptional,
+  IsUUID,
+  MaxLength,
   Matches,
-  ValidatorConstraint,
-  ValidatorConstraintInterface,
-  ValidationArguments,
   Validate,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEndTimeAfterStartTime } from './validators/end-time-after-start-time.validator';
 
-@ValidatorConstraint({ name: 'isEndTimeAfterStartTime', async: false })
-export class IsEndTimeAfterStartTime implements ValidatorConstraintInterface {
-  validate(_value: string, args: ValidationArguments) {
-    const obj = args.object as { startTime?: string; endTime?: string };
-    if (!obj.startTime || !obj.endTime) return true;
-    return obj.startTime < obj.endTime;
-  }
-
-  defaultMessage() {
-    return 'endTime must be after startTime';
-  }
-}
-
-export class CreateScheduleDto {
+export class CreateGymClassDto {
   @ApiProperty({ example: 'Morning HIIT' })
   @IsString()
+  @MaxLength(255)
   title: string;
+
+  @ApiPropertyOptional({ example: 'High-intensity interval training session' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
 
   @ApiProperty({
     example: 1,
@@ -54,9 +48,17 @@ export class CreateScheduleDto {
   @Validate(IsEndTimeAfterStartTime)
   endTime: string;
 
-  @ApiPropertyOptional({ example: 15 })
+  @ApiPropertyOptional({ example: 20 })
   @IsOptional()
   @IsInt()
   @Min(1)
   maxCapacity?: number;
+
+  @ApiPropertyOptional({
+    example: 'trainer-profile-uuid',
+    description: 'Trainer profile ID to assign',
+  })
+  @IsOptional()
+  @IsUUID()
+  trainerId?: string;
 }

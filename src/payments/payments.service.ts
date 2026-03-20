@@ -8,13 +8,19 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
 import {
   PaymentConfig,
   getPaymentConfigName,
 } from '../common/config/payment.config';
-import { getNextBillingDate } from '../common/utils/billing.util';
+import {
+  getNextBillingDate,
+  getCycleStartDate,
+} from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
-import { Payment, Prisma } from '@prisma/client';
+import { NotificationType, Payment, Prisma } from '@prisma/client';
 import axios from 'axios';
 import * as crypto from 'crypto';
 
@@ -59,6 +65,9 @@ export class PaymentsService {
     private prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly gymSettingsService: GymSettingsService,
+    private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
   ) {
     const paymentConfig = this.configService.get<PaymentConfig>(
       getPaymentConfigName(),
@@ -98,10 +107,13 @@ export class PaymentsService {
       });
     }
 
+    const basePrice = subscription.originalPlanPrice ?? subscription.plan.price;
+    const effectiveAmount = basePrice - (subscription.discountAmount ?? 0);
+
     const payment = await this.prisma.payment.create({
       data: {
         subscriptionId,
-        amount: subscription.plan.price,
+        amount: effectiveAmount,
         paymentMethod: subscription.paymentMethod,
       },
     });
@@ -110,7 +122,7 @@ export class PaymentsService {
       `${this.paystackBaseUrl}/transaction/initialize`,
       {
         email,
-        amount: subscription.plan.price * 100,
+        amount: effectiveAmount * 100,
         currency: 'KES',
         reference: `gym_${payment.id}_${Date.now()}`,
         metadata: { subscriptionId, paymentId: payment.id },
@@ -163,7 +175,16 @@ export class PaymentsService {
           },
           include: {
             subscription: {
-              include: { primaryMember: true },
+              include: {
+                primaryMember: {
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                  },
+                },
+              },
             },
           },
         });
@@ -199,6 +220,10 @@ export class PaymentsService {
             endDate: nextBillingDate,
             nextBillingDate,
             frozenDaysUsed: 0,
+            freezeCount: 0,
+            // Clear discount fields after first payment so renewals charge full price
+            discountAmount: null,
+            originalPlanPrice: null,
           };
 
           // Save card authorization for future recurring charges
@@ -213,6 +238,12 @@ export class PaymentsService {
             where: { id: subscriptionId },
             data: updateData,
           });
+
+          // Process referral reward if applicable
+          this.processReferralReward(subscription.primaryMemberId).catch(
+            (err) =>
+              this.logger.error(`Failed to process referral reward: ${err}`),
+          );
         }
       }
 
@@ -234,7 +265,16 @@ export class PaymentsService {
           },
           include: {
             subscription: {
-              include: { primaryMember: true },
+              include: {
+                primaryMember: {
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                  },
+                },
+              },
             },
           },
         });
@@ -324,14 +364,155 @@ export class PaymentsService {
   }
 
   async getPaymentHistory(memberId: string, page = 1, limit = 20) {
-    return this.prisma.payment.findMany({
-      where: {
-        subscription: { primaryMemberId: memberId },
-      },
-      include: { subscription: { include: { plan: true } } },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
+    const where = { subscription: { primaryMemberId: memberId } };
+
+    const [data, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        include: { subscription: { include: { plan: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+
+    const sanitized = data.map((payment) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { paystackAuthorizationCode, ...sub } = payment.subscription;
+      return { ...payment, subscription: sub };
     });
+
+    return { data: sanitized, total, page, limit };
+  }
+
+  private async processReferralReward(payingUserId: string) {
+    // Atomically claim the referral to prevent double-rewarding on duplicate webhooks
+    const claimed = await this.prisma.referral.updateMany({
+      where: { referredId: payingUserId, status: 'PENDING' },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+
+    if (claimed.count === 0) return;
+
+    const referral = await this.prisma.referral.findUnique({
+      where: { referredId: payingUserId },
+      include: {
+        referrer: {
+          select: {
+            id: true,
+            status: true,
+            deletedAt: true,
+            email: true,
+            firstName: true,
+          },
+        },
+        referred: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+
+    if (!referral) return;
+
+    // Skip reward if referrer is inactive or deleted
+    if (
+      referral.referrer.status !== 'ACTIVE' ||
+      referral.referrer.deletedAt !== null
+    ) {
+      return;
+    }
+
+    const referrerSubscription = await this.prisma.memberSubscription.findFirst(
+      {
+        where: {
+          primaryMemberId: referral.referrerId,
+          status: { in: ['ACTIVE', 'FROZEN'] },
+        },
+        include: { plan: true },
+      },
+    );
+
+    const settings = await this.gymSettingsService.getCachedSettings();
+    const rewardDays = settings?.referralRewardDays ?? 7;
+    const maxPerCycle = settings?.maxReferralsPerCycle ?? 3;
+
+    let earnedDays = 0;
+    if (referrerSubscription) {
+      // Derive current billing cycle start from nextBillingDate - interval
+      const cycleStart = getCycleStartDate(
+        referrerSubscription.nextBillingDate,
+        referrerSubscription.startDate,
+        referrerSubscription.plan.billingInterval,
+      );
+
+      const completedInCycle = await this.prisma.referral.count({
+        where: {
+          referrerId: referral.referrerId,
+          status: 'COMPLETED',
+          rewardDays: { gt: 0 },
+          completedAt: { gte: cycleStart },
+          id: { not: referral.id },
+        },
+      });
+
+      if (completedInCycle < maxPerCycle) {
+        earnedDays = rewardDays;
+
+        const newEndDate = new Date(referrerSubscription.endDate);
+        newEndDate.setDate(newEndDate.getDate() + rewardDays);
+        const newBillingDate = referrerSubscription.nextBillingDate
+          ? new Date(referrerSubscription.nextBillingDate)
+          : null;
+        if (newBillingDate) {
+          newBillingDate.setDate(newBillingDate.getDate() + rewardDays);
+        }
+
+        await this.prisma.memberSubscription.update({
+          where: { id: referrerSubscription.id },
+          data: {
+            endDate: newEndDate,
+            ...(newBillingDate && { nextBillingDate: newBillingDate }),
+          },
+        });
+      }
+    }
+
+    // Update reward days on the already-claimed referral
+    await this.prisma.referral.update({
+      where: { id: referral.id },
+      data: { rewardDays: earnedDays },
+    });
+
+    if (earnedDays > 0) {
+      const referredName = `${referral.referred.firstName} ${referral.referred.lastName}`;
+
+      this.notificationsService
+        .create({
+          userId: referral.referrerId,
+          title: 'Referral reward earned!',
+          body: `${referredName} joined — you earned ${earnedDays} free days!`,
+          type: NotificationType.REFERRAL_REWARD,
+          metadata: {
+            referredId: referral.referredId,
+            referredName,
+            rewardDays: earnedDays,
+          },
+        })
+        .catch((err) =>
+          this.logger.error(`Failed to send referral notification: ${err}`),
+        );
+
+      this.emailService
+        .sendReferralRewardEmail(
+          referral.referrer.email,
+          referral.referrer.firstName,
+          referredName,
+          earnedDays,
+        )
+        .catch((err) =>
+          this.logger.error(`Failed to send referral email: ${err}`),
+        );
+    }
   }
 }

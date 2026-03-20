@@ -9,37 +9,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppConfig, getAppConfigName } from './common/config/app.config';
 
-async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    rawBody: true,
-    bodyParser: false,
-  });
-  const configService = app.get(ConfigService);
-  const appConfig = configService.get<AppConfig>(getAppConfigName())!;
-
-  app.set('query parser', 'extended');
-  app.useBodyParser('json', { limit: '1mb' });
-  app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
-
-  app.use(helmet());
-  app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-  app.setGlobalPrefix('api');
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
-  });
-
-  const config = new DocumentBuilder()
-    .setTitle('Gym Management API')
-    .setDescription(
-      `API for gym management platform — subscriptions, attendance, payments, trainers, and more.
+const SWAGGER_DESCRIPTION = `API for gym management platform — subscriptions, attendance, payments, trainers, and more.
 
 ## WebSocket: Activity Feed
 
@@ -91,8 +61,38 @@ Emitted when the gym entrance QR code is rotated. Clients displaying the QR shou
 | Field | Type | Description |
 |-------|------|-------------|
 | type | \`"qr_rotated"\` | Always \`"qr_rotated"\` |
-| timestamp | string (ISO 8601) | When the rotation occurred |`,
-    )
+| timestamp | string (ISO 8601) | When the rotation occurred |`;
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+    bodyParser: false,
+  });
+  const configService = app.get(ConfigService);
+  const appConfig = configService.get<AppConfig>(getAppConfigName())!;
+
+  app.set('query parser', 'extended');
+  app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
+
+  app.use(helmet());
+  app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+  app.setGlobalPrefix('api');
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+
+  const config = new DocumentBuilder()
+    .setTitle('Gym Management API')
+    .setDescription(SWAGGER_DESCRIPTION)
     .setVersion('0.0.1')
     .addBearerAuth()
     .addBasicAuth()

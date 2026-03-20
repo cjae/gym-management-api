@@ -3,8 +3,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { UpdateTrainerProfileDto } from './dto/update-trainer-profile.dto';
-import { CreateScheduleDto } from './dto/create-schedule.dto';
-import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 
 const safeUserSelect = {
@@ -36,7 +34,10 @@ export class TrainersService {
   async findAll(page: number = 1, limit: number = 20) {
     const [data, total] = await Promise.all([
       this.prisma.trainerProfile.findMany({
-        include: { user: { select: safeUserSelect }, schedules: true },
+        include: {
+          user: { select: safeUserSelect },
+          classes: { where: { isActive: true } },
+        },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -62,7 +63,7 @@ export class TrainersService {
       where: { id },
       include: {
         user: { select: safeUserSelect },
-        schedules: true,
+        classes: { where: { isActive: true } },
         assignments: {
           include: {
             member: {
@@ -79,7 +80,7 @@ export class TrainersService {
       where: { userId },
       include: {
         user: { select: safeUserSelect },
-        schedules: true,
+        classes: { where: { isActive: true } },
         assignments: {
           include: {
             member: {
@@ -88,60 +89,6 @@ export class TrainersService {
           },
         },
       },
-    });
-  }
-
-  async addSchedule(trainerId: string, dto: CreateScheduleDto) {
-    return this.prisma.trainerSchedule.create({
-      data: {
-        trainerId,
-        title: dto.title,
-        dayOfWeek: dto.dayOfWeek,
-        startTime: dto.startTime,
-        endTime: dto.endTime,
-        maxCapacity: dto.maxCapacity ?? 10,
-      },
-    });
-  }
-
-  async getAllSchedules() {
-    return this.prisma.trainerSchedule.findMany({
-      include: {
-        trainer: {
-          include: { user: { select: safeUserSelect } },
-        },
-      },
-      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
-    });
-  }
-
-  async updateSchedule(
-    trainerId: string,
-    scheduleId: string,
-    dto: UpdateScheduleDto,
-  ) {
-    return this.prisma.trainerSchedule.update({
-      where: { id: scheduleId, trainerId },
-      data: {
-        title: dto.title,
-        dayOfWeek: dto.dayOfWeek,
-        startTime: dto.startTime,
-        endTime: dto.endTime,
-        maxCapacity: dto.maxCapacity,
-      },
-    });
-  }
-
-  async deleteSchedule(trainerId: string, scheduleId: string) {
-    return this.prisma.trainerSchedule.delete({
-      where: { id: scheduleId, trainerId },
-    });
-  }
-
-  async getSchedules(trainerId: string) {
-    return this.prisma.trainerSchedule.findMany({
-      where: { trainerId },
-      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
   }
 
@@ -162,7 +109,10 @@ export class TrainersService {
       where: { memberId, endDate: null },
       include: {
         trainer: {
-          include: { user: { select: safeUserSelect }, schedules: true },
+          include: {
+            user: { select: safeUserSelect },
+            classes: { where: { isActive: true } },
+          },
         },
       },
     });

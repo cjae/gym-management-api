@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
+import { GymClassResponseDto } from '../../gym-classes/dto/gym-class-response.dto';
+import { TrainerAssignmentResponseDto } from './trainer-assignment-response.dto';
 
 export class TrainerProfileResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -21,4 +23,16 @@ export class TrainerProfileResponseDto {
 
   @ApiPropertyOptional({ type: UserResponseDto })
   user?: UserResponseDto;
+
+  @ApiPropertyOptional({
+    type: [GymClassResponseDto],
+    description: 'Active classes assigned to this trainer',
+  })
+  classes?: GymClassResponseDto[];
+
+  @ApiPropertyOptional({
+    type: () => [TrainerAssignmentResponseDto],
+    description: 'Member assignments for this trainer',
+  })
+  assignments?: TrainerAssignmentResponseDto[];
 }

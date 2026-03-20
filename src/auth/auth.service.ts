@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -21,6 +22,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { safeUserSelect } from '../common/constants/safe-user-select';
+import { generateReferralCode } from '../common/utils/referral-code.util';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 
@@ -57,26 +59,79 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const now = new Date();
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        phone: dto.phone,
-        tosAcceptedAt: now,
-        waiverAcceptedAt: now,
-      },
-    });
 
-    this.eventEmitter.emit('activity.registration', {
-      type: 'registration',
-      description: `${user.firstName} ${user.lastName} registered as a new member`,
-      timestamp: new Date().toISOString(),
-      metadata: { memberId: user.id },
-    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const user = await this.prisma.user.create({
+          data: {
+            email: dto.email,
+            password: hashedPassword,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            tosAcceptedAt: now,
+            waiverAcceptedAt: now,
+            referralCode: generateReferralCode(),
+          },
+        });
 
-    return this.generateTokens(user.id, user.email, user.role, false);
+        // Handle referral (soft fail — invalid codes don't block registration)
+        if (dto.referralCode) {
+          try {
+            const referrer = await this.prisma.user.findUnique({
+              where: { referralCode: dto.referralCode },
+            });
+            if (
+              referrer &&
+              referrer.status === 'ACTIVE' &&
+              !referrer.deletedAt &&
+              referrer.id !== user.id
+            ) {
+              await this.prisma.$transaction([
+                this.prisma.user.update({
+                  where: { id: user.id },
+                  data: { referredById: referrer.id },
+                }),
+                this.prisma.referral.create({
+                  data: {
+                    referrerId: referrer.id,
+                    referredId: user.id,
+                  },
+                }),
+              ]);
+            }
+          } catch {
+            // Soft fail — don't block registration for referral issues
+          }
+        }
+
+        this.eventEmitter.emit('activity.registration', {
+          type: 'registration',
+          description: `${user.firstName} ${user.lastName} registered as a new member`,
+          timestamp: new Date().toISOString(),
+          metadata: { memberId: user.id },
+        });
+
+        return this.generateTokens(user.id, user.email, user.role, false);
+      } catch (error: unknown) {
+        if (
+          error instanceof Object &&
+          'code' in error &&
+          error.code === 'P2002' &&
+          'meta' in error &&
+          error.meta instanceof Object &&
+          'target' in error.meta &&
+          Array.isArray(error.meta.target) &&
+          error.meta.target.includes('referralCode')
+        ) {
+          if (attempt === 2) throw error;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new InternalServerErrorException('Failed to create user');
   }
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {

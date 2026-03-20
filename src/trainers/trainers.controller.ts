@@ -3,12 +3,12 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
   Param,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -20,11 +20,8 @@ import {
 import { TrainersService } from './trainers.service';
 import { CreateTrainerProfileDto } from './dto/create-trainer-profile.dto';
 import { UpdateTrainerProfileDto } from './dto/update-trainer-profile.dto';
-import { CreateScheduleDto } from './dto/create-schedule.dto';
-import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
 import { TrainerProfileResponseDto } from './dto/trainer-profile-response.dto';
-import { TrainerScheduleResponseDto } from './dto/trainer-schedule-response.dto';
 import { TrainerAssignmentResponseDto } from './dto/trainer-assignment-response.dto';
 import { PaginatedTrainersResponseDto } from './dto/paginated-trainers-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -37,6 +34,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @Controller('trainers')
+@RequiresFeature('trainer-management')
 @UseGuards(JwtAuthGuard)
 export class TrainersController {
   constructor(private readonly trainersService: TrainersService) {}
@@ -59,12 +57,6 @@ export class TrainersController {
   @ApiOkResponse({ type: TrainerAssignmentResponseDto })
   getMyTrainer(@CurrentUser('id') memberId: string) {
     return this.trainersService.getMemberTrainer(memberId);
-  }
-
-  @Get('schedules')
-  @ApiOkResponse({ type: [TrainerScheduleResponseDto] })
-  getAllSchedules() {
-    return this.trainersService.getAllSchedules();
   }
 
   @Get('user/:userId')
@@ -90,45 +82,6 @@ export class TrainersController {
   @ApiNotFoundResponse({ description: 'Trainer not found' })
   updateProfile(@Param('id') id: string, @Body() dto: UpdateTrainerProfileDto) {
     return this.trainersService.updateProfile(id, dto);
-  }
-
-  @Post(':id/schedules')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiCreatedResponse({ type: TrainerScheduleResponseDto })
-  addSchedule(@Param('id') trainerId: string, @Body() dto: CreateScheduleDto) {
-    return this.trainersService.addSchedule(trainerId, dto);
-  }
-
-  @Get(':id/schedules')
-  @ApiOkResponse({ type: [TrainerScheduleResponseDto] })
-  getSchedules(@Param('id') trainerId: string) {
-    return this.trainersService.getSchedules(trainerId);
-  }
-
-  @Patch(':id/schedules/:scheduleId')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ type: TrainerScheduleResponseDto })
-  @ApiNotFoundResponse({ description: 'Schedule not found' })
-  updateSchedule(
-    @Param('id') trainerId: string,
-    @Param('scheduleId') scheduleId: string,
-    @Body() dto: UpdateScheduleDto,
-  ) {
-    return this.trainersService.updateSchedule(trainerId, scheduleId, dto);
-  }
-
-  @Delete(':id/schedules/:scheduleId')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ type: TrainerScheduleResponseDto })
-  @ApiNotFoundResponse({ description: 'Schedule not found' })
-  deleteSchedule(
-    @Param('id') trainerId: string,
-    @Param('scheduleId') scheduleId: string,
-  ) {
-    return this.trainersService.deleteSchedule(trainerId, scheduleId);
   }
 
   @Post('assign')

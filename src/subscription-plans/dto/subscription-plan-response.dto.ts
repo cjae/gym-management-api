@@ -37,6 +37,12 @@ export class SubscriptionPlanResponseDto {
   @ApiProperty({ example: 20 })
   maxFreezeDays: number;
 
+  @ApiProperty({ example: 1 })
+  maxFreezeCount: number;
+
+  @ApiProperty({ example: false })
+  isOffPeak: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

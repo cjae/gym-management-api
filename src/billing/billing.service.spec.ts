@@ -92,6 +92,38 @@ describe('BillingService', () => {
       );
     });
 
+    it('should charge full plan price on renewal, not discounted price', async () => {
+      const subscription = {
+        id: 'sub-1',
+        paystackAuthorizationCode: 'AUTH_abc123',
+        paymentMethod: 'CARD',
+        autoRenew: true,
+        nextBillingDate: new Date(),
+        discountAmount: 500,
+        originalPlanPrice: 2500,
+        primaryMember: { id: 'u-1', email: 'test@test.com', firstName: 'John' },
+        plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
+      };
+
+      prisma.memberSubscription.findMany.mockResolvedValueOnce([
+        subscription,
+      ] as any);
+      prisma.payment.count.mockResolvedValueOnce(0);
+      mockPaymentsService.chargeAuthorization.mockResolvedValueOnce({
+        id: 'pay-1',
+      });
+
+      await service.processCardRenewals();
+
+      // Should charge plan.price (2500), not discounted price (2000)
+      expect(mockPaymentsService.chargeAuthorization).toHaveBeenCalledWith(
+        'sub-1',
+        'AUTH_abc123',
+        'test@test.com',
+        2500,
+      );
+    });
+
     it('should expire subscription after 2 consecutive card failures', async () => {
       const subscription = {
         id: 'sub-1',

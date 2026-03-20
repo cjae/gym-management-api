@@ -162,6 +162,19 @@ export class EmailService {
     });
   }
 
+  async sendReferralRewardEmail(
+    to: string,
+    firstName: string,
+    referredName: string,
+    rewardDays: number,
+  ): Promise<void> {
+    await this.sendEmail(to, 'You earned free days!', 'referral-reward', {
+      firstName,
+      referredName,
+      rewardDays,
+    });
+  }
+
   async sendCardPaymentFailedEmail(
     to: string,
     firstName: string,
@@ -180,5 +193,30 @@ export class EmailService {
         paymentUrl,
       },
     );
+  }
+
+  async sendImportReportEmail(
+    to: string,
+    report: {
+      fileName: string;
+      totalRows: number;
+      importedCount: number;
+      skippedCount: number;
+      errorCount: number;
+      errors: { row: number; field: string; message: string }[];
+      skipped: { row: number; email: string; reason: string }[];
+      failed: boolean;
+    },
+  ): Promise<void> {
+    const subject = report.failed
+      ? `Import Failed: ${report.fileName}`
+      : `Import Complete: ${report.importedCount} members imported`;
+
+    await this.sendEmail(to, subject, 'import-report', {
+      ...report,
+      hasErrors: report.errors.length > 0,
+      hasSkipped: report.skipped.length > 0,
+      adminUrl: this.adminUrl,
+    });
   }
 }

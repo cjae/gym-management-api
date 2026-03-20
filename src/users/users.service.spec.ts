@@ -74,6 +74,7 @@ describe('UsersService', () => {
   };
   const mockLicensingService = {
     getMemberLimit: jest.fn().mockResolvedValue(null),
+    getAdminLimit: jest.fn().mockResolvedValue(null),
   };
 
   beforeEach(() => {

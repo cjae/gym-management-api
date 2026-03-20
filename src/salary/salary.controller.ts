@@ -24,11 +24,13 @@ import { SalaryRecordResponseDto } from './dto/salary-record-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 
 @ApiTags('Salary')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
+@RequiresFeature('salary')
 @Controller('salary')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN')

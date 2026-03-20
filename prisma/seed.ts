@@ -9,26 +9,26 @@ async function main() {
 
   // Super Admin
   const superAdmin = await prisma.user.create({
-    data: { email: 'admin@gym.co.ke', password: hash, firstName: 'Super', lastName: 'Admin', role: 'SUPER_ADMIN', mustChangePassword: true },
+    data: { email: 'admin@gym.co.ke', password: hash, firstName: 'Super', lastName: 'Admin', role: 'SUPER_ADMIN', mustChangePassword: true, referralCode: 'SADMIN01' },
   });
 
   // Admins
   const admin1 = await prisma.user.create({
-    data: { email: 'frontdesk1@gym.co.ke', password: hash, firstName: 'Jane', lastName: 'Wanjiku', role: 'ADMIN', mustChangePassword: true },
+    data: { email: 'frontdesk1@gym.co.ke', password: hash, firstName: 'Jane', lastName: 'Wanjiku', role: 'ADMIN', mustChangePassword: true, referralCode: 'ADMIN001' },
   });
   const admin2 = await prisma.user.create({
-    data: { email: 'frontdesk2@gym.co.ke', password: hash, firstName: 'John', lastName: 'Kamau', role: 'ADMIN', mustChangePassword: true },
+    data: { email: 'frontdesk2@gym.co.ke', password: hash, firstName: 'John', lastName: 'Kamau', role: 'ADMIN', mustChangePassword: true, referralCode: 'ADMIN002' },
   });
 
   // Trainers
   const trainer1 = await prisma.user.create({
-    data: { email: 'trainer1@gym.co.ke', password: hash, firstName: 'Mike', lastName: 'Ochieng', role: 'TRAINER' },
+    data: { email: 'trainer1@gym.co.ke', password: hash, firstName: 'Mike', lastName: 'Ochieng', role: 'TRAINER', referralCode: 'TRAIN001' },
   });
   const trainer2 = await prisma.user.create({
-    data: { email: 'trainer2@gym.co.ke', password: hash, firstName: 'Faith', lastName: 'Njeri', role: 'TRAINER' },
+    data: { email: 'trainer2@gym.co.ke', password: hash, firstName: 'Faith', lastName: 'Njeri', role: 'TRAINER', referralCode: 'TRAIN002' },
   });
   const trainer3 = await prisma.user.create({
-    data: { email: 'trainer3@gym.co.ke', password: hash, firstName: 'David', lastName: 'Mwangi', role: 'TRAINER' },
+    data: { email: 'trainer3@gym.co.ke', password: hash, firstName: 'David', lastName: 'Mwangi', role: 'TRAINER', referralCode: 'TRAIN003' },
   });
 
   // Trainer profiles
@@ -46,7 +46,7 @@ async function main() {
   const members: User[] = [];
   for (let i = 1; i <= 10; i++) {
     const member = await prisma.user.create({
-      data: { email: `member${i}@example.com`, password: hash, firstName: `Member`, lastName: `${i}`, role: 'MEMBER', phone: `+2547000000${i.toString().padStart(2, '0')}` },
+      data: { email: `member${i}@example.com`, password: hash, firstName: `Member`, lastName: `${i}`, role: 'MEMBER', phone: `+2547000000${i.toString().padStart(2, '0')}`, referralCode: `MEMBER${i.toString().padStart(2, '0')}` },
     });
     members.push(member);
   }
@@ -286,9 +286,105 @@ async function main() {
     data: { memberId: members[3].id, weeklyStreak: 8, longestStreak: 15, daysThisWeek: 4, weekStart: monday, lastCheckInDate: new Date(new Date().setHours(0,0,0,0)) },
   });
 
+  // ── Referrals (Member 1 referred 4 & 5 completed, Member 2 referred 6 pending) ──
+  await prisma.user.update({ where: { id: members[3].id }, data: { referredById: members[0].id } });
+  await prisma.referral.create({
+    data: { referrerId: members[0].id, referredId: members[3].id, status: 'COMPLETED', rewardDays: 7, completedAt: daysAgo(2) },
+  });
+
+  await prisma.user.update({ where: { id: members[4].id }, data: { referredById: members[0].id } });
+  await prisma.referral.create({
+    data: { referrerId: members[0].id, referredId: members[4].id, status: 'COMPLETED', rewardDays: 7, completedAt: daysAgo(1) },
+  });
+
+  await prisma.user.update({ where: { id: members[5].id }, data: { referredById: members[1].id } });
+  await prisma.referral.create({
+    data: { referrerId: members[1].id, referredId: members[5].id, status: 'PENDING' },
+  });
+
   // Active QR code
   await prisma.gymQrCode.create({
     data: { code: crypto.randomBytes(32).toString('hex'), isActive: true },
+  });
+
+  // Gym Settings with off-peak windows
+  await prisma.gymSettings.create({
+    data: {
+      id: 'singleton',
+      timezone: 'Africa/Nairobi',
+      referralRewardDays: 7,
+      maxReferralsPerCycle: 3,
+      offPeakWindows: {
+        create: [
+          { startTime: '06:00', endTime: '10:00' },
+          { startTime: '14:00', endTime: '17:00' },
+        ],
+      },
+    },
+  });
+
+  // Off-peak subscription plan
+  await prisma.subscriptionPlan.create({
+    data: {
+      name: 'Off-Peak Monthly',
+      price: 2000,
+      currency: 'KES',
+      billingInterval: 'MONTHLY',
+      description: 'Monthly membership restricted to off-peak hours (6-10am, 2-5pm)',
+      maxMembers: 1,
+      isOffPeak: true,
+    },
+  });
+
+  // ── Events (upcoming community events) ──
+  const event1 = await prisma.event.create({
+    data: {
+      title: 'Outdoor Bootcamp',
+      description: 'Community outdoor fitness event at Uhuru Park. All fitness levels welcome!',
+      date: daysFromNow(7),
+      startTime: '07:00',
+      endTime: '09:00',
+      location: 'Uhuru Park, Nairobi',
+      maxCapacity: 100,
+    },
+  });
+
+  const event2 = await prisma.event.create({
+    data: {
+      title: 'Nutrition Workshop',
+      description: 'Learn about meal prep and sports nutrition from our certified nutritionist.',
+      date: daysFromNow(14),
+      startTime: '14:00',
+      endTime: '16:00',
+      location: 'Studio A',
+      maxCapacity: 30,
+    },
+  });
+
+  const event3 = await prisma.event.create({
+    data: {
+      title: 'Members BBQ & Social',
+      description: 'End-of-month social event for all gym members. Food and drinks provided!',
+      date: daysFromNow(21),
+      startTime: '12:00',
+      endTime: '15:00',
+      location: 'Gym Rooftop',
+      maxCapacity: 80,
+    },
+  });
+
+  // Enroll some members in events
+  await prisma.eventEnrollment.createMany({
+    data: [
+      { eventId: event1.id, memberId: members[0].id },
+      { eventId: event1.id, memberId: members[1].id },
+      { eventId: event1.id, memberId: members[2].id },
+      { eventId: event2.id, memberId: members[0].id },
+      { eventId: event2.id, memberId: members[3].id },
+      { eventId: event3.id, memberId: members[1].id },
+      { eventId: event3.id, memberId: members[4].id },
+      { eventId: event3.id, memberId: members[5].id },
+    ],
   });
 
   console.log('Seed data created successfully');

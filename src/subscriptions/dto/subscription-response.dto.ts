@@ -40,6 +40,15 @@ export class SubscriptionResponseDto {
   @ApiProperty({ example: 0 })
   frozenDaysUsed: number;
 
+  @ApiProperty({
+    example: 0,
+    description: 'Number of freezes used this billing cycle',
+  })
+  freezeCount: number;
+
+  @ApiPropertyOptional({ example: 'Moving to a different city' })
+  cancellationReason?: string;
+
   @ApiPropertyOptional({ example: 'M-Pesa confirmation code ABC123' })
   paymentNote?: string;
 

@@ -14,6 +14,10 @@ export class LicensingService implements OnModuleInit {
   private readonly licenseKey: string;
   private readonly licenseServerUrl: string;
 
+  private cachedFeatures: string[] | null = null;
+  private featuresCachedAt: number = 0;
+  private static readonly FEATURES_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -82,6 +86,8 @@ export class LicensingService implements OnModuleInit {
           gymName: data.gymName,
           tierName: data.tierName,
           maxMembers: data.maxMembers,
+          maxAdmins: data.maxAdmins,
+          features: data.features ?? [],
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
           lastSuccessAt: now,
@@ -94,6 +100,8 @@ export class LicensingService implements OnModuleInit {
           gymName: data.gymName,
           tierName: data.tierName,
           maxMembers: data.maxMembers,
+          maxAdmins: data.maxAdmins,
+          features: data.features ?? [],
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
           lastCheckedAt: now,
           lastSuccessAt: now,
@@ -102,6 +110,8 @@ export class LicensingService implements OnModuleInit {
       });
 
       this.logger.log(`License validated: ${data.status}`);
+      this.cachedFeatures = (data.features as string[]) ?? [];
+      this.featuresCachedAt = Date.now();
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const status = error.response.status;
@@ -121,6 +131,8 @@ export class LicensingService implements OnModuleInit {
               lastCheckedAt: now,
             },
           });
+          this.cachedFeatures = null;
+          this.featuresCachedAt = 0;
           return;
         }
       }
@@ -136,6 +148,37 @@ export class LicensingService implements OnModuleInit {
       where: { id: 'singleton' },
     });
     return cache?.maxMembers ?? null;
+  }
+
+  async getAdminLimit(): Promise<number | null> {
+    const cache = await this.prisma.licenseCache.findUnique({
+      where: { id: 'singleton' },
+    });
+    return cache?.maxAdmins ?? null;
+  }
+
+  async getFeatures(): Promise<string[]> {
+    const now = Date.now();
+    if (
+      this.cachedFeatures !== null &&
+      now - this.featuresCachedAt < LicensingService.FEATURES_CACHE_TTL_MS
+    ) {
+      return this.cachedFeatures;
+    }
+
+    const cache = await this.prisma.licenseCache.findUnique({
+      where: { id: 'singleton' },
+    });
+    this.cachedFeatures = cache?.features ? (cache.features as string[]) : [];
+    this.featuresCachedAt = now;
+    return this.cachedFeatures;
+  }
+
+  async hasFeature(key: string): Promise<boolean> {
+    if (!this.isConfigured()) return true;
+
+    const features = await this.getFeatures();
+    return features.includes(key);
   }
 
   async onModuleInit(): Promise<void> {

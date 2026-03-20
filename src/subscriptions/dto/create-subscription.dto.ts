@@ -1,5 +1,5 @@
-import { IsString, IsEnum } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsEnum, IsOptional, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum MemberPaymentMethod {
   CARD = 'CARD',
@@ -14,4 +14,10 @@ export class CreateSubscriptionDto {
   @ApiProperty({ enum: MemberPaymentMethod, example: 'MPESA' })
   @IsEnum(MemberPaymentMethod)
   paymentMethod: MemberPaymentMethod;
+
+  @ApiPropertyOptional({ example: 'NEWYEAR25' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  discountCode?: string;
 }

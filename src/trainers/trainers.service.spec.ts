@@ -17,16 +17,6 @@ describe('TrainersService', () => {
     user: { id: 'user-1', firstName: 'Mike', lastName: 'O' },
   };
 
-  const mockSchedule = {
-    id: 'sched-1',
-    trainerId: 'profile-1',
-    title: 'Morning Class',
-    dayOfWeek: 1,
-    startTime: '08:00',
-    endTime: '09:00',
-    maxCapacity: 10,
-  };
-
   const mockAssignment = {
     id: 'assign-1',
     trainerId: 'profile-1',
@@ -95,29 +85,6 @@ describe('TrainersService', () => {
 
       const result = await service.findOne('profile-1');
       expect(result).toEqual(mockProfile);
-    });
-  });
-
-  describe('addSchedule', () => {
-    it('should add a schedule to a trainer', async () => {
-      prisma.trainerSchedule.create.mockResolvedValue(mockSchedule as any);
-
-      const result = await service.addSchedule('profile-1', {
-        title: 'Morning Class',
-        dayOfWeek: 1,
-        startTime: '08:00',
-        endTime: '09:00',
-      });
-      expect(result).toEqual(mockSchedule);
-    });
-  });
-
-  describe('getSchedules', () => {
-    it('should return schedules for a trainer', async () => {
-      prisma.trainerSchedule.findMany.mockResolvedValue([mockSchedule] as any);
-
-      const result = await service.getSchedules('profile-1');
-      expect(result).toEqual([mockSchedule]);
     });
   });
 

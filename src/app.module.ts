@@ -14,6 +14,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { QrModule } from './qr/qr.module';
 import { TrainersModule } from './trainers/trainers.module';
+import { GymClassesModule } from './gym-classes/gym-classes.module';
 import { SalaryModule } from './salary/salary.module';
 import { SentryUserModule } from './sentry/sentry.module';
 import { EmailModule } from './email/email.module';
@@ -26,9 +27,15 @@ import { EntrancesModule } from './entrances/entrances.module';
 import { ConfigLoaderModule } from './common/loaders/config.loader.module';
 import { LicensingModule } from './licensing/licensing.module';
 import { LicenseGuard } from './licensing/licensing.guard';
+import { FeatureGuard } from './licensing/feature.guard';
 import { AuditLogModule } from './audit-logs/audit-logs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BannersModule } from './banners/banners.module';
+import { GymSettingsModule } from './gym-settings/gym-settings.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { EventsModule } from './events/events.module';
+import { ImportsModule } from './imports/imports.module';
+import { DiscountCodesModule } from './discount-codes/discount-codes.module';
 
 @Module({
   imports: [
@@ -52,6 +59,8 @@ import { BannersModule } from './banners/banners.module';
     EntrancesModule,
     QrModule,
     TrainersModule,
+    GymClassesModule,
+    EventsModule,
     SalaryModule,
     BillingModule,
     AnalyticsModule,
@@ -59,6 +68,10 @@ import { BannersModule } from './banners/banners.module';
     AuditLogModule,
     NotificationsModule,
     BannersModule,
+    GymSettingsModule,
+    ReferralsModule,
+    ImportsModule,
+    DiscountCodesModule,
   ],
   controllers: [AppController],
   providers: [
@@ -73,6 +86,10 @@ import { BannersModule } from './banners/banners.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: FeatureGuard,
     },
     AppService,
   ],

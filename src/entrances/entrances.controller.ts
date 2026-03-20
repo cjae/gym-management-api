@@ -25,12 +25,14 @@ import { EntranceResponseDto } from './dto/entrance-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @ApiTags('Entrances')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
+@RequiresFeature('multi-entrance')
 @Controller('entrances')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EntrancesController {

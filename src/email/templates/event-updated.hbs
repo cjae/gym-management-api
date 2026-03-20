@@ -1,0 +1,36 @@
+{{> header}}
+
+<h2>Hi {{firstName}},</h2>
+
+<p>The details for <strong>{{eventTitle}}</strong> have been updated.</p>
+
+<table style="border-collapse: collapse; margin: 16px 0;">
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">Previous Date</td>
+    <td style="padding: 8px 16px;">{{oldDate}}</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">New Date</td>
+    <td style="padding: 8px 16px;">{{newDate}}</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">Previous Time</td>
+    <td style="padding: 8px 16px;">{{oldTime}}</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">New Time</td>
+    <td style="padding: 8px 16px;">{{newTime}}</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">Previous Location</td>
+    <td style="padding: 8px 16px;">{{oldLocation}}</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 16px; font-weight: bold;">New Location</td>
+    <td style="padding: 8px 16px;">{{newLocation}}</td>
+  </tr>
+</table>
+
+<p>Please update your schedule accordingly.</p>
+
+{{> footer}}

@@ -124,7 +124,7 @@ export class BannersService {
         endDate: { gt: now },
       },
       orderBy: { displayOrder: 'asc' },
-      take: 10,
+      take: 5,
       select: {
         id: true,
         title: true,

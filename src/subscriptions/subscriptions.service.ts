@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import {
   AdminCreateSubscriptionDto,
@@ -30,6 +31,7 @@ export class SubscriptionsService {
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
     private readonly notificationsService: NotificationsService,
+    private readonly discountCodesService: DiscountCodesService,
   ) {}
 
   async create(memberId: string, dto: CreateSubscriptionDto) {
@@ -70,35 +72,92 @@ export class SubscriptionsService {
 
     const include = { plan: true, members: true } as const;
 
-    const subscription = existingPending
-      ? await this.prisma.memberSubscription.update({
-          where: { id: existingPending.id },
-          data: {
-            planId: dto.planId,
-            startDate,
-            endDate,
-            paymentMethod: dto.paymentMethod,
-            nextBillingDate: endDate,
-          },
-          include,
-        })
-      : await this.prisma.memberSubscription.create({
-          data: {
-            primaryMemberId: memberId,
-            planId: dto.planId,
-            startDate,
-            endDate,
-            status: SubscriptionStatus.PENDING,
-            paymentMethod: dto.paymentMethod,
-            nextBillingDate: endDate,
-            members: {
-              create: {
-                memberId,
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      // Reverse any prior discount redemption on existing PENDING subscription
+      if (existingPending) {
+        await this.discountCodesService.reverseRedemption(
+          tx,
+          existingPending.id,
+        );
+      }
+
+      // Validate discount code inside transaction to prevent TOCTOU race
+      let discountResult: {
+        discountCode: {
+          id: string;
+          discountType: string;
+          discountValue: number;
+          maxUses: number | null;
+          maxUsesPerMember: number | null;
+        };
+        finalPrice: number;
+        originalPrice: number;
+      } | null = null;
+
+      if (dto.discountCode) {
+        discountResult = await this.discountCodesService.validateCode(
+          dto.discountCode,
+          dto.planId,
+          memberId,
+        );
+      }
+
+      const discountCodeId = discountResult?.discountCode.id ?? null;
+      const discountAmount = discountResult
+        ? discountResult.originalPrice - discountResult.finalPrice
+        : null;
+
+      const sub = existingPending
+        ? await tx.memberSubscription.update({
+            where: { id: existingPending.id },
+            data: {
+              planId: dto.planId,
+              startDate,
+              endDate,
+              paymentMethod: dto.paymentMethod,
+              nextBillingDate: endDate,
+              discountCodeId,
+              discountAmount,
+              originalPlanPrice: plan.price,
+            },
+            include,
+          })
+        : await tx.memberSubscription.create({
+            data: {
+              primaryMemberId: memberId,
+              planId: dto.planId,
+              startDate,
+              endDate,
+              status: SubscriptionStatus.PENDING,
+              paymentMethod: dto.paymentMethod,
+              nextBillingDate: endDate,
+              discountCodeId,
+              discountAmount,
+              originalPlanPrice: plan.price,
+              members: {
+                create: {
+                  memberId,
+                },
               },
             },
-          },
-          include,
-        });
+            include,
+          });
+
+      if (discountResult) {
+        await this.discountCodesService.redeemCode(
+          tx,
+          discountResult.discountCode.id,
+          memberId,
+          sub.id,
+          discountResult.originalPrice,
+          discountResult.finalPrice,
+          discountResult.discountCode.maxUses,
+          discountResult.discountCode.maxUsesPerMember,
+        );
+      }
+
+      return sub;
+    });
 
     const memberName = member
       ? `${member.firstName} ${member.lastName}`
@@ -116,7 +175,9 @@ export class SubscriptionsService {
       },
     });
 
-    return subscription;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = subscription;
+    return safe;
   }
 
   async adminCreate(adminId: string, dto: AdminCreateSubscriptionDto) {
@@ -171,8 +232,6 @@ export class SubscriptionsService {
 
     const startDate = new Date();
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
-    const amount =
-      dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY ? 0 : plan.price;
 
     // Check for existing PENDING subscription — update it instead of creating a new one
     const existingPending = await this.prisma.memberSubscription.findFirst({
@@ -183,19 +242,66 @@ export class SubscriptionsService {
     });
 
     const txInclude = { plan: true, members: true } as const;
-    const txData = {
-      planId: dto.planId,
-      startDate,
-      endDate,
-      status: SubscriptionStatus.ACTIVE,
-      paymentMethod: dto.paymentMethod,
-      nextBillingDate: endDate,
-      autoRenew: false,
-      createdBy: adminId,
-      paymentNote: dto.paymentNote,
-    };
 
     const subscription = await this.prisma.$transaction(async (tx) => {
+      // Reverse any prior discount redemption on existing PENDING subscription
+      if (existingPending) {
+        await this.discountCodesService.reverseRedemption(
+          tx,
+          existingPending.id,
+        );
+      }
+
+      // Validate discount code inside transaction to prevent TOCTOU race
+      let discountResult: {
+        discountCode: {
+          id: string;
+          discountType: string;
+          discountValue: number;
+          maxUses: number | null;
+          maxUsesPerMember: number | null;
+        };
+        finalPrice: number;
+        originalPrice: number;
+      } | null = null;
+      if (
+        dto.discountCode &&
+        dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY
+      ) {
+        discountResult = await this.discountCodesService.validateCode(
+          dto.discountCode,
+          dto.planId,
+          dto.memberId,
+        );
+      }
+
+      const discountCodeId = discountResult?.discountCode.id ?? null;
+      const discountAmountValue = discountResult
+        ? discountResult.originalPrice - discountResult.finalPrice
+        : null;
+
+      const amount =
+        dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY
+          ? 0
+          : discountResult
+            ? discountResult.finalPrice
+            : plan.price;
+
+      const txData = {
+        planId: dto.planId,
+        startDate,
+        endDate,
+        status: SubscriptionStatus.ACTIVE,
+        paymentMethod: dto.paymentMethod,
+        nextBillingDate: endDate,
+        autoRenew: false,
+        createdBy: adminId,
+        paymentNote: dto.paymentNote,
+        discountCodeId,
+        discountAmount: discountAmountValue,
+        originalPlanPrice: plan.price,
+      };
+
       const sub = existingPending
         ? await tx.memberSubscription.update({
             where: { id: existingPending.id },
@@ -226,6 +332,19 @@ export class SubscriptionsService {
         },
       });
 
+      if (discountResult) {
+        await this.discountCodesService.redeemCode(
+          tx,
+          discountResult.discountCode.id,
+          dto.memberId,
+          sub.id,
+          discountResult.originalPrice,
+          discountResult.finalPrice,
+          discountResult.discountCode.maxUses,
+          discountResult.discountCode.maxUsesPerMember,
+        );
+      }
+
       return sub;
     });
 
@@ -242,7 +361,9 @@ export class SubscriptionsService {
       },
     });
 
-    return subscription;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = subscription;
+    return safe;
   }
 
   async addDuoMember(
@@ -417,6 +538,7 @@ export class SubscriptionsService {
     subscriptionId: string,
     requesterId: string,
     requesterRole: string,
+    reason?: string,
   ) {
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
@@ -445,7 +567,10 @@ export class SubscriptionsService {
 
     const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
-      data: { autoRenew: false },
+      data: {
+        autoRenew: false,
+        ...(reason && { cancellationReason: reason }),
+      },
     });
 
     const memberName = `${subscription.primaryMember.firstName} ${subscription.primaryMember.lastName}`;
@@ -475,7 +600,9 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = result;
+    return safe;
   }
 
   async freeze(
@@ -515,14 +642,18 @@ export class SubscriptionsService {
       throw new BadRequestException('This plan does not support freezing');
     }
 
-    if (days > subscription.plan.maxFreezeDays) {
+    const remainingFreezeDays =
+      subscription.plan.maxFreezeDays - subscription.frozenDaysUsed;
+    if (days > remainingFreezeDays) {
       throw new BadRequestException(
-        `Freeze duration cannot exceed ${subscription.plan.maxFreezeDays} days`,
+        `Freeze duration cannot exceed ${remainingFreezeDays} remaining days (max ${subscription.plan.maxFreezeDays} per cycle)`,
       );
     }
 
-    if (subscription.frozenDaysUsed > 0) {
-      throw new BadRequestException('Freeze already used this billing cycle');
+    if (subscription.freezeCount >= subscription.plan.maxFreezeCount) {
+      throw new BadRequestException(
+        `Maximum freeze count (${subscription.plan.maxFreezeCount}) reached this billing cycle`,
+      );
     }
 
     const freezeStartDate = new Date();
@@ -565,7 +696,9 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = result;
+    return safe;
   }
 
   async unfreeze(
@@ -626,7 +759,8 @@ export class SubscriptionsService {
         nextBillingDate: newNextBillingDate,
         freezeStartDate: null,
         freezeEndDate: null,
-        frozenDaysUsed: frozenDays,
+        frozenDaysUsed: { increment: frozenDays },
+        freezeCount: { increment: 1 },
       },
       include: { plan: true },
     });
@@ -657,7 +791,9 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { paystackAuthorizationCode, ...safe } = result;
+    return safe;
   }
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Africa/Nairobi' })
@@ -676,18 +812,23 @@ export class SubscriptionsService {
 
     const ids = staleSubscriptions.map((s) => s.id);
 
-    // Delete in order: payments → subscription members → subscriptions (FK constraints)
-    await this.prisma.$transaction([
-      this.prisma.payment.deleteMany({
+    // Delete in order: reverse discounts → payments → subscription members → subscriptions (FK constraints)
+    await this.prisma.$transaction(async (tx) => {
+      // Reverse discount redemptions (decrements currentUses and deletes records)
+      for (const sub of staleSubscriptions) {
+        await this.discountCodesService.reverseRedemption(tx, sub.id);
+      }
+
+      await tx.payment.deleteMany({
         where: { subscriptionId: { in: ids } },
-      }),
-      this.prisma.subscriptionMember.deleteMany({
+      });
+      await tx.subscriptionMember.deleteMany({
         where: { subscriptionId: { in: ids } },
-      }),
-      this.prisma.memberSubscription.deleteMany({
+      });
+      await tx.memberSubscription.deleteMany({
         where: { id: { in: ids } },
-      }),
-    ]);
+      });
+    });
 
     this.logger.log(
       `Cleaned up ${staleSubscriptions.length} stale pending subscription(s)`,

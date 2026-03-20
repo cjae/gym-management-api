@@ -50,6 +50,10 @@ const CONTROLLER_RESOURCE_MAP: Record<string, string> = {
   QrController: 'QrCode',
   BillingController: 'Billing',
   UploadsController: 'Upload',
+  GymClassesController: 'GymClasses',
+  BannersController: 'Banners',
+  NotificationsController: 'Notifications',
+  PushTokensController: 'PushTokens',
 };
 
 @Injectable()
