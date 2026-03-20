@@ -3,9 +3,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import * as bcrypt from 'bcrypt';
 
+const useSSL = process.env.DATABASE_URL?.includes('sslmode=')
+  || process.env.NODE_ENV === 'production';
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ...(useSSL && { ssl: { rejectUnauthorized: false } }),
 });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
