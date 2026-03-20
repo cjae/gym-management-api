@@ -32,9 +32,9 @@ RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 
 # Copy email templates (Handlebars)
-COPY src/email/templates ./dist/email/templates
+COPY src/email/templates ./dist/src/email/templates
 
 EXPOSE 3000
 
 # Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]
