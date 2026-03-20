@@ -14,7 +14,10 @@ export class PrismaService
 {
   constructor(configService: ConfigService) {
     const { url } = configService.get<DatabaseConfig>(getDatabaseConfigName())!;
-    const adapter = new PrismaPg({ connectionString: url });
+    const adapter = new PrismaPg({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+    });
     super({ adapter });
   }
 
