@@ -7,10 +7,10 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 
-# Generate Prisma client
+# Generate Prisma client (dummy URL — generate never connects to DB)
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN npx prisma generate
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Build application
 COPY . .
@@ -25,10 +25,11 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile --production && yarn cache clean
 
-# Copy Prisma schema, config, and generate client for production
+# Copy Prisma schema and config for runtime migrations
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN npx prisma generate
+# Generate Prisma client (dummy URL — generate never connects to DB)
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Copy built application (includes compiled prisma.config.js)
 COPY --from=builder /app/dist ./dist
