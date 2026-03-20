@@ -9,7 +9,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppConfig, getAppConfigName } from './common/config/app.config';
 
-const SWAGGER_DESCRIPTION = `API for gym management platform — subscriptions, attendance, payments, trainers, and more.
+const SWAGGER_DESCRIPTION = `API for gym management platform — subscriptions, attendance, payments, trainers, classes and more.
 
 ## WebSocket: Activity Feed
 
