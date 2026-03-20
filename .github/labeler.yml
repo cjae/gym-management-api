@@ -1,0 +1,65 @@
+auth:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/auth/**
+
+users:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/users/**
+
+subscriptions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/subscriptions/**
+          - src/subscription-plans/**
+
+payments:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/payments/**
+          - src/billing/**
+
+attendance:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/attendance/**
+          - src/qr/**
+
+notifications:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/notifications/**
+          - src/email/**
+
+analytics:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/analytics/**
+
+licensing:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/licensing/**
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/common/config/**
+          - src/common/loaders/**
+          - src/gym-settings/**
+
+database:
+  - changed-files:
+      - any-glob-to-any-file:
+          - prisma/**
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/**/*.spec.ts
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**

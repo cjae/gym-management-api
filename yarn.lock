@@ -1502,6 +1502,65 @@
     detect-libc "^2.0.3"
     node-abi "^3.73.0"
 
+"@sentry/cli-darwin@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-darwin/-/cli-darwin-3.3.3.tgz#4c821c8d4b676a0159307341941453ba1eb8ecec"
+  integrity sha512-P8DoL79eX5fhKCfBHHl7xwwTShDPOb2drJC8lizZ3v1iS1JLPrNweM1KEzDefR30zH1wghbLSwsYv/svWdM3wA==
+
+"@sentry/cli-linux-arm64@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-linux-arm64/-/cli-linux-arm64-3.3.3.tgz#e49fcee71911fee0cc2fd7ea4ebde20fc3bbec94"
+  integrity sha512-9jaX9RGyTpjo9u2urNi5ciBDpRdTt107YJpFXev+BFHJ6Lwz/owgRuYzPRfAen8hKkOOFheZ3iy07kl576eZzw==
+
+"@sentry/cli-linux-arm@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-linux-arm/-/cli-linux-arm-3.3.3.tgz#6d7e466aa6286d988bb50a5d07540bc2a7e28ea8"
+  integrity sha512-a7o/huozveLIImXHe0HDwEMVhvDopOP2tLcopvV7sQsVE8f/QOShR5FudKjmiaZz2opdLzPJO9pv5WuF9jAZPg==
+
+"@sentry/cli-linux-i686@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-linux-i686/-/cli-linux-i686-3.3.3.tgz#bd1206cc17223a92dde2ae616a7641f526c444dd"
+  integrity sha512-VngQYzR2kDm2oojCuYF20ebLTK8HKvEwxe785J6gxob8Ef9JvZkERyUqENYppBa9aVgN0pandqPAqOECWykTMA==
+
+"@sentry/cli-linux-x64@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-linux-x64/-/cli-linux-x64-3.3.3.tgz#6d189a7b8c1a9b826948112cc837349b625b47a0"
+  integrity sha512-rBxXQeIYGefUNI2cXHxEr0y3bhxDQjOD4G6j/gqLz/Dj+l8gJ/iKP64kTudnoViNIpn0pdYccG69th7zmzM/Fg==
+
+"@sentry/cli-win32-arm64@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-win32-arm64/-/cli-win32-arm64-3.3.3.tgz#b67fa46b942ed6289404526d3175268b6babdd18"
+  integrity sha512-c52g+YS6BO0rzH8AEHqQPmpqZrw0GJjMWqy0tQ5jcqaGdaLVnxk0mMEubv8R6Dv5MR2LShoKjiNsaeVfrWIMUg==
+
+"@sentry/cli-win32-i686@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-win32-i686/-/cli-win32-i686-3.3.3.tgz#68cda8186ea3b53857063dd79aeccb8a21057377"
+  integrity sha512-DygYzSY/+tS7oFj/mfeg/yzYxsQx3fO8cI+IWc2pns/at+JcJ9O5xyM/x/q55wOxpnwla7RL1D3rsqK2mqkYfg==
+
+"@sentry/cli-win32-x64@3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli-win32-x64/-/cli-win32-x64-3.3.3.tgz#6e445d062910ae6a8ab3e6b08929a0c0de21a991"
+  integrity sha512-i0glPcHwkqbVA2Y+0Yz7CD/l8TSkfft1a+lTU9yk/+DDU8WGkyArEAxAji9bGo4p+k5HIFC8OC2MwpKdcdFM4Q==
+
+"@sentry/cli@^3.3.3":
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/@sentry/cli/-/cli-3.3.3.tgz#e5aed3ef88b6681647d84690727f6908cc8f6378"
+  integrity sha512-4CZtfgiOraX+BntMjYQhfLDArXwpqt3sEo5Zdj2pqWSZSd4yI3ncfQ21CsxLcI/sUQrjmD5Vzidu4/1OShyxtA==
+  dependencies:
+    progress "^2.0.3"
+    proxy-from-env "^1.1.0"
+    undici "^6.22.0"
+    which "^2.0.2"
+  optionalDependencies:
+    "@sentry/cli-darwin" "3.3.3"
+    "@sentry/cli-linux-arm" "3.3.3"
+    "@sentry/cli-linux-arm64" "3.3.3"
+    "@sentry/cli-linux-i686" "3.3.3"
+    "@sentry/cli-linux-x64" "3.3.3"
+    "@sentry/cli-win32-arm64" "3.3.3"
+    "@sentry/cli-win32-i686" "3.3.3"
+    "@sentry/cli-win32-x64" "3.3.3"
+
 "@sentry/core@10.42.0":
   version "10.42.0"
   resolved "https://registry.yarnpkg.com/@sentry/core/-/core-10.42.0.tgz#5b6e38d4fde9276588f507d082c9b46debd3d666"
@@ -5285,6 +5344,11 @@ prisma@^6:
     "@prisma/config" "6.19.2"
     "@prisma/engines" "6.19.2"
 
+progress@^2.0.3:
+  version "2.0.3"
+  resolved "https://registry.yarnpkg.com/progress/-/progress-2.0.3.tgz#7e8cf8d8f5b8f239c1bc68beb4eb78567d572ef8"
+  integrity sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==
+
 proxy-addr@^2.0.7:
   version "2.0.7"
   resolved "https://registry.yarnpkg.com/proxy-addr/-/proxy-addr-2.0.7.tgz#f19fe69ceab311eeb94b42e70e8c2070f9ba1025"
@@ -6040,6 +6104,11 @@ undici-types@~7.18.0:
   resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-7.18.2.tgz#29357a89e7b7ca4aef3bf0fd3fd0cd73884229e9"
   integrity sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==
 
+undici@^6.22.0:
+  version "6.24.1"
+  resolved "https://registry.yarnpkg.com/undici/-/undici-6.24.1.tgz#9df1425cede20b836d95634347946f79578b7e71"
+  integrity sha512-sC+b0tB1whOCzbtlx20fx3WgCXwkW627p4EA9uM+/tNNPkSS+eSEld6pAs9nDv7WbY1UUljBMYPtu9BCOrCWKA==
+
 universalify@^2.0.0:
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/universalify/-/universalify-2.0.1.tgz#168efc2180964e6386d061e094df61afe239b18d"
@@ -6194,7 +6263,7 @@ webpack@5.104.1:
     watchpack "^2.4.4"
     webpack-sources "^3.3.3"
 
-which@^2.0.1:
+which@^2.0.1, which@^2.0.2:
   version "2.0.2"
   resolved "https://registry.yarnpkg.com/which/-/which-2.0.2.tgz#7c6a8dd0a636a0327e10b59c9286eee93f3f51b1"
   integrity sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==

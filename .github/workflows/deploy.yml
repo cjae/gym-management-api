@@ -1,0 +1,84 @@
+name: Deploy to Dokku
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Type check
+        run: yarn tsc --noEmit
+
+      - name: Build
+        run: yarn build
+
+      - name: Test
+        run: yarn test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to Dokku
+        uses: dokku/github-action@cc7dec1d2b9fed249a14ae462bc953bba436f78c # v1.10.0
+        with:
+          git_remote_url: ${{ secrets.DOKKU_GIT_REMOTE_URL }}
+          ssh_private_key: ${{ secrets.DOKKU_SSH_PRIVATE_KEY }}
+          branch: main
+
+  sentry-sourcemaps:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: Build
+        run: yarn build
+
+      - name: Upload sourcemaps to Sentry
+        run: yarn sentry:sourcemaps
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}

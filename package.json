@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org powerbarn-fitness --project gym-management dist && sentry-cli sourcemaps upload --org powerbarn-fitness --project gym-management dist"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -58,6 +59,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@sentry/cli": "^3.3.3",
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
