@@ -8,6 +8,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
+import * as crypto from 'crypto';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -171,7 +172,6 @@ describe('PaymentsService', () => {
 
     function buildWebhookPayload(body: object) {
       const raw = Buffer.from(JSON.stringify(body));
-      const crypto = require('crypto');
       const signature = crypto
         .createHmac('sha512', paystackSecretKey)
         .update(raw)
