@@ -20,6 +20,7 @@ import {
   getCycleStartDate,
 } from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
+import { addPaystackCommission } from '../common/utils/paystack-commission.util';
 import { NotificationType, Payment, Prisma } from '@prisma/client';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -118,12 +119,30 @@ export class PaymentsService {
       },
     });
 
+    if (
+      subscription.paymentMethod !== 'CARD' &&
+      subscription.paymentMethod !== 'MPESA'
+    ) {
+      throw new BadRequestException(
+        `Unsupported online payment method: ${subscription.paymentMethod}`,
+      );
+    }
+
+    const chargeAmount = addPaystackCommission(
+      effectiveAmount,
+      subscription.paymentMethod,
+    );
+
+    const channels =
+      subscription.paymentMethod === 'CARD' ? ['card'] : ['mobile_money'];
+
     const response = await axios.post<PaystackInitializeResponse>(
       `${this.paystackBaseUrl}/transaction/initialize`,
       {
         email,
-        amount: effectiveAmount * 100,
+        amount: chargeAmount * 100,
         currency: 'KES',
+        channels,
         reference: `gym_${payment.id}_${Date.now()}`,
         metadata: { subscriptionId, paymentId: payment.id },
       },
@@ -313,13 +332,15 @@ export class PaymentsService {
       },
     });
 
+    const chargeAmount = addPaystackCommission(amount, 'CARD');
+
     try {
       await axios.post(
         `${this.paystackBaseUrl}/transaction/charge_authorization`,
         {
           authorization_code: authorizationCode,
           email,
-          amount: amount * 100,
+          amount: chargeAmount * 100,
           currency: 'KES',
           metadata: { subscriptionId, paymentId: payment.id },
         },
