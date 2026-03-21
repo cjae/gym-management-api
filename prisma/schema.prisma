@@ -138,16 +138,16 @@ model User {
   createdSubscriptions       MemberSubscription[] @relation("SubscriptionCreator")
   notifications              Notification[]       @relation("UserNotifications")
   pushTokens                 PushToken[]          @relation("UserPushTokens")
-  banners                    Banner[]              @relation("UserBanners")
-  bannerInteractions         BannerInteraction[]   @relation("UserBannerInteractions")
+  banners                    Banner[]             @relation("UserBanners")
+  bannerInteractions         BannerInteraction[]  @relation("UserBannerInteractions")
   classEnrollments           ClassEnrollment[]
   eventEnrollments           EventEnrollment[]
-  referralCode               String?          @unique
+  referralCode               String?              @unique
   referredById               String?
-  referredBy                 User?            @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals                  User[]           @relation("UserReferrals")
-  referralsMade              Referral[]       @relation("ReferrerReferrals")
-  referralReceived           Referral?        @relation("ReferredReferral")
+  referredBy                 User?                @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals                  User[]               @relation("UserReferrals")
+  referralsMade              Referral[]           @relation("ReferrerReferrals")
+  referralReceived           Referral?            @relation("ReferredReferral")
   importJobs                 ImportJob[]
   discountRedemptions        DiscountRedemption[] @relation("UserDiscountRedemptions")
 }
@@ -286,8 +286,8 @@ model Event {
   title       String
   description String?
   date        DateTime @db.Date
-  startTime   String   // HH:mm 24h format
-  endTime     String   // HH:mm 24h format
+  startTime   String // HH:mm 24h format
+  endTime     String // HH:mm 24h format
   location    String?
   maxCapacity Int      @default(50)
   isActive    Boolean  @default(true)
@@ -437,12 +437,12 @@ model AuditLog {
 }
 
 model GymSettings {
-  id        String   @id @default("singleton")
+  id                   String   @id @default("singleton")
   timezone             String   @default("Africa/Nairobi")
   referralRewardDays   Int      @default(7)
   maxReferralsPerCycle Int      @default(3)
   createdAt            DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt            DateTime @updatedAt
 
   offPeakWindows OffPeakWindow[]
 }
@@ -451,8 +451,8 @@ model OffPeakWindow {
   id            String     @id @default(uuid())
   gymSettingsId String
   dayOfWeek     DayOfWeek?
-  startTime     String     // HH:mm 24h format
-  endTime       String     // HH:mm 24h format
+  startTime     String // HH:mm 24h format
+  endTime       String // HH:mm 24h format
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -566,25 +566,25 @@ enum BannerInteractionType {
 }
 
 model Banner {
-  id            String        @id @default(uuid())
-  title         String
-  body          String?
-  imageUrl      String
-  ctaType       BannerCtaType @default(NONE)
-  ctaTarget     String?
-  ctaLabel      String?
-  discountCode  String?
-  displayOrder  Int           @default(0)
-  isPublished   Boolean       @default(false)
-  startDate     DateTime
-  endDate       DateTime
-  deletedAt     DateTime?
-  createdBy     String
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id           String        @id @default(uuid())
+  title        String
+  body         String?
+  imageUrl     String
+  ctaType      BannerCtaType @default(NONE)
+  ctaTarget    String?
+  ctaLabel     String?
+  discountCode String?
+  displayOrder Int           @default(0)
+  isPublished  Boolean       @default(false)
+  startDate    DateTime
+  endDate      DateTime
+  deletedAt    DateTime?
+  createdBy    String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
-  creator       User              @relation("UserBanners", fields: [createdBy], references: [id])
-  interactions  BannerInteraction[]
+  creator      User                @relation("UserBanners", fields: [createdBy], references: [id])
+  interactions BannerInteraction[]
 
   @@index([isPublished, startDate, endDate, deletedAt])
   @@index([createdBy])
@@ -597,8 +597,8 @@ model BannerInteraction {
   type      BannerInteractionType
   createdAt DateTime              @default(now())
 
-  banner    Banner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
-  user      User   @relation("UserBannerInteractions", fields: [userId], references: [id])
+  banner Banner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  user   User   @relation("UserBannerInteractions", fields: [userId], references: [id])
 
   @@index([bannerId, type])
   @@index([userId])
@@ -615,20 +615,20 @@ enum ImportType {
 }
 
 model ImportJob {
-  id             String       @id @default(uuid())
-  type           ImportType
-  status         ImportStatus @default(PROCESSING)
-  fileName       String
-  totalRows      Int          @default(0)
-  importedCount  Int          @default(0)
-  skippedCount   Int          @default(0)
-  errorCount     Int          @default(0)
-  errors         Json?
-  skipped        Json?
-  initiatedById  String
-  completedAt    DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id            String       @id @default(uuid())
+  type          ImportType
+  status        ImportStatus @default(PROCESSING)
+  fileName      String
+  totalRows     Int          @default(0)
+  importedCount Int          @default(0)
+  skippedCount  Int          @default(0)
+  errorCount    Int          @default(0)
+  errors        Json?
+  skipped       Json?
+  initiatedById String
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   initiatedBy User @relation(fields: [initiatedById], references: [id])
 }
@@ -648,8 +648,8 @@ model DiscountCode {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  plans       DiscountCodePlan[]
-  redemptions DiscountRedemption[]
+  plans         DiscountCodePlan[]
+  redemptions   DiscountRedemption[]
   subscriptions MemberSubscription[]
 }
 
@@ -665,13 +665,13 @@ model DiscountCodePlan {
 }
 
 model DiscountRedemption {
-  id              String   @id @default(uuid())
-  discountCodeId  String
-  memberId        String
-  subscriptionId  String   @unique
-  originalAmount  Float
+  id               String   @id @default(uuid())
+  discountCodeId   String
+  memberId         String
+  subscriptionId   String   @unique
+  originalAmount   Float
   discountedAmount Float
-  createdAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
 
   discountCode DiscountCode       @relation(fields: [discountCodeId], references: [id])
   member       User               @relation("UserDiscountRedemptions", fields: [memberId], references: [id])
