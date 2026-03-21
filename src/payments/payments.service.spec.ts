@@ -140,11 +140,51 @@ describe('PaymentsService', () => {
         }),
       );
 
-      // Paystack gets amount in cents (2000 * 100 = 200000)
+      // Paystack gets amount with commission in cents: ceil(2000 * 1.015) * 100 = 2030 * 100 = 203000
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          amount: 200000,
+          amount: 203000,
+          channels: ['mobile_money'],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should send card channel and card commission for CARD payment method', async () => {
+      const cardSubscription = {
+        ...mockSubscription,
+        paymentMethod: 'CARD',
+      };
+      prisma.memberSubscription.findUnique.mockResolvedValue(
+        cardSubscription as any,
+      );
+      prisma.payment.findFirst.mockResolvedValue(null);
+
+      await service.initializePayment(subscriptionId, email, userId);
+
+      // ceil(2500 * 1.029) = 2573, in cents = 257300
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          amount: 257300,
+          channels: ['card'],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should send mobile_money channel and M-Pesa commission for MPESA payment method', async () => {
+      prisma.payment.findFirst.mockResolvedValue(null);
+
+      await service.initializePayment(subscriptionId, email, userId);
+
+      // ceil(2500 * 1.015) = 2538, in cents = 253800
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          amount: 253800,
+          channels: ['mobile_money'],
         }),
         expect.any(Object),
       );
