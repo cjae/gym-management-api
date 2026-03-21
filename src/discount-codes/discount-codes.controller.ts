@@ -17,7 +17,6 @@ import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
-  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -29,6 +28,7 @@ import { RequiresFeature } from '../licensing/decorators/requires-feature.decora
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { DiscountCodesService } from './discount-codes.service';
 import { CreateDiscountCodeDto } from './dto/create-discount-code.dto';
+import { DiscountCodeQueryDto } from './dto/discount-code-query.dto';
 import { UpdateDiscountCodeDto } from './dto/update-discount-code.dto';
 import { ValidateDiscountCodeDto } from './dto/validate-discount-code.dto';
 import {
@@ -66,16 +66,8 @@ export class DiscountCodesController {
     type: PaginatedDiscountCodesResponseDto,
   })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  @ApiQuery({
-    name: 'filter',
-    required: false,
-    enum: ['active', 'expired', 'inactive'],
-  })
-  findAll(
-    @Query() query: PaginationQueryDto,
-    @Query('filter') filter?: string,
-  ) {
-    return this.discountCodesService.findAll(query.page, query.limit, filter);
+  findAll(@Query() query: DiscountCodeQueryDto) {
+    return this.discountCodesService.findAll(query.page, query.limit, query.filter);
   }
 
   @Get(':id')
