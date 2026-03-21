@@ -31,11 +31,11 @@ export class DiscountCodeResponseDto {
   @ApiProperty({ example: 20 })
   discountValue: number;
 
-  @ApiPropertyOptional({ example: 100 })
-  maxUses?: number;
+  @ApiPropertyOptional({ example: 100, nullable: true })
+  maxUses?: number | null;
 
-  @ApiProperty({ example: 1 })
-  maxUsesPerMember: number;
+  @ApiPropertyOptional({ example: 1, nullable: true })
+  maxUsesPerMember?: number | null;
 
   @ApiProperty({ example: 0 })
   currentUses: number;
@@ -147,11 +147,11 @@ class ValidateDiscountCodeInfoDto {
   @ApiProperty({ example: 20 })
   discountValue: number;
 
-  @ApiPropertyOptional({ example: 100 })
-  maxUses?: number;
+  @ApiPropertyOptional({ example: 100, nullable: true })
+  maxUses?: number | null;
 
-  @ApiProperty({ example: 1 })
-  maxUsesPerMember: number;
+  @ApiPropertyOptional({ example: 1, nullable: true })
+  maxUsesPerMember?: number | null;
 }
 
 export class ValidateDiscountCodeResponseDto {
