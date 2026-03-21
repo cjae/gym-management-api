@@ -9,4 +9,10 @@ export class LeaderboardMemberDto {
 
   @ApiProperty({ example: 'Doe' })
   lastName: string;
+
+  @ApiProperty({
+    example: 'https://res.cloudinary.com/example/image/upload/v1/avatar.jpg',
+    nullable: true,
+  })
+  displayPicture: string | null;
 }
