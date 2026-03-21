@@ -150,14 +150,14 @@ describe('BillingService', () => {
     });
   });
 
-  describe('processMpesaReminders', () => {
+  describe('processMobileMoneyReminders', () => {
     it('should send reminder 3 days before billing date', async () => {
       const threeDaysFromNow = new Date();
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
       const subscription = {
         id: 'sub-2',
-        paymentMethod: 'MPESA',
+        paymentMethod: 'MOBILE_MONEY',
         autoRenew: true,
         nextBillingDate: threeDaysFromNow,
         primaryMember: {
@@ -172,7 +172,7 @@ describe('BillingService', () => {
         subscription,
       ] as any);
 
-      await service.processMpesaReminders();
+      await service.processMobileMoneyReminders();
 
       expect(
         mockEmailService.sendSubscriptionReminderEmail,
@@ -194,7 +194,7 @@ describe('BillingService', () => {
 
       const subscription = {
         id: 'sub-3',
-        paymentMethod: 'MPESA',
+        paymentMethod: 'MOBILE_MONEY',
         autoRenew: true,
         nextBillingDate: yesterday,
         primaryMember: {

@@ -122,7 +122,7 @@ describe('AnalyticsService', () => {
         {
           amount: 3000,
           status: 'PAID',
-          paymentMethod: 'MPESA',
+          paymentMethod: 'MOBILE_MONEY',
           createdAt: new Date('2026-03-02T10:00:00Z'),
         },
         {
@@ -134,7 +134,7 @@ describe('AnalyticsService', () => {
         {
           amount: 1000,
           status: 'PENDING',
-          paymentMethod: 'MPESA',
+          paymentMethod: 'MOBILE_MONEY',
           createdAt: new Date('2026-02-15T10:00:00Z'),
         },
       ] as any);
@@ -150,14 +150,14 @@ describe('AnalyticsService', () => {
       expect(result.series[0].period).toBe('2026-02');
       expect(result.series[0].total).toBe(1000);
       expect(result.series[0].pending).toBe(1000);
-      expect(result.series[0].byMethod.mpesa).toBe(1000);
+      expect(result.series[0].byMethod.mobileMoney).toBe(1000);
       // March bucket
       expect(result.series[1].period).toBe('2026-03');
       expect(result.series[1].total).toBe(10000);
       expect(result.series[1].paid).toBe(8000);
       expect(result.series[1].failed).toBe(2000);
       expect(result.series[1].byMethod.card).toBe(7000);
-      expect(result.series[1].byMethod.mpesa).toBe(3000);
+      expect(result.series[1].byMethod.mobileMoney).toBe(3000);
     });
 
     it('should filter by paymentMethod when provided', async () => {
@@ -232,7 +232,7 @@ describe('AnalyticsService', () => {
           status: 'ACTIVE',
           createdAt: new Date('2026-03-02T10:00:00Z'),
           plan: { name: 'Premium' },
-          paymentMethod: 'MPESA',
+          paymentMethod: 'MOBILE_MONEY',
         },
         {
           status: 'CANCELLED',
@@ -244,7 +244,7 @@ describe('AnalyticsService', () => {
           status: 'EXPIRED',
           createdAt: new Date('2026-03-04T10:00:00Z'),
           plan: { name: 'Basic' },
-          paymentMethod: 'MPESA',
+          paymentMethod: 'MOBILE_MONEY',
         },
       ] as any);
 
@@ -262,7 +262,7 @@ describe('AnalyticsService', () => {
       expect(result.series[0].cancellations).toBe(1);
       expect(result.series[0].expirations).toBe(1);
       expect(result.byPlan).toEqual({ Basic: 1, Premium: 1 });
-      expect(result.byPaymentMethod).toEqual({ CARD: 1, MPESA: 1 });
+      expect(result.byPaymentMethod).toEqual({ CARD: 1, MOBILE_MONEY: 1 });
       // churnRate = (1 + 1) / (48 + 2) * 100 = 4
       expect(result.churnRate).toBe(4);
     });

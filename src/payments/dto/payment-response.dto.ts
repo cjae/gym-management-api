@@ -17,7 +17,7 @@ export class PaymentResponseDto {
   status: string;
 
   @ApiProperty({
-    enum: ['CARD', 'MPESA', 'MPESA_OFFLINE', 'BANK_TRANSFER', 'COMPLIMENTARY'],
+    enum: ['CARD', 'MOBILE_MONEY', 'OFFLINE', 'BANK_TRANSFER', 'COMPLIMENTARY'],
   })
   paymentMethod: string;
 

@@ -121,7 +121,7 @@ export class PaymentsService {
 
     if (
       subscription.paymentMethod !== 'CARD' &&
-      subscription.paymentMethod !== 'MPESA'
+      subscription.paymentMethod !== 'MOBILE_MONEY'
     ) {
       throw new BadRequestException(
         `Unsupported online payment method: ${subscription.paymentMethod}`,

@@ -34,7 +34,7 @@ const MAX_FILENAME_LENGTH = 255;
 const STALE_JOB_MINUTES = 30;
 const VALID_GENDERS = Object.values(Gender);
 const VALID_PAYMENT_METHODS: string[] = [
-  PaymentMethod.MPESA_OFFLINE,
+  PaymentMethod.OFFLINE,
   PaymentMethod.BANK_TRANSFER,
   PaymentMethod.COMPLIMENTARY,
 ];

@@ -7,12 +7,12 @@
  */
 
 const CARD_RATE = 0.029;
-const MPESA_RATE = 0.015;
+const MOBILE_MONEY_RATE = 0.015;
 
 export function addPaystackCommission(
   amount: number,
-  paymentMethod: 'CARD' | 'MPESA',
+  paymentMethod: 'CARD' | 'MOBILE_MONEY',
 ): number {
-  const rate = paymentMethod === 'CARD' ? CARD_RATE : MPESA_RATE;
+  const rate = paymentMethod === 'CARD' ? CARD_RATE : MOBILE_MONEY_RATE;
   return Math.ceil(amount * (1 + rate));
 }

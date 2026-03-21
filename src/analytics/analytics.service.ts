@@ -335,7 +335,7 @@ export class AnalyticsService {
         failed: number;
         pending: number;
         card: number;
-        mpesa: number;
+        mobileMoney: number;
       }
     >();
 
@@ -348,7 +348,7 @@ export class AnalyticsService {
           failed: 0,
           pending: 0,
           card: 0,
-          mpesa: 0,
+          mobileMoney: 0,
         });
       }
       const bucket = buckets.get(period)!;
@@ -359,8 +359,8 @@ export class AnalyticsService {
       else if (payment.status === 'PENDING') bucket.pending += payment.amount;
 
       if (payment.paymentMethod === 'CARD') bucket.card += payment.amount;
-      else if (payment.paymentMethod === 'MPESA')
-        bucket.mpesa += payment.amount;
+      else if (payment.paymentMethod === 'MOBILE_MONEY')
+        bucket.mobileMoney += payment.amount;
     }
 
     const series = Array.from(buckets.entries())
@@ -370,7 +370,7 @@ export class AnalyticsService {
         paid: data.paid,
         failed: data.failed,
         pending: data.pending,
-        byMethod: { card: data.card, mpesa: data.mpesa },
+        byMethod: { card: data.card, mobileMoney: data.mobileMoney },
       }))
       .sort((a, b) => a.period.localeCompare(b.period));
 

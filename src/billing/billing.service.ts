@@ -50,10 +50,10 @@ export class BillingService {
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Nairobi' })
-  async handleMpesaReminders() {
-    this.logger.log('Starting M-Pesa reminders');
-    await this.processMpesaReminders();
-    this.logger.log('M-Pesa reminders complete');
+  async handleMobileMoneyReminders() {
+    this.logger.log('Starting Mobile money reminders');
+    await this.processMobileMoneyReminders();
+    this.logger.log('Mobile money reminders complete');
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Africa/Nairobi' })
@@ -176,7 +176,7 @@ export class BillingService {
     }
   }
 
-  async processMpesaReminders() {
+  async processMobileMoneyReminders() {
     const now = new Date();
     const threeDaysFromNow = new Date();
     threeDaysFromNow.setDate(now.getDate() + 3);
@@ -186,7 +186,7 @@ export class BillingService {
       {
         where: {
           status: 'ACTIVE',
-          paymentMethod: 'MPESA',
+          paymentMethod: 'MOBILE_MONEY',
           autoRenew: true,
           nextBillingDate: { lte: threeDaysFromNow, gte: now },
         },
@@ -260,7 +260,7 @@ export class BillingService {
     const overdueSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         status: 'ACTIVE',
-        paymentMethod: 'MPESA',
+        paymentMethod: 'MOBILE_MONEY',
         nextBillingDate: { lt: now },
       },
       include: {

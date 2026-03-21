@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum MemberPaymentMethod {
   CARD = 'CARD',
-  MPESA = 'MPESA',
+  MOBILE_MONEY = 'MOBILE_MONEY',
 }
 
 export class CreateSubscriptionDto {
@@ -11,7 +11,7 @@ export class CreateSubscriptionDto {
   @IsString()
   planId: string;
 
-  @ApiProperty({ enum: MemberPaymentMethod, example: 'MPESA' })
+  @ApiProperty({ enum: MemberPaymentMethod, example: 'MOBILE_MONEY' })
   @IsEnum(MemberPaymentMethod)
   paymentMethod: MemberPaymentMethod;
 
