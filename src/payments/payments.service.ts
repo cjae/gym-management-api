@@ -119,9 +119,18 @@ export class PaymentsService {
       },
     });
 
+    if (
+      subscription.paymentMethod !== 'CARD' &&
+      subscription.paymentMethod !== 'MPESA'
+    ) {
+      throw new BadRequestException(
+        `Unsupported online payment method: ${subscription.paymentMethod}`,
+      );
+    }
+
     const chargeAmount = addPaystackCommission(
       effectiveAmount,
-      subscription.paymentMethod as 'CARD' | 'MPESA',
+      subscription.paymentMethod,
     );
 
     const channels =

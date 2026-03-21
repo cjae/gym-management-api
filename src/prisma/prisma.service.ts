@@ -7,6 +7,7 @@ import {
   DatabaseConfig,
   getDatabaseConfigName,
 } from '../common/config/database.config';
+import { AppConfig, getAppConfigName } from '../common/config/app.config';
 
 @Injectable()
 export class PrismaService
@@ -15,12 +16,16 @@ export class PrismaService
 {
   constructor(configService: ConfigService) {
     const { url } = configService.get<DatabaseConfig>(getDatabaseConfigName())!;
+    if (!url) {
+      throw new Error('Database URL is not configured');
+    }
+    const appConfig = configService.get<AppConfig>(getAppConfigName());
     const useSSL =
-      url?.includes('sslmode=') || process.env.NODE_ENV === 'production';
+      url.includes('sslmode=') || appConfig?.nodeEnv === 'production';
     // Strip sslmode from URL — pg treats sslmode=require as verify-full,
     // which rejects self-signed certs. We handle SSL explicitly instead.
     const cleanUrl = url
-      ?.replace(/[?&]sslmode=[^&]*/g, (match) =>
+      .replace(/[?&]sslmode=[^&]*/g, (match) =>
         match.startsWith('?') ? '?' : '',
       )
       .replace(/\?$/, '');
