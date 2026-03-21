@@ -31,6 +31,13 @@ import { DiscountCodesService } from './discount-codes.service';
 import { CreateDiscountCodeDto } from './dto/create-discount-code.dto';
 import { UpdateDiscountCodeDto } from './dto/update-discount-code.dto';
 import { ValidateDiscountCodeDto } from './dto/validate-discount-code.dto';
+import {
+  DiscountCodeResponseDto,
+  DiscountCodeDetailResponseDto,
+  PaginatedDiscountCodesResponseDto,
+  PaginatedRedemptionsResponseDto,
+  ValidateDiscountCodeResponseDto,
+} from './dto/discount-code-response.dto';
 
 @ApiTags('Discount Codes')
 @ApiBearerAuth()
@@ -43,7 +50,10 @@ export class DiscountCodesController {
 
   @Post()
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiCreatedResponse({ description: 'Discount code created' })
+  @ApiCreatedResponse({
+    description: 'Discount code created',
+    type: DiscountCodeResponseDto,
+  })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   create(@Body() dto: CreateDiscountCodeDto) {
     return this.discountCodesService.create(dto);
@@ -51,7 +61,10 @@ export class DiscountCodesController {
 
   @Get()
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ description: 'Paginated list of discount codes' })
+  @ApiOkResponse({
+    description: 'Paginated list of discount codes',
+    type: PaginatedDiscountCodesResponseDto,
+  })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   @ApiQuery({
     name: 'filter',
@@ -67,7 +80,10 @@ export class DiscountCodesController {
 
   @Get(':id')
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ description: 'Discount code details' })
+  @ApiOkResponse({
+    description: 'Discount code details',
+    type: DiscountCodeDetailResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -76,7 +92,10 @@ export class DiscountCodesController {
 
   @Patch(':id')
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ description: 'Discount code updated' })
+  @ApiOkResponse({
+    description: 'Discount code updated',
+    type: DiscountCodeResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   update(
@@ -88,7 +107,10 @@ export class DiscountCodesController {
 
   @Delete(':id')
   @Roles('SUPER_ADMIN')
-  @ApiOkResponse({ description: 'Discount code deactivated' })
+  @ApiOkResponse({
+    description: 'Discount code deactivated',
+    type: DiscountCodeResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
   deactivate(@Param('id', ParseUUIDPipe) id: string) {
@@ -97,7 +119,10 @@ export class DiscountCodesController {
 
   @Get(':id/redemptions')
   @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOkResponse({ description: 'Paginated list of redemptions' })
+  @ApiOkResponse({
+    description: 'Paginated list of redemptions',
+    type: PaginatedRedemptionsResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Discount code not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   getRedemptions(
@@ -113,7 +138,10 @@ export class DiscountCodesController {
 
   @Post('validate')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOkResponse({ description: 'Discount code validation result' })
+  @ApiOkResponse({
+    description: 'Discount code validation result',
+    type: ValidateDiscountCodeResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Discount code or plan not found' })
   validate(
     @Body() dto: ValidateDiscountCodeDto,
