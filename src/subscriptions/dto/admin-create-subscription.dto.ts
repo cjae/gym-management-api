@@ -10,7 +10,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum AdminPaymentMethod {
-  MPESA_OFFLINE = 'MPESA_OFFLINE',
+  OFFLINE = 'OFFLINE',
   BANK_TRANSFER = 'BANK_TRANSFER',
   COMPLIMENTARY = 'COMPLIMENTARY',
 }
@@ -26,7 +26,7 @@ export class AdminCreateSubscriptionDto {
 
   @ApiProperty({
     enum: AdminPaymentMethod,
-    example: 'MPESA_OFFLINE',
+    example: 'OFFLINE',
     description: 'Only offline payment methods allowed',
   })
   @IsEnum(AdminPaymentMethod)
@@ -36,7 +36,7 @@ export class AdminCreateSubscriptionDto {
     example: 'QWERTY123',
     maxLength: 200,
     description:
-      'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Required for MPESA_OFFLINE and BANK_TRANSFER.',
+      'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Required for OFFLINE and BANK_TRANSFER.',
   })
   @ValidateIf(
     (o: AdminCreateSubscriptionDto) =>

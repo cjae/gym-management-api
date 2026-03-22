@@ -79,12 +79,12 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'user-1',
         planId: 'plan-1',
         status: 'PENDING',
-        paymentMethod: 'MPESA',
+        paymentMethod: 'MOBILE_MONEY',
       } as any);
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: MemberPaymentMethod.MPESA,
+        paymentMethod: MemberPaymentMethod.MOBILE_MONEY,
       });
 
       expect(result.status).toBe('PENDING');
@@ -114,12 +114,12 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'user-1',
         planId: 'plan-1',
         status: 'PENDING',
-        paymentMethod: 'MPESA',
+        paymentMethod: 'MOBILE_MONEY',
       } as any);
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: MemberPaymentMethod.MPESA,
+        paymentMethod: MemberPaymentMethod.MOBILE_MONEY,
       });
 
       expect(result.id).toBe('pending-sub-1');
@@ -143,7 +143,7 @@ describe('SubscriptionsService', () => {
       await expect(
         service.create('user-1', {
           planId: 'plan-1',
-          paymentMethod: MemberPaymentMethod.MPESA,
+          paymentMethod: MemberPaymentMethod.MOBILE_MONEY,
         }),
       ).rejects.toThrow('Subscription plan is not active');
     });
@@ -157,7 +157,7 @@ describe('SubscriptionsService', () => {
       await expect(
         service.create('user-1', {
           planId: 'plan-1',
-          paymentMethod: MemberPaymentMethod.MPESA,
+          paymentMethod: MemberPaymentMethod.MOBILE_MONEY,
         }),
       ).rejects.toThrow('Member already has an active subscription');
     });
@@ -455,7 +455,7 @@ describe('SubscriptionsService', () => {
     const baseDto = {
       memberId: 'member-1',
       planId: 'plan-1',
-      paymentMethod: AdminPaymentMethod.MPESA_OFFLINE,
+      paymentMethod: AdminPaymentMethod.OFFLINE,
       paymentReference: 'MPESA-TXN-ABC123',
     };
 
@@ -476,7 +476,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'MPESA_OFFLINE',
+        paymentMethod: 'OFFLINE',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -501,7 +501,7 @@ describe('SubscriptionsService', () => {
           data: expect.objectContaining({
             amount: 5000,
             status: 'PAID',
-            paymentMethod: 'MPESA_OFFLINE',
+            paymentMethod: 'OFFLINE',
             paystackReference: 'MPESA-TXN-ABC123',
           }),
         }),
@@ -531,7 +531,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'MPESA_OFFLINE',
+        paymentMethod: 'OFFLINE',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -705,7 +705,7 @@ describe('SubscriptionsService', () => {
 
       const result = await service.create('user-1', {
         planId: 'plan-1',
-        paymentMethod: MemberPaymentMethod.MPESA,
+        paymentMethod: MemberPaymentMethod.MOBILE_MONEY,
         discountCode: 'SAVE20',
       });
 
@@ -778,7 +778,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'MPESA_OFFLINE',
+        paymentMethod: 'OFFLINE',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
         discountCodeId: 'dc-1',
@@ -789,7 +789,7 @@ describe('SubscriptionsService', () => {
       const result = await service.adminCreate(adminId, {
         memberId: 'member-1',
         planId: 'plan-1',
-        paymentMethod: AdminPaymentMethod.MPESA_OFFLINE,
+        paymentMethod: AdminPaymentMethod.OFFLINE,
         paymentReference: 'REF-123',
         discountCode: 'SAVE20',
       });

@@ -45,8 +45,8 @@ enum BillingInterval {
 
 enum PaymentMethod {
   CARD
-  MPESA
-  MPESA_OFFLINE
+  MOBILE_MONEY
+  OFFLINE
   BANK_TRANSFER
   COMPLIMENTARY
 }
@@ -178,7 +178,7 @@ model MemberSubscription {
   startDate                 DateTime
   endDate                   DateTime
   status                    SubscriptionStatus @default(ACTIVE)
-  paymentMethod             PaymentMethod      @default(MPESA)
+  paymentMethod             PaymentMethod      @default(MOBILE_MONEY)
   paystackAuthorizationCode String?
   autoRenew                 Boolean            @default(true)
   nextBillingDate           DateTime?

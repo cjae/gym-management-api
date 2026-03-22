@@ -25,7 +25,7 @@ export class SubscriptionTrendsResponseDto {
   byPlan: Record<string, number>;
 
   @ApiProperty({
-    example: { MPESA: 60, CARD: 30 },
+    example: { MOBILE_MONEY: 60, CARD: 30 },
     description: 'Active subscription count by payment method',
   })
   byPaymentMethod: Record<string, number>;

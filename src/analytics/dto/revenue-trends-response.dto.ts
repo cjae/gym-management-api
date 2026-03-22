@@ -5,7 +5,7 @@ class RevenueByMethodDto {
   card: number;
 
   @ApiProperty({ example: 180000 })
-  mpesa: number;
+  mobileMoney: number;
 }
 
 class RevenuePeriodDto {

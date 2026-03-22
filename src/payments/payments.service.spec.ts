@@ -72,7 +72,7 @@ describe('PaymentsService', () => {
     const mockSubscription = {
       id: subscriptionId,
       primaryMemberId: userId,
-      paymentMethod: 'MPESA',
+      paymentMethod: 'MOBILE_MONEY',
       plan: { price: 2500 },
     };
 
@@ -174,7 +174,7 @@ describe('PaymentsService', () => {
       );
     });
 
-    it('should send mobile_money channel and M-Pesa commission for MPESA payment method', async () => {
+    it('should send mobile_money channel and M-Pesa commission for MOBILE_MONEY payment method', async () => {
       prisma.payment.findFirst.mockResolvedValue(null);
 
       await service.initializePayment(subscriptionId, email, userId);
