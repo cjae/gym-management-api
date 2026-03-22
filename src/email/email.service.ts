@@ -26,6 +26,9 @@ export class EmailService {
       this.mailgunClient = mailgun.client({
         username: 'api',
         key: this.mailConfig.apiKey,
+        ...(this.mailConfig.region === 'eu' && {
+          url: 'https://api.eu.mailgun.net',
+        }),
       });
     } else {
       this.mailgunClient = null;
@@ -154,6 +157,21 @@ export class EmailService {
       tempPassword,
       loginUrl: this.adminUrl,
     });
+  }
+
+  async sendSelfRegistrationWelcomeEmail(
+    to: string,
+    firstName: string,
+  ): Promise<void> {
+    await this.sendEmail(
+      to,
+      'Welcome — Thanks for Signing Up!',
+      'welcome-self-registered',
+      {
+        firstName,
+        loginUrl: this.adminUrl,
+      },
+    );
   }
 
   async sendBirthdayEmail(to: string, firstName: string): Promise<void> {

@@ -112,6 +112,12 @@ export class AuthService {
           metadata: { memberId: user.id },
         });
 
+        this.emailService
+          .sendSelfRegistrationWelcomeEmail(user.email, user.firstName)
+          .catch(() => {
+            // Non-blocking — don't fail registration if email fails
+          });
+
         return this.generateTokens(user.id, user.email, user.role, false);
       } catch (error: unknown) {
         if (

@@ -67,7 +67,11 @@ export class DiscountCodesController {
   })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   findAll(@Query() query: DiscountCodeQueryDto) {
-    return this.discountCodesService.findAll(query.page, query.limit, query.filter);
+    return this.discountCodesService.findAll(
+      query.page,
+      query.limit,
+      query.filter,
+    );
   }
 
   @Get(':id')
