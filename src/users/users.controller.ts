@@ -23,6 +23,7 @@ import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersQueryDto } from './dto/users-query.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -68,6 +69,14 @@ export class UsersController {
   })
   findBirthdays() {
     return this.usersService.findBirthdays();
+  }
+
+  @Get(':id/profile')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'TRAINER', 'MEMBER')
+  @ApiOkResponse({ type: UserProfileResponseDto })
+  @ApiNotFoundResponse({ description: 'User not found' })
+  findProfile(@Param('id') id: string) {
+    return this.usersService.findProfile(id);
   }
 
   @Get(':id')
