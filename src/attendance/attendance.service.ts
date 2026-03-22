@@ -395,7 +395,12 @@ export class AttendanceService {
         take: limit,
         include: {
           member: {
-            select: { id: true, firstName: true, lastName: true, displayPicture: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              displayPicture: true,
+            },
           },
         },
       }),

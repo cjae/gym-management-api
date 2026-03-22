@@ -64,7 +64,11 @@ export class AnalyticsController {
     description:
       'Time-series revenue data grouped by granularity. Each period includes total, paid, failed, pending amounts and breakdown by payment method.',
   })
-  @ApiQuery({ name: 'paymentMethod', required: false, enum: ['CARD', 'MOBILE_MONEY'] })
+  @ApiQuery({
+    name: 'paymentMethod',
+    required: false,
+    enum: ['CARD', 'MOBILE_MONEY'],
+  })
   @ApiOkResponse({ type: RevenueTrendsResponseDto })
   getRevenue(
     @Query() query: AnalyticsQueryDto,
