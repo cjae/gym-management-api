@@ -10,6 +10,9 @@ export class UserProfileResponseDto {
   @ApiProperty({ example: 'Doe' })
   lastName: string;
 
+  @ApiProperty({ example: 'john.doe@example.com' })
+  email: string;
+
   @ApiProperty({ enum: ['SUPER_ADMIN', 'ADMIN', 'TRAINER', 'MEMBER'] })
   role: string;
 
