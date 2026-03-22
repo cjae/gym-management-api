@@ -163,6 +163,23 @@ export class UsersService {
     return { data, total, page, limit };
   }
 
+  async findProfile(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        displayPicture: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
