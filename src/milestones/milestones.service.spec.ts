@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
-import { PrismaClient, NotificationType } from '@prisma/client';
+import { PrismaClient, NotificationType, Prisma } from '@prisma/client';
 import { MilestonesService } from './milestones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -163,9 +163,12 @@ describe('MilestonesService', () => {
   describe('dedup', () => {
     it('should skip notification when milestone already recorded', async () => {
       const payload = { ...basePayload, weeklyStreak: 4 };
-      prisma.milestoneNotification.create.mockRejectedValue({
-        code: 'P2002',
-      });
+      prisma.milestoneNotification.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '6.0.0',
+        }),
+      );
 
       await service.handleStreakUpdated(payload);
 

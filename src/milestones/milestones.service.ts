@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -120,8 +120,12 @@ export class MilestonesService {
       await this.prisma.milestoneNotification.create({
         data: { memberId, milestoneType, milestoneValue },
       });
-    } catch (err: any) {
-      if (err?.code === 'P2002') return; // Already recorded — skip
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      )
+        return; // Already recorded — skip
       throw err;
     }
 
