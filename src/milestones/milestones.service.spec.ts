@@ -140,26 +140,6 @@ describe('MilestonesService', () => {
     });
   });
 
-  describe('best week', () => {
-    it('should send notification when daysThisWeek exceeds previousBestWeek', async () => {
-      const payload = {
-        ...basePayload,
-        daysThisWeek: 5,
-        previousBestWeek: 4,
-      };
-      prisma.milestoneNotification.create.mockResolvedValue({} as any);
-
-      await service.handleStreakUpdated(payload);
-
-      expect(notificationsService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Personal best week!',
-          type: NotificationType.MILESTONE,
-        }),
-      );
-    });
-  });
-
   describe('dedup', () => {
     it('should skip notification when milestone already recorded', async () => {
       const payload = { ...basePayload, weeklyStreak: 4 };

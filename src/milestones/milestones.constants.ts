@@ -73,7 +73,6 @@ export type MilestoneType =
   | 'WEEKLY_STREAK'
   | 'TOTAL_CHECKINS'
   | 'FIRST_CHECKIN'
-  | 'BEST_WEEK'
   | 'LONGEST_STREAK';
 
 export interface StreakUpdatedPayload {
