@@ -33,7 +33,7 @@ describe('MilestonesService', () => {
     longestStreak: 0,
     previousLongestStreak: 0,
     daysThisWeek: 1,
-    previousBestWeek: 0,
+    previousBestWeek: 1,
     totalCheckIns: 1,
     isFirstCheckIn: false,
   };

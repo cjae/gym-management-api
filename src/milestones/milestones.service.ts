@@ -96,10 +96,7 @@ export class MilestonesService {
     }
 
     // Best week
-    if (
-      payload.daysThisWeek > payload.previousBestWeek &&
-      payload.previousBestWeek > 0
-    ) {
+    if (payload.daysThisWeek > payload.previousBestWeek) {
       milestones.push({
         type: 'BEST_WEEK',
         value: payload.daysThisWeek,
