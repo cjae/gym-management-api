@@ -30,7 +30,7 @@ export class CheckInResponseDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'True when this is the member's very first check-in',
+    description: "True when this is the member's very first check-in",
   })
   isFirstCheckIn?: boolean;
 
