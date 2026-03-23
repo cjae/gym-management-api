@@ -385,20 +385,39 @@ describe('AttendanceService', () => {
   });
 
   it('should emit streak.updated event on successful check-in', async () => {
-    prisma.gymQrCode.findFirst.mockResolvedValue({ id: '1', code: 'valid', isActive: true, expiresAt: null, createdAt: new Date() });
+    prisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+      isActive: true,
+      expiresAt: null,
+      createdAt: new Date(),
+    });
     prisma.subscriptionMember.findFirst.mockResolvedValue({
       memberId: 'member-1',
-      subscription: { status: 'ACTIVE', endDate: new Date(Date.now() + 86400000), plan: { isOffPeak: false } },
+      subscription: {
+        status: 'ACTIVE',
+        endDate: new Date(Date.now() + 86400000),
+        plan: { isOffPeak: false },
+      },
     } as any);
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({} as any);
     prisma.user.findUnique.mockResolvedValue({
-      id: 'member-1', firstName: 'John', lastName: 'Doe', displayPicture: null,
+      id: 'member-1',
+      firstName: 'John',
+      lastName: 'Doe',
+      displayPicture: null,
     } as any);
     prisma.streak.findUnique.mockResolvedValue(null);
     prisma.streak.upsert.mockResolvedValue({
-      id: 's1', memberId: 'member-1', weeklyStreak: 0, longestStreak: 0,
-      daysThisWeek: 1, bestWeek: 1, weekStart: currentMonday, lastCheckInDate: today,
+      id: 's1',
+      memberId: 'member-1',
+      weeklyStreak: 0,
+      longestStreak: 0,
+      daysThisWeek: 1,
+      bestWeek: 1,
+      weekStart: currentMonday,
+      lastCheckInDate: today,
     } as any);
     prisma.attendance.count.mockResolvedValue(1);
 
