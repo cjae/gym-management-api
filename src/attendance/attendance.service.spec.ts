@@ -21,7 +21,9 @@ function getMondayOfWeek(date: Date): Date {
 
 /** Current calendar date in the given timezone as a UTC-midnight Date. */
 function getToday(timezone: string): Date {
-  const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
+  const dateStr = new Date().toLocaleDateString('en-CA', {
+    timeZone: timezone,
+  });
   return new Date(dateStr + 'T00:00:00Z');
 }
 

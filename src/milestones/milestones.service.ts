@@ -8,7 +8,10 @@ import {
   CHECKIN_MILESTONES,
   FIRST_CHECKIN,
 } from './milestones.constants';
-import type { StreakUpdatedPayload, MilestoneType } from './milestones.constants';
+import type {
+  StreakUpdatedPayload,
+  MilestoneType,
+} from './milestones.constants';
 
 @Injectable()
 export class MilestonesService {
