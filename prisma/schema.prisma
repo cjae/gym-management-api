@@ -73,6 +73,7 @@ enum NotificationType {
   REFERRAL_REWARD
   CLASS_UPDATE
   EVENT_UPDATE
+  MILESTONE
 }
 
 enum AuditAction {
@@ -150,6 +151,7 @@ model User {
   referralReceived           Referral?            @relation("ReferredReferral")
   importJobs                 ImportJob[]
   discountRedemptions        DiscountRedemption[] @relation("UserDiscountRedemptions")
+  milestoneNotifications     MilestoneNotification[]
 }
 
 model SubscriptionPlan {
@@ -234,10 +236,23 @@ model Streak {
   weeklyStreak    Int       @default(0)
   longestStreak   Int       @default(0)
   daysThisWeek    Int       @default(0)
+  bestWeek        Int       @default(0)
   weekStart       DateTime  @db.Date
   lastCheckInDate DateTime? @db.Date
 
   member User @relation(fields: [memberId], references: [id])
+}
+
+model MilestoneNotification {
+  id             String   @id @default(uuid())
+  memberId       String
+  milestoneType  String
+  milestoneValue Int
+  createdAt      DateTime @default(now())
+
+  member User @relation(fields: [memberId], references: [id])
+
+  @@unique([memberId, milestoneType, milestoneValue])
 }
 
 model TrainerProfile {
