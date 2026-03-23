@@ -112,8 +112,10 @@ describe('AttendanceService', () => {
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
+      bestWeek: 1,
       weekStart: currentMonday,
     } as any);
+    prisma.attendance.count.mockResolvedValue(1);
 
     const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -212,8 +214,10 @@ describe('AttendanceService', () => {
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
+      bestWeek: 1,
       weekStart: currentMonday,
     } as any);
+    prisma.attendance.count.mockResolvedValue(1);
 
     await service.checkIn('member-1', { qrCode: `valid:${entranceId}` });
 
@@ -280,8 +284,10 @@ describe('AttendanceService', () => {
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
+      bestWeek: 1,
       weekStart: currentMonday,
     } as any);
+    prisma.attendance.count.mockResolvedValue(1);
 
     await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -367,13 +373,45 @@ describe('AttendanceService', () => {
       weeklyStreak: 0,
       longestStreak: 0,
       daysThisWeek: 1,
+      bestWeek: 1,
       weekStart: new Date(),
     } as any);
+    prisma.attendance.count.mockResolvedValue(1);
 
     const result = await service.checkIn('member-1', { qrCode: 'valid' });
     expect(result.alreadyCheckedIn).toBe(false);
 
     jest.useRealTimers();
+  });
+
+  it('should emit streak.updated event on successful check-in', async () => {
+    prisma.gymQrCode.findFirst.mockResolvedValue({ id: '1', code: 'valid', isActive: true, expiresAt: null, createdAt: new Date() });
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
+      memberId: 'member-1',
+      subscription: { status: 'ACTIVE', endDate: new Date(Date.now() + 86400000), plan: { isOffPeak: false } },
+    } as any);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({} as any);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'member-1', firstName: 'John', lastName: 'Doe', displayPicture: null,
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue(null);
+    prisma.streak.upsert.mockResolvedValue({
+      id: 's1', memberId: 'member-1', weeklyStreak: 0, longestStreak: 0,
+      daysThisWeek: 1, bestWeek: 1, weekStart: currentMonday, lastCheckInDate: today,
+    } as any);
+    prisma.attendance.count.mockResolvedValue(1);
+
+    await service.checkIn('member-1', { qrCode: 'valid' });
+
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+      'streak.updated',
+      expect.objectContaining({
+        memberId: 'member-1',
+        isFirstCheckIn: true,
+        totalCheckIns: 1,
+      }),
+    );
   });
 
   describe('weekly streak logic', () => {
@@ -413,8 +451,10 @@ describe('AttendanceService', () => {
         weeklyStreak: 3,
         longestStreak: 5,
         daysThisWeek: 3,
+        bestWeek: 3,
         weekStart: currentMonday,
       } as any);
+      prisma.attendance.count.mockResolvedValue(10);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -444,8 +484,10 @@ describe('AttendanceService', () => {
         weeklyStreak: 3,
         longestStreak: 5,
         daysThisWeek: 1,
+        bestWeek: 4,
         weekStart: currentMonday,
       } as any);
+      prisma.attendance.count.mockResolvedValue(15);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -474,8 +516,10 @@ describe('AttendanceService', () => {
         weeklyStreak: 0,
         longestStreak: 5,
         daysThisWeek: 1,
+        bestWeek: 3,
         weekStart: currentMonday,
       } as any);
+      prisma.attendance.count.mockResolvedValue(20);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
@@ -504,8 +548,10 @@ describe('AttendanceService', () => {
         weeklyStreak: 0,
         longestStreak: 8,
         daysThisWeek: 1,
+        bestWeek: 5,
         weekStart: currentMonday,
       } as any);
+      prisma.attendance.count.mockResolvedValue(30);
 
       const result = await service.checkIn('member-1', { qrCode: 'valid' });
 
