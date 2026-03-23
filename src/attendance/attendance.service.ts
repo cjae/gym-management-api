@@ -185,6 +185,23 @@ export class AttendanceService {
         .catch(() => {}); // Fire and forget
     }
 
+    // 6. Emit streak update for milestone evaluation (async, non-blocking)
+    const totalCheckIns = await this.prisma.attendance.count({
+      where: { memberId },
+    });
+    const isFirstCheckIn = totalCheckIns === 1;
+
+    this.eventEmitter.emit('streak.updated', {
+      memberId,
+      weeklyStreak: streak.weeklyStreak,
+      longestStreak: streak.longestStreak,
+      previousLongestStreak: streak.previousLongestStreak,
+      daysThisWeek: streak.daysThisWeek,
+      previousBestWeek: streak.previousBestWeek,
+      totalCheckIns,
+      isFirstCheckIn,
+    });
+
     this.eventEmitter.emit('check_in.result', {
       type: 'check_in_result',
       member: {
@@ -319,6 +336,9 @@ export class AttendanceService {
       where: { memberId },
     });
 
+    const previousLongestStreak = existingStreak?.longestStreak ?? 0;
+    const previousBestWeek = existingStreak?.bestWeek ?? 0;
+
     let weeklyStreak = 0;
     let longestStreak = 0;
     let daysThisWeek = 1;
@@ -347,13 +367,16 @@ export class AttendanceService {
       longestStreak = Math.max(weeklyStreak, existingStreak.longestStreak);
     }
 
-    return this.prisma.streak.upsert({
+    const bestWeek = Math.max(daysThisWeek, previousBestWeek);
+
+    const streak = await this.prisma.streak.upsert({
       where: { memberId },
       create: {
         memberId,
         weeklyStreak,
         longestStreak,
         daysThisWeek,
+        bestWeek,
         weekStart,
         lastCheckInDate: today,
       },
@@ -361,10 +384,13 @@ export class AttendanceService {
         weeklyStreak,
         longestStreak,
         daysThisWeek,
+        bestWeek,
         weekStart,
         lastCheckInDate: today,
       },
     });
+
+    return { ...streak, previousLongestStreak, previousBestWeek };
   }
 
   async getHistory(memberId: string) {
