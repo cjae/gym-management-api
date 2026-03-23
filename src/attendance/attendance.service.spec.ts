@@ -9,14 +9,20 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
-/** Return Monday 00:00 for the week containing `date`. */
+/** Return Monday 00:00 UTC for the week containing `date`. */
 function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
-  const day = d.getDay();
+  const day = d.getUTCDay();
   const diff = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - diff);
-  d.setHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - diff);
+  d.setUTCHours(0, 0, 0, 0);
   return d;
+}
+
+/** Current calendar date in the given timezone as a UTC-midnight Date. */
+function getToday(timezone: string): Date {
+  const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
+  return new Date(dateStr + 'T00:00:00Z');
 }
 
 describe('AttendanceService', () => {
@@ -29,8 +35,7 @@ describe('AttendanceService', () => {
     create: jest.fn().mockResolvedValue({}),
   };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = getToday('Africa/Nairobi');
   const currentMonday = getMondayOfWeek(today);
 
   beforeEach(async () => {
@@ -42,13 +47,19 @@ describe('AttendanceService', () => {
         { provide: NotificationsService, useValue: mockNotificationsService },
         {
           provide: GymSettingsService,
-          useValue: { getCachedSettings: jest.fn().mockResolvedValue(null) },
+          useValue: {
+            getCachedSettings: jest
+              .fn()
+              .mockResolvedValue({ timezone: 'Africa/Nairobi' }),
+          },
         },
       ],
     }).compile();
     service = module.get<AttendanceService>(AttendanceService);
     prisma = module.get(PrismaService);
     jest.clearAllMocks();
+    // Make $transaction execute the callback with the same prisma mock
+    prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
   });
 
   it('should reject invalid QR code', async () => {
@@ -581,6 +592,42 @@ describe('AttendanceService', () => {
       );
       expect(result.weeklyStreak).toBe(0);
       expect(result.longestStreak).toBe(8);
+    });
+  });
+
+  describe('getStreak', () => {
+    it('should return streak record when it exists', async () => {
+      const streakRecord = {
+        id: 's1',
+        memberId: 'member-1',
+        weeklyStreak: 3,
+        longestStreak: 5,
+        daysThisWeek: 2,
+        bestWeek: 4,
+        weekStart: currentMonday,
+        lastCheckInDate: today,
+      };
+      prisma.streak.findUnique.mockResolvedValue(streakRecord as any);
+
+      const result = await service.getStreak('member-1');
+
+      expect(result).toEqual(streakRecord);
+    });
+
+    it('should return default fields when no streak exists', async () => {
+      prisma.streak.findUnique.mockResolvedValue(null);
+
+      const result = await service.getStreak('member-1');
+
+      expect(result).toEqual({
+        memberId: 'member-1',
+        weeklyStreak: 0,
+        longestStreak: 0,
+        daysThisWeek: 0,
+        bestWeek: 0,
+        weekStart: null,
+        lastCheckInDate: null,
+      });
     });
   });
 });

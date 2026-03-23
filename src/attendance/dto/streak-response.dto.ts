@@ -22,6 +22,9 @@ export class StreakResponseDto {
   })
   daysThisWeek: number;
 
+  @ApiProperty({ example: 5, description: 'Most check-ins in a single week' })
+  bestWeek: number;
+
   @ApiProperty({ description: 'Monday of the current tracking week' })
   weekStart: Date;
 

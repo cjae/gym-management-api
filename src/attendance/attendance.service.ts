@@ -4,14 +4,17 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { CheckInDto } from './dto/check-in.dto';
 
+type TxClient = Prisma.TransactionClient;
+
 @Injectable()
 export class AttendanceService {
+  private static readonly DEFAULT_TIMEZONE = 'Africa/Nairobi';
   private readonly DAYS_REQUIRED_PER_WEEK = 4;
 
   constructor(
@@ -20,6 +23,20 @@ export class AttendanceService {
     private readonly notificationsService: NotificationsService,
     private readonly gymSettingsService: GymSettingsService,
   ) {}
+
+  /** Get the gym's configured timezone, falling back to Africa/Nairobi. */
+  private async getTimezone(): Promise<string> {
+    const settings = await this.gymSettingsService.getCachedSettings();
+    return settings?.timezone ?? AttendanceService.DEFAULT_TIMEZONE;
+  }
+
+  /** Current calendar date in the given timezone as a UTC-midnight Date. */
+  private getToday(timezone: string): Date {
+    const dateStr = new Date().toLocaleDateString('en-CA', {
+      timeZone: timezone,
+    });
+    return new Date(dateStr + 'T00:00:00Z');
+  }
 
   async checkIn(memberId: string, dto: CheckInDto) {
     // 1. Parse QR payload — format: "code" or "code:entranceId"
@@ -101,8 +118,8 @@ export class AttendanceService {
     }
 
     // 3. Record attendance (idempotent per day)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const timezone = await this.getTimezone();
+    const today = this.getToday(timezone);
 
     const existing = await this.prisma.attendance.findUnique({
       where: { memberId_checkInDate: { memberId, checkInDate: today } },
@@ -144,9 +161,25 @@ export class AttendanceService {
       };
     }
 
-    await this.prisma.attendance.create({
-      data: { memberId, checkInDate: today, entranceId },
-    });
+    // 3b. Atomic: create attendance + update streak + count check-ins
+    const { streak, totalCheckIns, isFirstCheckIn } =
+      await this.prisma.$transaction(async (tx) => {
+        await tx.attendance.create({
+          data: { memberId, checkInDate: today, entranceId },
+        });
+
+        const txStreak = await this.updateStreak(memberId, today, tx);
+
+        const txTotalCheckIns = await tx.attendance.count({
+          where: { memberId },
+        });
+
+        return {
+          streak: txStreak,
+          totalCheckIns: txTotalCheckIns,
+          isFirstCheckIn: txTotalCheckIns === 1,
+        };
+      });
 
     // 4. Emit activity event
     const member = await this.prisma.user.findUnique({
@@ -166,11 +199,11 @@ export class AttendanceService {
       metadata: { memberId },
     });
 
-    // 5. Update streak
-    const streak = await this.updateStreak(memberId, today);
-
-    // Streak nudge: "One more day this week!"
-    if (streak.daysThisWeek === this.DAYS_REQUIRED_PER_WEEK - 1) {
+    // 5. Streak nudge: "One more day this week!" (only if they have a streak to keep)
+    if (
+      streak.daysThisWeek === this.DAYS_REQUIRED_PER_WEEK - 1 &&
+      streak.weeklyStreak > 0
+    ) {
       this.notificationsService
         .create({
           userId: memberId,
@@ -184,12 +217,6 @@ export class AttendanceService {
         })
         .catch(() => {}); // Fire and forget
     }
-
-    // 6. Emit streak update for milestone evaluation (async, non-blocking)
-    const totalCheckIns = await this.prisma.attendance.count({
-      where: { memberId },
-    });
-    const isFirstCheckIn = totalCheckIns === 1;
 
     this.eventEmitter.emit('streak.updated', {
       memberId,
@@ -323,16 +350,20 @@ export class AttendanceService {
 
   private getMondayOfWeek(date: Date): Date {
     const d = new Date(date);
-    const day = d.getDay(); // 0=Sun, 1=Mon, ...
+    const day = d.getUTCDay(); // 0=Sun, 1=Mon, ...
     const diff = day === 0 ? 6 : day - 1; // days since Monday
-    d.setDate(d.getDate() - diff);
-    d.setHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() - diff);
+    d.setUTCHours(0, 0, 0, 0);
     return d;
   }
 
-  private async updateStreak(memberId: string, today: Date) {
+  private async updateStreak(
+    memberId: string,
+    today: Date,
+    tx: TxClient = this.prisma,
+  ) {
     const currentMonday = this.getMondayOfWeek(today);
-    const existingStreak = await this.prisma.streak.findUnique({
+    const existingStreak = await tx.streak.findUnique({
       where: { memberId },
     });
 
@@ -353,7 +384,7 @@ export class AttendanceService {
         weeklyStreak = existingStreak.weeklyStreak;
       } else {
         const diffMs = currentMonday.getTime() - prevWeekStart.getTime();
-        const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+        const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
 
         if (
           diffWeeks === 1 &&
@@ -369,7 +400,7 @@ export class AttendanceService {
 
     const bestWeek = Math.max(daysThisWeek, previousBestWeek);
 
-    const streak = await this.prisma.streak.upsert({
+    const streak = await tx.streak.upsert({
       where: { memberId },
       create: {
         memberId,
@@ -406,9 +437,12 @@ export class AttendanceService {
     return (
       streak ?? {
         memberId,
-        currentStreak: 0,
+        weeklyStreak: 0,
         longestStreak: 0,
-        lastCheckIn: null,
+        daysThisWeek: 0,
+        bestWeek: 0,
+        weekStart: null,
+        lastCheckInDate: null,
       }
     );
   }
@@ -436,8 +470,8 @@ export class AttendanceService {
   }
 
   async getTodayAttendance(page = 1, limit = 20, search?: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const timezone = await this.getTimezone();
+    const today = this.getToday(timezone);
     const where: {
       checkInDate: Date;
       member?: {
