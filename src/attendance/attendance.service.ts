@@ -250,6 +250,8 @@ export class AttendanceService {
       longestStreak: streak.longestStreak,
       daysThisWeek: streak.daysThisWeek,
       daysRequired: this.DAYS_REQUIRED_PER_WEEK,
+      isFirstCheckIn,
+      isNewStreakRecord: streak.longestStreak > streak.previousLongestStreak,
     };
   }
 

@@ -27,4 +27,16 @@ export class CheckInResponseDto {
     description: 'Check-ins required per week',
   })
   daysRequired?: number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'True when this is the member's very first check-in',
+  })
+  isFirstCheckIn?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'True when this check-in resulted in a new longest streak record',
+  })
+  isNewStreakRecord?: boolean;
 }
