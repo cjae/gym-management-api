@@ -36,6 +36,7 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
 import { ImportsModule } from './imports/imports.module';
 import { DiscountCodesModule } from './discount-codes/discount-codes.module';
+import { MilestonesModule } from './milestones/milestones.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { DiscountCodesModule } from './discount-codes/discount-codes.module';
     ReferralsModule,
     ImportsModule,
     DiscountCodesModule,
+    MilestonesModule,
   ],
   controllers: [AppController],
   providers: [
