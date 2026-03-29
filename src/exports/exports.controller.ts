@@ -1,5 +1,5 @@
 import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -98,7 +98,8 @@ export class ExportsController {
     @Res() res: Response,
   ) {
     const format = query.format || ExportFormat.CSV;
-    const { format: _, ...filters } = query;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { format: _format, ...filters } = query;
     const data = await this.exportsService.getMembers(filters);
     const buffer = await this.formatData(
       data,
@@ -116,7 +117,8 @@ export class ExportsController {
     @Res() res: Response,
   ) {
     const format = query.format || ExportFormat.CSV;
-    const { format: _, ...filters } = query;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { format: _format, ...filters } = query;
     const data = await this.exportsService.getPayments(filters);
     const buffer = await this.formatData(
       data,
@@ -134,7 +136,8 @@ export class ExportsController {
     @Res() res: Response,
   ) {
     const format = query.format || ExportFormat.CSV;
-    const { format: _, ...filters } = query;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { format: _format, ...filters } = query;
     const data = await this.exportsService.getSubscriptions(filters);
     const buffer = await this.formatData(
       data,

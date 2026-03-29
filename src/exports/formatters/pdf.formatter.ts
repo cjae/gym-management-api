@@ -45,7 +45,10 @@ export async function formatPdf(
       });
     });
     y += 18;
-    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    doc
+      .moveTo(startX, y)
+      .lineTo(startX + pageWidth, y)
+      .stroke();
     y += 5;
 
     // Data rows
