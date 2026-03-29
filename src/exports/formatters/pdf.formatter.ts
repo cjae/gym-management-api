@@ -6,12 +6,13 @@ export async function formatPdf(
   columns: ExportColumn[],
   title: string,
 ): Promise<Buffer> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ layout: 'landscape', margin: 30 });
     const chunks: Buffer[] = [];
 
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', (err: Error) => reject(err));
 
     // Title
     doc.fontSize(16).font('Helvetica-Bold').text(title, { align: 'center' });

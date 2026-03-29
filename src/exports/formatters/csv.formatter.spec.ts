@@ -42,4 +42,22 @@ describe('formatCsv', () => {
 
     expect(csv).toContain('Jane');
   });
+
+  it('should sanitize values starting with formula characters', async () => {
+    const columns = [{ header: 'Name', key: 'name' }];
+    const data = [
+      { name: '=HYPERLINK("http://evil.com")' },
+      { name: '+cmd' },
+      { name: '-malicious' },
+      { name: '@SUM(A1)' },
+    ];
+
+    const buffer = await formatCsv(data, columns);
+    const csv = buffer.toString();
+
+    expect(csv).toContain("'=HYPERLINK");
+    expect(csv).toContain("'+cmd");
+    expect(csv).toContain("'-malicious");
+    expect(csv).toContain("'@SUM");
+  });
 });

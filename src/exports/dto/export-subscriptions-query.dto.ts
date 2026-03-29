@@ -1,4 +1,10 @@
-import { IsOptional, IsEnum, IsDateString, IsUUID } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { SubscriptionStatus } from '@prisma/client';
 import { ExportFormat } from './export-members-query.dto';
 
@@ -13,13 +19,16 @@ export class ExportSubscriptionsQueryDto {
 
   @IsOptional()
   @IsUUID()
+  @MaxLength(36)
   planId?: string;
 
   @IsOptional()
   @IsDateString()
+  @MaxLength(30)
   startDate?: string;
 
   @IsOptional()
   @IsDateString()
+  @MaxLength(30)
   endDate?: string;
 }

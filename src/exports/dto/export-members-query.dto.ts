@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsDateString } from 'class-validator';
+import { IsOptional, IsEnum, IsDateString, MaxLength } from 'class-validator';
 import { UserStatus, Role } from '@prisma/client';
 
 export enum ExportFormat {
@@ -22,9 +22,11 @@ export class ExportMembersQueryDto {
 
   @IsOptional()
   @IsDateString()
+  @MaxLength(30)
   startDate?: string;
 
   @IsOptional()
   @IsDateString()
+  @MaxLength(30)
   endDate?: string;
 }

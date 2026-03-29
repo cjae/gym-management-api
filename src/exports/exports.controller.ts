@@ -98,9 +98,13 @@ export class ExportsController {
     @Res() res: Response,
   ) {
     const format = query.format || ExportFormat.CSV;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { format: _format, ...filters } = query;
-    const data = await this.exportsService.getMembers(filters);
+    const { status, role, startDate, endDate } = query;
+    const data = await this.exportsService.getMembers({
+      status,
+      role,
+      startDate,
+      endDate,
+    });
     const buffer = await this.formatData(
       data,
       MEMBERS_COLUMNS,
@@ -117,9 +121,13 @@ export class ExportsController {
     @Res() res: Response,
   ) {
     const format = query.format || ExportFormat.CSV;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { format: _format, ...filters } = query;
-    const data = await this.exportsService.getPayments(filters);
+    const { status, paymentMethod, startDate, endDate } = query;
+    const data = await this.exportsService.getPayments({
+      status,
+      paymentMethod,
+      startDate,
+      endDate,
+    });
     const buffer = await this.formatData(
       data,
       PAYMENTS_COLUMNS,
@@ -136,9 +144,13 @@ export class ExportsController {
     @Res() res: Response,
   ) {
     const format = query.format || ExportFormat.CSV;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { format: _format, ...filters } = query;
-    const data = await this.exportsService.getSubscriptions(filters);
+    const { status, planId, startDate, endDate } = query;
+    const data = await this.exportsService.getSubscriptions({
+      status,
+      planId,
+      startDate,
+      endDate,
+    });
     const buffer = await this.formatData(
       data,
       SUBSCRIPTIONS_COLUMNS,

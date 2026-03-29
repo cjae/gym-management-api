@@ -13,8 +13,8 @@ describe('formatExcel', () => {
 
     // Parse the buffer back to verify contents
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const worksheet = workbook.getWorksheet('Members');
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const worksheet = workbook.getWorksheet('Members')!;
 
     expect(worksheet).toBeDefined();
     expect(worksheet.getRow(1).getCell(1).value).toBe('Name');
@@ -29,8 +29,8 @@ describe('formatExcel', () => {
     const buffer = await formatExcel([], columns, 'Empty');
 
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const worksheet = workbook.getWorksheet('Empty');
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const worksheet = workbook.getWorksheet('Empty')!;
 
     expect(worksheet).toBeDefined();
     expect(worksheet.getRow(1).getCell(1).value).toBe('Name');

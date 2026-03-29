@@ -5,6 +5,8 @@ import { ExportPaymentsQueryDto } from './dto/export-payments-query.dto';
 import { ExportSubscriptionsQueryDto } from './dto/export-subscriptions-query.dto';
 import { Prisma } from '@prisma/client';
 
+const EXPORT_LIMIT = 10_000;
+
 @Injectable()
 export class ExportsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -19,11 +21,13 @@ export class ExportsService {
     if (query.startDate || query.endDate) {
       where.createdAt = {};
       if (query.startDate) where.createdAt.gte = new Date(query.startDate);
-      if (query.endDate) where.createdAt.lte = new Date(query.endDate);
+      if (query.endDate)
+        where.createdAt.lt = new Date(query.endDate + 'T23:59:59.999Z');
     }
 
     const users = await this.prisma.user.findMany({
       where,
+      take: EXPORT_LIMIT,
       select: {
         firstName: true,
         lastName: true,
@@ -79,11 +83,13 @@ export class ExportsService {
     if (query.startDate || query.endDate) {
       where.createdAt = {};
       if (query.startDate) where.createdAt.gte = new Date(query.startDate);
-      if (query.endDate) where.createdAt.lte = new Date(query.endDate);
+      if (query.endDate)
+        where.createdAt.lt = new Date(query.endDate + 'T23:59:59.999Z');
     }
 
     const payments = await this.prisma.payment.findMany({
       where,
+      take: EXPORT_LIMIT,
       select: {
         amount: true,
         status: true,
@@ -106,16 +112,19 @@ export class ExportsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return payments.map((payment) => ({
-      memberName: `${payment.subscription.primaryMember.firstName} ${payment.subscription.primaryMember.lastName}`,
-      memberEmail: payment.subscription.primaryMember.email,
-      planName: payment.subscription.plan.name,
-      amount: payment.amount,
-      paymentStatus: payment.status,
-      paymentMethod: payment.paymentMethod,
-      reference: payment.paystackReference || '',
-      date: payment.createdAt.toISOString().split('T')[0],
-    }));
+    return payments.map((payment) => {
+      const member = payment.subscription?.primaryMember;
+      return {
+        memberName: member ? `${member.firstName} ${member.lastName}` : '',
+        memberEmail: member?.email || '',
+        planName: payment.subscription?.plan?.name || '',
+        amount: payment.amount,
+        paymentStatus: payment.status,
+        paymentMethod: payment.paymentMethod,
+        reference: payment.paystackReference || '',
+        date: payment.createdAt.toISOString().split('T')[0],
+      };
+    });
   }
 
   async getSubscriptions(query: Omit<ExportSubscriptionsQueryDto, 'format'>) {
@@ -126,19 +135,20 @@ export class ExportsService {
     if (query.startDate || query.endDate) {
       where.startDate = {};
       if (query.startDate) where.startDate.gte = new Date(query.startDate);
-      if (query.endDate) where.startDate.lte = new Date(query.endDate);
+      if (query.endDate)
+        where.startDate.lt = new Date(query.endDate + 'T23:59:59.999Z');
     }
 
     const subscriptions = await this.prisma.memberSubscription.findMany({
       where,
+      take: EXPORT_LIMIT,
       select: {
+        primaryMemberId: true,
         status: true,
         startDate: true,
         endDate: true,
         autoRenew: true,
         paymentMethod: true,
-        freezeStartDate: true,
-        freezeEndDate: true,
         primaryMember: {
           select: {
             firstName: true,
@@ -155,6 +165,7 @@ export class ExportsService {
         },
         members: {
           select: {
+            memberId: true,
             member: {
               select: {
                 firstName: true,
@@ -170,9 +181,8 @@ export class ExportsService {
 
     return subscriptions.map((sub) => {
       const duoMember = sub.members.find(
-        (m) => m.member.email !== sub.primaryMember.email,
+        (m) => m.memberId !== sub.primaryMemberId,
       );
-      const isFrozen = sub.freezeStartDate != null && sub.freezeEndDate == null;
       return {
         primaryMember: `${sub.primaryMember.firstName} ${sub.primaryMember.lastName}`,
         primaryEmail: sub.primaryMember.email,
@@ -188,7 +198,7 @@ export class ExportsService {
         endDate: sub.endDate.toISOString().split('T')[0],
         autoRenew: sub.autoRenew ? 'Yes' : 'No',
         paymentMethod: sub.paymentMethod,
-        frozen: isFrozen ? 'Yes' : 'No',
+        frozen: sub.status === 'FROZEN' ? 'Yes' : 'No',
       };
     });
   }

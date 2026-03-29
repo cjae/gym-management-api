@@ -12,7 +12,7 @@ export async function formatExcel(
   worksheet.columns = columns.map((col) => ({
     header: col.header,
     key: col.key,
-    width: 20,
+    width: col.header.length + 2,
   }));
 
   // Bold header row
@@ -26,6 +26,20 @@ export async function formatExcel(
     }
     worksheet.addRow(values);
   }
+
+  // Auto-fit column widths based on content
+  worksheet.columns.forEach((column) => {
+    let maxLength = column.header ? String(column.header).length : 10;
+    column.eachCell?.({ includeEmpty: false }, (cell) => {
+      const cellValue = cell.value;
+      const cellLength =
+        cellValue !== null && cellValue !== undefined
+          ? String(cellValue as string).length
+          : 0;
+      if (cellLength > maxLength) maxLength = cellLength;
+    });
+    column.width = Math.min(maxLength + 2, 50);
+  });
 
   const arrayBuffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(arrayBuffer);

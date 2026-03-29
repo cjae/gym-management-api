@@ -75,7 +75,7 @@ describe('ExportsService', () => {
       );
     });
 
-    it('should filter by date range', async () => {
+    it('should filter by date range with end-of-day boundary', async () => {
       prisma.user.findMany.mockResolvedValue([]);
 
       await service.getMembers({
@@ -88,7 +88,7 @@ describe('ExportsService', () => {
           where: expect.objectContaining({
             createdAt: {
               gte: new Date('2026-01-01'),
-              lte: new Date('2026-03-31'),
+              lt: new Date('2026-03-31T23:59:59.999Z'),
             },
           }),
         }),
@@ -171,13 +171,12 @@ describe('ExportsService', () => {
     it('should return flattened subscription data', async () => {
       prisma.memberSubscription.findMany.mockResolvedValue([
         {
+          primaryMemberId: 'user-1',
           status: 'ACTIVE',
           startDate: new Date('2026-01-01'),
           endDate: new Date('2026-06-01'),
           autoRenew: true,
           paymentMethod: 'CARD',
-          freezeStartDate: null,
-          freezeEndDate: null,
           primaryMember: {
             firstName: 'Jane',
             lastName: 'Doe',
@@ -201,20 +200,48 @@ describe('ExportsService', () => {
           primaryEmail: 'jane@example.com',
           plan: 'Premium Monthly',
           status: 'ACTIVE',
+          frozen: 'No',
         }),
       );
     });
 
-    it('should include duo member when present', async () => {
+    it('should detect frozen status from subscription status', async () => {
       prisma.memberSubscription.findMany.mockResolvedValue([
         {
+          primaryMemberId: 'user-1',
+          status: 'FROZEN',
+          startDate: new Date('2026-01-01'),
+          endDate: new Date('2026-06-01'),
+          autoRenew: true,
+          paymentMethod: 'CARD',
+          primaryMember: {
+            firstName: 'Jane',
+            lastName: 'Doe',
+            email: 'jane@example.com',
+          },
+          plan: {
+            name: 'Premium Monthly',
+            price: 5000,
+            billingInterval: 'MONTHLY',
+          },
+          members: [],
+        } as any,
+      ]);
+
+      const result = await service.getSubscriptions({});
+
+      expect(result[0].frozen).toBe('Yes');
+    });
+
+    it('should include duo member when present using memberId', async () => {
+      prisma.memberSubscription.findMany.mockResolvedValue([
+        {
+          primaryMemberId: 'user-1',
           status: 'ACTIVE',
           startDate: new Date('2026-01-01'),
           endDate: new Date('2026-06-01'),
           autoRenew: false,
           paymentMethod: 'MOBILE_MONEY',
-          freezeStartDate: null,
-          freezeEndDate: null,
           primaryMember: {
             firstName: 'Jane',
             lastName: 'Doe',
@@ -227,6 +254,7 @@ describe('ExportsService', () => {
           },
           members: [
             {
+              memberId: 'user-1',
               member: {
                 firstName: 'Jane',
                 lastName: 'Doe',
@@ -234,6 +262,7 @@ describe('ExportsService', () => {
               },
             },
             {
+              memberId: 'user-2',
               member: {
                 firstName: 'John',
                 lastName: 'Doe',
@@ -248,6 +277,28 @@ describe('ExportsService', () => {
 
       expect(result[0].duoMember).toBe('John Doe');
       expect(result[0].duoEmail).toBe('john@example.com');
+    });
+
+    it('should handle payment with null subscription member', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          amount: 5000,
+          status: 'PAID',
+          paymentMethod: 'MOBILE_MONEY',
+          paystackReference: null,
+          createdAt: new Date('2026-02-15'),
+          subscription: {
+            primaryMember: null,
+            plan: { name: 'Basic' },
+          },
+        } as any,
+      ]);
+
+      const result = await service.getPayments({});
+
+      expect(result[0].memberName).toBe('');
+      expect(result[0].memberEmail).toBe('');
+      expect(result[0].reference).toBe('');
     });
   });
 });
