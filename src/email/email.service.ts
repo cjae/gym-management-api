@@ -235,10 +235,24 @@ export class EmailService {
       ? `Import Failed: ${report.fileName}`
       : `Import Complete: ${report.importedCount} members imported`;
 
+    const maxPreview = 10;
+    const skippedPreview = report.skipped.slice(0, maxPreview);
+    const errorsPreview = report.errors.slice(0, maxPreview);
+
     await this.sendEmail(to, subject, 'import-report', {
       ...report,
+      skipped: skippedPreview,
+      errors: errorsPreview,
       hasErrors: report.errors.length > 0,
       hasSkipped: report.skipped.length > 0,
+      moreSkipped:
+        report.skipped.length > maxPreview
+          ? report.skipped.length - maxPreview
+          : 0,
+      moreErrors:
+        report.errors.length > maxPreview
+          ? report.errors.length - maxPreview
+          : 0,
       adminUrl: this.adminUrl,
     });
   }

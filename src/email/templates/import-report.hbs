@@ -67,6 +67,13 @@
             <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#E2E8F0;">{{this.reason}}</td>
           </tr>
           {{/each}}
+          {{#if moreSkipped}}
+          <tr>
+            <td colspan="3" style="padding:12px;color:#9CA3AF;font-size:13px;text-align:center;">
+              + {{moreSkipped}} more &mdash; <a href="{{adminUrl}}" style="color:#60a5fa;text-decoration:underline;">view full report in dashboard</a>
+            </td>
+          </tr>
+          {{/if}}
         </table>
         {{/if}}
 
@@ -85,6 +92,13 @@
             <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#E2E8F0;">{{this.message}}</td>
           </tr>
           {{/each}}
+          {{#if moreErrors}}
+          <tr>
+            <td colspan="3" style="padding:12px;color:#9CA3AF;font-size:13px;text-align:center;">
+              + {{moreErrors}} more &mdash; <a href="{{adminUrl}}" style="color:#60a5fa;text-decoration:underline;">view full report in dashboard</a>
+            </td>
+          </tr>
+          {{/if}}
         </table>
         {{/if}}
 
