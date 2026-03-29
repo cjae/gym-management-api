@@ -35,6 +35,7 @@ import { GymSettingsModule } from './gym-settings/gym-settings.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
 import { ImportsModule } from './imports/imports.module';
+import { ExportsModule } from './exports/exports.module';
 import { DiscountCodesModule } from './discount-codes/discount-codes.module';
 import { MilestonesModule } from './milestones/milestones.module';
 
@@ -72,6 +73,7 @@ import { MilestonesModule } from './milestones/milestones.module';
     GymSettingsModule,
     ReferralsModule,
     ImportsModule,
+    ExportsModule,
     DiscountCodesModule,
     MilestonesModule,
   ],
