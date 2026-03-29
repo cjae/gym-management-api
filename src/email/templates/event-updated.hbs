@@ -1,36 +1,72 @@
-{{> header}}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
 
-<h2>Hi {{firstName}},</h2>
+  <!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td><![endif]-->
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;max-width:600px;margin:0 auto;background-color:#121212;">
 
-<p>The details for <strong>{{eventTitle}}</strong> have been updated.</p>
+    <tr><td>{{> header }}</td></tr>
 
-<table style="border-collapse: collapse; margin: 16px 0;">
-  <tr>
-    <td style="padding: 8px 16px; font-weight: bold;">Previous Date</td>
-    <td style="padding: 8px 16px;">{{oldDate}}</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 16px; font-weight: bold;">New Date</td>
-    <td style="padding: 8px 16px;">{{newDate}}</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 16px; font-weight: bold;">Previous Time</td>
-    <td style="padding: 8px 16px;">{{oldTime}}</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 16px; font-weight: bold;">New Time</td>
-    <td style="padding: 8px 16px;">{{newTime}}</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 16px; font-weight: bold;">Previous Location</td>
-    <td style="padding: 8px 16px;">{{oldLocation}}</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 16px; font-weight: bold;">New Location</td>
-    <td style="padding: 8px 16px;">{{newLocation}}</td>
-  </tr>
-</table>
+    <tr>
+      <td style="padding:40px 48px;">
+        <h2 style="color:#FFFFFF;margin:0 0 20px;font-size:24px;font-weight:700;">Event Updated</h2>
 
-<p>Please update your schedule accordingly.</p>
+        <p style="color:#E2E8F0;line-height:1.7;margin:0 0 20px;font-size:15px;">
+          Hi {{firstName}}, the details for <strong>{{eventTitle}}</strong> have changed.
+        </p>
 
-{{> footer}}
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#1a1a1a;border:1px solid #2A2A2A;border-radius:8px;margin:0 0 20px;">
+          <!-- Date -->
+          <tr>
+            <td style="padding:14px 20px;border-bottom:1px solid #2A2A2A;">
+              <p style="color:#6B7280;margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Previous Date</p>
+              <p style="color:#E2E8F0;margin:0;font-size:15px;">{{oldDate}}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 20px;border-bottom:1px solid #2A2A2A;">
+              <p style="color:#ffcc33;margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">New Date</p>
+              <p style="color:#FFFFFF;margin:0;font-size:15px;font-weight:600;">{{newDate}}</p>
+            </td>
+          </tr>
+          <!-- Time -->
+          <tr>
+            <td style="padding:14px 20px;border-bottom:1px solid #2A2A2A;">
+              <p style="color:#6B7280;margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Previous Time</p>
+              <p style="color:#E2E8F0;margin:0;font-size:15px;">{{oldTime}}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 20px;border-bottom:1px solid #2A2A2A;">
+              <p style="color:#ffcc33;margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">New Time</p>
+              <p style="color:#FFFFFF;margin:0;font-size:15px;font-weight:600;">{{newTime}}</p>
+            </td>
+          </tr>
+          <!-- Location -->
+          <tr>
+            <td style="padding:14px 20px;border-bottom:1px solid #2A2A2A;">
+              <p style="color:#6B7280;margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Previous Location</p>
+              <p style="color:#E2E8F0;margin:0;font-size:15px;">{{oldLocation}}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 20px;">
+              <p style="color:#ffcc33;margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">New Location</p>
+              <p style="color:#FFFFFF;margin:0;font-size:15px;font-weight:600;">{{newLocation}}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td>{{> footer}}</td></tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</body>
+</html>
