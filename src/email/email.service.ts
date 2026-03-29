@@ -36,6 +36,11 @@ export class EmailService {
     }
 
     this.registerPartials();
+    this.registerHelpers();
+  }
+
+  private registerHelpers() {
+    Handlebars.registerHelper('year', () => new Date().getFullYear());
   }
 
   private registerPartials() {
