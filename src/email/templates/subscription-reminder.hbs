@@ -1,13 +1,45 @@
-{{> header}}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
 
-<h2>Hi {{firstName}},</h2>
+  <!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td><![endif]-->
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;max-width:600px;margin:0 auto;background-color:#121212;">
 
-<p>Your <strong>{{planName}}</strong> subscription {{#if isDueToday}}is due today{{else}}renews in {{daysUntil}} day{{#unless isSingleDay}}s{{/unless}}{{/if}}.</p>
+    <tr><td>{{> header }}</td></tr>
 
-<p>Amount: <strong>KES {{amount}}</strong></p>
+    <tr>
+      <td style="padding:40px 48px;">
+        <h2 style="color:#FFFFFF;margin:0 0 20px;font-size:24px;font-weight:700;">Subscription Renewal</h2>
 
-{{> button url=paymentUrl text="Pay Now"}}
+        <p style="color:#E2E8F0;line-height:1.7;margin:0 0 20px;font-size:15px;">
+          Hi {{firstName}}, your <strong>{{planName}}</strong> plan {{#if isDueToday}}is due today{{else}}renews in {{daysUntil}} day{{#unless isSingleDay}}s{{/unless}}{{/if}}.
+        </p>
 
-<p>If you don't renew, your access will be suspended when the subscription expires.</p>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#1a1a1a;border:1px solid #2A2A2A;border-radius:8px;margin:0 0 20px;">
+          <tr>
+            <td style="padding:16px 20px;">
+              <p style="color:#9CA3AF;margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Amount Due</p>
+              <p style="color:#FFFFFF;margin:0;font-size:22px;font-weight:700;">KES {{amount}}</p>
+            </td>
+          </tr>
+        </table>
 
-{{> footer}}
+        {{> button url=paymentUrl text="Pay Now"}}
+
+        <p style="color:#9CA3AF;line-height:1.6;margin:16px 0 0;font-size:13px;">
+          Your access will be suspended if the subscription isn't renewed before it expires.
+        </p>
+      </td>
+    </tr>
+
+    <tr><td>{{> footer}}</td></tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</body>
+</html>

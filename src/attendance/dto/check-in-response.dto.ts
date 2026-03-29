@@ -36,7 +36,8 @@ export class CheckInResponseDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'True when this check-in resulted in a new longest streak record',
+    description:
+      'True when this check-in resulted in a new longest streak record',
   })
   isNewStreakRecord?: boolean;
 }
