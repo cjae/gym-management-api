@@ -1,9 +1,34 @@
-{{> header}}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
 
-<h2>Hi {{firstName}},</h2>
+  <!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td><![endif]-->
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;max-width:600px;margin:0 auto;background-color:#121212;">
 
-<p>We're sorry to inform you that <strong>{{eventTitle}}</strong> scheduled for <strong>{{date}} {{time}}</strong> at <strong>{{location}}</strong> has been cancelled.</p>
+    <tr><td>{{> header }}</td></tr>
 
-<p>Please check the events schedule for other upcoming events.</p>
+    <tr>
+      <td style="padding:40px 48px;">
+        <h2 style="color:#FFFFFF;margin:0 0 20px;font-size:24px;font-weight:700;">Event Cancelled</h2>
 
-{{> footer}}
+        <p style="color:#E2E8F0;line-height:1.7;margin:0 0 12px;font-size:15px;">
+          Hi {{firstName}}, <strong>{{eventTitle}}</strong> scheduled for <strong>{{date}} at {{time}}</strong> at <strong>{{location}}</strong> has been cancelled.
+        </p>
+
+        <p style="color:#6B7280;line-height:1.7;margin:0;font-size:14px;">
+          Check our events page for other upcoming events.
+        </p>
+      </td>
+    </tr>
+
+    <tr><td>{{> footer}}</td></tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</body>
+</html>
