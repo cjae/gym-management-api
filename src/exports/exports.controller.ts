@@ -185,6 +185,9 @@ export class ExportsController {
   ) {
     const date = new Date().toISOString().split('T')[0];
     const ext = FILE_EXTENSIONS[format];
+    res.setHeader('Cache-Control', 'no-store, private, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.setHeader('Content-Type', CONTENT_TYPES[format]);
     res.setHeader(
       'Content-Disposition',

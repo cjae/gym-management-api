@@ -22,7 +22,7 @@ export class ExportsService {
       where.createdAt = {};
       if (query.startDate) where.createdAt.gte = new Date(query.startDate);
       if (query.endDate)
-        where.createdAt.lt = new Date(query.endDate + 'T23:59:59.999Z');
+        where.createdAt.lte = new Date(query.endDate + 'T23:59:59.999Z');
     }
 
     const users = await this.prisma.user.findMany({
@@ -84,7 +84,7 @@ export class ExportsService {
       where.createdAt = {};
       if (query.startDate) where.createdAt.gte = new Date(query.startDate);
       if (query.endDate)
-        where.createdAt.lt = new Date(query.endDate + 'T23:59:59.999Z');
+        where.createdAt.lte = new Date(query.endDate + 'T23:59:59.999Z');
     }
 
     const payments = await this.prisma.payment.findMany({
@@ -136,7 +136,7 @@ export class ExportsService {
       where.startDate = {};
       if (query.startDate) where.startDate.gte = new Date(query.startDate);
       if (query.endDate)
-        where.startDate.lt = new Date(query.endDate + 'T23:59:59.999Z');
+        where.startDate.lte = new Date(query.endDate + 'T23:59:59.999Z');
     }
 
     const subscriptions = await this.prisma.memberSubscription.findMany({

@@ -88,7 +88,7 @@ describe('ExportsService', () => {
           where: expect.objectContaining({
             createdAt: {
               gte: new Date('2026-01-01'),
-              lt: new Date('2026-03-31T23:59:59.999Z'),
+              lte: new Date('2026-03-31T23:59:59.999Z'),
             },
           }),
         }),

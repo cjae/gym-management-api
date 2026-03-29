@@ -8,7 +8,11 @@ export interface ExportColumn {
 function sanitizeCellValue(val: unknown): string {
   if (val === null || val === undefined) return '';
   const str = String(val as string);
-  if (str.length > 0 && '=+-@'.includes(str[0])) {
+  const trimmedStart = str.trimStart();
+  if (
+    (trimmedStart.length > 0 && '=+-@'.includes(trimmedStart[0])) ||
+    /^[\t\r]/.test(str)
+  ) {
     return `'${str}`;
   }
   return str;

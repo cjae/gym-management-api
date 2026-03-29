@@ -30,6 +30,12 @@ export async function formatPdf(
       return;
     }
 
+    if (columns.length === 0) {
+      doc.fontSize(12).text('No columns configured.', { align: 'center' });
+      doc.end();
+      return;
+    }
+
     // Calculate column widths
     const pageWidth =
       doc.page.width - doc.page.margins.left - doc.page.margins.right;

@@ -35,12 +35,16 @@ describe('formatCsv', () => {
       { header: 'Name', key: 'name' },
       { header: 'Phone', key: 'phone' },
     ];
-    const data = [{ name: 'Jane', phone: null }];
+    const data = [
+      { name: 'Jane', phone: null },
+      { name: 'John', phone: undefined },
+    ];
 
     const buffer = await formatCsv(data, columns);
     const csv = buffer.toString();
 
     expect(csv).toContain('Jane');
+    expect(csv).toContain('John');
   });
 
   it('should sanitize values starting with formula characters', async () => {
@@ -59,5 +63,21 @@ describe('formatCsv', () => {
     expect(csv).toContain("'+cmd");
     expect(csv).toContain("'-malicious");
     expect(csv).toContain("'@SUM");
+  });
+
+  it('should sanitize whitespace-prefixed formula characters', async () => {
+    const columns = [{ header: 'Name', key: 'name' }];
+    const data = [
+      { name: ' =HYPERLINK("http://evil.com")' },
+      { name: '\t=cmd' },
+      { name: '\r=malicious' },
+    ];
+
+    const buffer = await formatCsv(data, columns);
+    const csv = buffer.toString();
+
+    expect(csv).toContain("' =HYPERLINK");
+    expect(csv).toContain("'\t=cmd");
+    expect(csv).toContain("'\r=malicious");
   });
 });
