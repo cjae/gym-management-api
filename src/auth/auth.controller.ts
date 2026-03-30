@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Body,
   UseGuards,
   Req,
@@ -17,6 +18,7 @@ import {
   ApiConflictResponse,
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
+  ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -32,6 +34,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshAuthGuard } from './guards/jwt-refresh-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { CreateDeletionRequestDto } from './dto/create-deletion-request.dto';
+import { DeletionRequestResponseDto } from './dto/deletion-request-response.dto';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { MessageResponseDto } from '../common/dto/message-response.dto';
 
@@ -159,5 +163,43 @@ export class AuthController {
       req.ip,
       req.headers['user-agent'],
     );
+  }
+
+  @Post('delete-request')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiCreatedResponse({
+    type: DeletionRequestResponseDto,
+    description: 'Deletion request submitted',
+  })
+  @ApiConflictResponse({ description: 'Pending request already exists' })
+  requestDeletion(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateDeletionRequestDto,
+  ) {
+    return this.authService.requestDeletion(userId, dto);
+  }
+
+  @Get('delete-request')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({
+    type: DeletionRequestResponseDto,
+    description: 'Current deletion request status',
+  })
+  getDeletionRequest(@CurrentUser('id') userId: string) {
+    return this.authService.getDeletionRequest(userId);
+  }
+
+  @Delete('delete-request')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Deletion request cancelled',
+  })
+  @ApiNotFoundResponse({ description: 'No pending deletion request found' })
+  cancelDeletionRequest(@CurrentUser('id') userId: string) {
+    return this.authService.cancelDeletionRequest(userId);
   }
 }
