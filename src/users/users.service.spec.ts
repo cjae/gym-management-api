@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -277,6 +278,116 @@ describe('UsersService', () => {
       await expect(service.remove('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('findAllDeletionRequests', () => {
+    it('should return paginated deletion requests', async () => {
+      const mockRequests = [
+        {
+          id: 'dr-1',
+          userId: 'user-1',
+          reason: 'Moving away',
+          status: 'PENDING',
+          reviewedById: null,
+          reviewedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          user: {
+            id: 'user-1',
+            firstName: 'John',
+            lastName: 'Doe',
+            email: 'john@test.com',
+          },
+        },
+      ];
+      prisma.accountDeletionRequest.findMany.mockResolvedValue(mockRequests as any);
+      prisma.accountDeletionRequest.count.mockResolvedValue(1);
+
+      const result = await service.findAllDeletionRequests(1, 20);
+      expect(result.data).toHaveLength(1);
+      expect(result.total).toBe(1);
+    });
+
+    it('should filter by status', async () => {
+      prisma.accountDeletionRequest.findMany.mockResolvedValue([]);
+      prisma.accountDeletionRequest.count.mockResolvedValue(0);
+
+      await service.findAllDeletionRequests(1, 20, 'PENDING' as any);
+      expect(prisma.accountDeletionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: 'PENDING' },
+        }),
+      );
+    });
+  });
+
+  describe('approveDeletionRequest', () => {
+    it('should approve request and soft-delete user', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+        id: 'dr-1',
+        userId: 'user-1',
+        status: 'PENDING',
+      } as any);
+      prisma.$transaction.mockResolvedValue([{}, {}] as any);
+
+      const result = await service.approveDeletionRequest('dr-1', 'admin-1');
+      expect(result.message).toContain('approved');
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if request not found', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.approveDeletionRequest('nonexistent', 'admin-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException if request is not PENDING', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+        id: 'dr-1',
+        status: 'APPROVED',
+      } as any);
+
+      await expect(
+        service.approveDeletionRequest('dr-1', 'admin-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('rejectDeletionRequest', () => {
+    it('should reject a pending request', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+        id: 'dr-1',
+        status: 'PENDING',
+      } as any);
+      prisma.accountDeletionRequest.update.mockResolvedValue({
+        id: 'dr-1',
+        status: 'REJECTED',
+      } as any);
+
+      const result = await service.rejectDeletionRequest('dr-1', 'admin-1');
+      expect(result.message).toContain('rejected');
+    });
+
+    it('should throw NotFoundException if request not found', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.rejectDeletionRequest('nonexistent', 'admin-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException if request is not PENDING', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+        id: 'dr-1',
+        status: 'APPROVED',
+      } as any);
+
+      await expect(
+        service.rejectDeletionRequest('dr-1', 'admin-1'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

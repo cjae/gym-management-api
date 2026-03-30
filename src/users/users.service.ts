@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { DeletionRequestStatus, Role } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -230,6 +231,81 @@ export class UsersService {
       const bday = u.birthday as Date;
       return bday.getMonth() + 1 === month && bday.getDate() === day;
     });
+  }
+
+  async findAllDeletionRequests(
+    page: number = 1,
+    limit: number = 20,
+    status?: DeletionRequestStatus,
+  ) {
+    const where = status ? { status } : {};
+    const [data, total] = await Promise.all([
+      this.prisma.accountDeletionRequest.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.accountDeletionRequest.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  async approveDeletionRequest(requestId: string, reviewerId: string) {
+    const request = await this.prisma.accountDeletionRequest.findUnique({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Deletion request not found');
+    }
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException('Request is not pending');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.accountDeletionRequest.update({
+        where: { id: requestId },
+        data: {
+          status: 'APPROVED',
+          reviewedById: reviewerId,
+          reviewedAt: new Date(),
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: request.userId },
+        data: { deletedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Deletion request approved. User account has been deleted.' };
+  }
+
+  async rejectDeletionRequest(requestId: string, reviewerId: string) {
+    const request = await this.prisma.accountDeletionRequest.findUnique({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Deletion request not found');
+    }
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException('Request is not pending');
+    }
+
+    await this.prisma.accountDeletionRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'REJECTED',
+        reviewedById: reviewerId,
+        reviewedAt: new Date(),
+      },
+    });
+
+    return { message: 'Deletion request rejected.' };
   }
 
   private flattenSubscription(
