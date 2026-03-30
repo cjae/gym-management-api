@@ -13,6 +13,7 @@ import * as bcrypt from 'bcrypt';
 import * as path from 'path';
 import { generateReferralCode } from '../common/utils/referral-code.util';
 import { Gender, PaymentMethod, SubscriptionStatus } from '@prisma/client';
+import { ADMIN_PAYMENT_METHODS } from '../common/constants/payment-methods';
 
 interface CsvRow {
   email: string;
@@ -33,11 +34,7 @@ const MAX_ROWS = 500;
 const MAX_FILENAME_LENGTH = 255;
 const STALE_JOB_MINUTES = 30;
 const VALID_GENDERS = Object.values(Gender);
-const VALID_PAYMENT_METHODS: string[] = [
-  PaymentMethod.OFFLINE,
-  PaymentMethod.BANK_TRANSFER,
-  PaymentMethod.COMPLIMENTARY,
-];
+const VALID_PAYMENT_METHODS: readonly string[] = ADMIN_PAYMENT_METHODS;
 const CSV_INJECTION_CHARS = /^[=+\-@]+/;
 const SANITIZE_EXEMPT_FIELDS = new Set(['email', 'phone', 'payment_reference']);
 

@@ -45,9 +45,11 @@ enum BillingInterval {
 
 enum PaymentMethod {
   CARD
+  CARD_IN_PERSON
   MOBILE_MONEY
-  OFFLINE
+  MOBILE_MONEY_IN_PERSON
   BANK_TRANSFER
+  BANK_TRANSFER_IN_PERSON
   COMPLIMENTARY
 }
 
@@ -127,30 +129,30 @@ model User {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  subscriptionsOwned         MemberSubscription[] @relation("SubscriptionOwner")
+  subscriptionsOwned         MemberSubscription[]    @relation("SubscriptionOwner")
   subscriptionMembers        SubscriptionMember[]
   attendances                Attendance[]
   streak                     Streak?
   trainerProfile             TrainerProfile?
-  trainerAssignmentsAsMember TrainerAssignment[]  @relation("MemberAssignments")
+  trainerAssignmentsAsMember TrainerAssignment[]     @relation("MemberAssignments")
   salaryRecords              StaffSalaryRecord[]
   passwordResetTokens        PasswordResetToken[]
   auditLogs                  AuditLog[]
-  createdSubscriptions       MemberSubscription[] @relation("SubscriptionCreator")
-  notifications              Notification[]       @relation("UserNotifications")
-  pushTokens                 PushToken[]          @relation("UserPushTokens")
-  banners                    Banner[]             @relation("UserBanners")
-  bannerInteractions         BannerInteraction[]  @relation("UserBannerInteractions")
+  createdSubscriptions       MemberSubscription[]    @relation("SubscriptionCreator")
+  notifications              Notification[]          @relation("UserNotifications")
+  pushTokens                 PushToken[]             @relation("UserPushTokens")
+  banners                    Banner[]                @relation("UserBanners")
+  bannerInteractions         BannerInteraction[]     @relation("UserBannerInteractions")
   classEnrollments           ClassEnrollment[]
   eventEnrollments           EventEnrollment[]
-  referralCode               String?              @unique
+  referralCode               String?                 @unique
   referredById               String?
-  referredBy                 User?                @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals                  User[]               @relation("UserReferrals")
-  referralsMade              Referral[]           @relation("ReferrerReferrals")
-  referralReceived           Referral?            @relation("ReferredReferral")
+  referredBy                 User?                   @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals                  User[]                  @relation("UserReferrals")
+  referralsMade              Referral[]              @relation("ReferrerReferrals")
+  referralReceived           Referral?               @relation("ReferredReferral")
   importJobs                 ImportJob[]
-  discountRedemptions        DiscountRedemption[] @relation("UserDiscountRedemptions")
+  discountRedemptions        DiscountRedemption[]    @relation("UserDiscountRedemptions")
   milestoneNotifications     MilestoneNotification[]
 }
 

@@ -100,6 +100,8 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `CLOUDINARY_API_KEY` — Cloudinary API key (optional in dev)
 - `CLOUDINARY_API_SECRET` — Cloudinary API secret (optional in dev)
 - `LICENSE_KEY` — Unique license key per gym instance (optional in dev — unlicensed mode when unset)
+- `PAYSTACK_CALLBACK_URL` — URL to redirect customer after successful payment (optional)
+- `PAYSTACK_CANCEL_URL` — URL to redirect customer when they cancel checkout (optional)
 - `LICENSE_SERVER_URL` — Control plane base URL for license validation (optional in dev)
 
 ## Security

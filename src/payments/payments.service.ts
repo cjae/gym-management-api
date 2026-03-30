@@ -60,6 +60,8 @@ export class PaymentsService {
   private paystackBaseUrl = 'https://api.paystack.co';
   private readonly paystackSecretKey: string;
   private readonly encryptionKey: string;
+  private readonly paystackCallbackUrl: string;
+  private readonly paystackCancelUrl: string;
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
@@ -75,6 +77,8 @@ export class PaymentsService {
     )!;
     this.paystackSecretKey = paymentConfig.paystackSecretKey;
     this.encryptionKey = paymentConfig.encryptionKey;
+    this.paystackCallbackUrl = paymentConfig.paystackCallbackUrl;
+    this.paystackCancelUrl = paymentConfig.paystackCancelUrl;
   }
 
   async initializePayment(
@@ -119,22 +123,26 @@ export class PaymentsService {
       },
     });
 
-    if (
-      subscription.paymentMethod !== 'CARD' &&
-      subscription.paymentMethod !== 'MOBILE_MONEY'
-    ) {
+    const channelMap: Record<string, string> = {
+      CARD: 'card',
+      MOBILE_MONEY: 'mobile_money',
+      BANK_TRANSFER: 'bank_transfer',
+    };
+
+    const channel = channelMap[subscription.paymentMethod];
+    if (!channel) {
       throw new BadRequestException(
         `Unsupported online payment method: ${subscription.paymentMethod}`,
       );
     }
 
-    const chargeAmount = addPaystackCommission(
-      effectiveAmount,
-      subscription.paymentMethod,
-    );
+    const onlineMethod = subscription.paymentMethod as
+      | 'CARD'
+      | 'MOBILE_MONEY'
+      | 'BANK_TRANSFER';
+    const chargeAmount = addPaystackCommission(effectiveAmount, onlineMethod);
 
-    const channels =
-      subscription.paymentMethod === 'CARD' ? ['card'] : ['mobile_money'];
+    const channels = [channel];
 
     const response = await axios.post<PaystackInitializeResponse>(
       `${this.paystackBaseUrl}/transaction/initialize`,
@@ -144,7 +152,16 @@ export class PaymentsService {
         currency: 'KES',
         channels,
         reference: `gym_${payment.id}_${Date.now()}`,
-        metadata: { subscriptionId, paymentId: payment.id },
+        ...(this.paystackCallbackUrl && {
+          callback_url: this.paystackCallbackUrl,
+        }),
+        metadata: {
+          subscriptionId,
+          paymentId: payment.id,
+          ...(this.paystackCancelUrl && {
+            cancel_action: this.paystackCancelUrl,
+          }),
+        },
       },
       {
         headers: {

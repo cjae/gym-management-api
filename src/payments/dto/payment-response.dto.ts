@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PaymentMethod, PaymentStatus } from '@prisma/client';
 
 export class PaymentResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -13,12 +14,10 @@ export class PaymentResponseDto {
   @ApiProperty({ example: 'KES' })
   currency: string;
 
-  @ApiProperty({ enum: ['PENDING', 'PAID', 'FAILED', 'EXPIRED'] })
+  @ApiProperty({ enum: Object.values(PaymentStatus) })
   status: string;
 
-  @ApiProperty({
-    enum: ['CARD', 'MOBILE_MONEY', 'OFFLINE', 'BANK_TRANSFER', 'COMPLIMENTARY'],
-  })
+  @ApiProperty({ enum: Object.values(PaymentMethod) })
   paymentMethod: string;
 
   @ApiPropertyOptional({ example: 'ref_abc123' })

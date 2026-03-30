@@ -9,6 +9,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   NotificationType,
+  PaymentMethod,
   Role,
   SubscriptionStatus,
   UserStatus,
@@ -17,10 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import {
-  AdminCreateSubscriptionDto,
-  AdminPaymentMethod,
-} from './dto/admin-create-subscription.dto';
+import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
 
 @Injectable()
@@ -266,7 +264,7 @@ export class SubscriptionsService {
       } | null = null;
       if (
         dto.discountCode &&
-        dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY
+        dto.paymentMethod !== PaymentMethod.COMPLIMENTARY
       ) {
         discountResult = await this.discountCodesService.validateCode(
           dto.discountCode,
@@ -281,7 +279,7 @@ export class SubscriptionsService {
         : null;
 
       const amount =
-        dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY
+        dto.paymentMethod === PaymentMethod.COMPLIMENTARY
           ? 0
           : discountResult
             ? discountResult.finalPrice

@@ -218,6 +218,18 @@ export class EmailService {
     );
   }
 
+  async sendAdminMessageEmail(
+    to: string,
+    firstName: string,
+    subject: string,
+    body: string,
+  ): Promise<void> {
+    await this.sendEmail(to, subject, 'admin-message', {
+      firstName,
+      body,
+    });
+  }
+
   async sendImportReportEmail(
     to: string,
     report: {

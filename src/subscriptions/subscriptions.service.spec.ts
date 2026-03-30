@@ -2,12 +2,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
-import { PrismaClient } from '@prisma/client';
+import { PaymentMethod, PrismaClient } from '@prisma/client';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DiscountCodesService } from '../discount-codes/discount-codes.service';
-import { AdminPaymentMethod } from './dto/admin-create-subscription.dto';
 import { MemberPaymentMethod } from './dto/create-subscription.dto';
 
 describe('SubscriptionsService', () => {
@@ -455,7 +454,7 @@ describe('SubscriptionsService', () => {
     const baseDto = {
       memberId: 'member-1',
       planId: 'plan-1',
-      paymentMethod: AdminPaymentMethod.OFFLINE,
+      paymentMethod: PaymentMethod.MOBILE_MONEY_IN_PERSON,
       paymentReference: 'MPESA-TXN-ABC123',
     };
 
@@ -476,7 +475,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'OFFLINE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -501,7 +500,7 @@ describe('SubscriptionsService', () => {
           data: expect.objectContaining({
             amount: 5000,
             status: 'PAID',
-            paymentMethod: 'OFFLINE',
+            paymentMethod: 'MOBILE_MONEY_IN_PERSON',
             paystackReference: 'MPESA-TXN-ABC123',
           }),
         }),
@@ -531,7 +530,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'OFFLINE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -643,7 +642,7 @@ describe('SubscriptionsService', () => {
 
       await service.adminCreate(adminId, {
         ...baseDto,
-        paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
+        paymentMethod: PaymentMethod.COMPLIMENTARY,
       });
 
       expect(prisma.payment.create).toHaveBeenCalledWith(
@@ -778,7 +777,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'OFFLINE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
         discountCodeId: 'dc-1',
@@ -789,7 +788,7 @@ describe('SubscriptionsService', () => {
       const result = await service.adminCreate(adminId, {
         memberId: 'member-1',
         planId: 'plan-1',
-        paymentMethod: AdminPaymentMethod.OFFLINE,
+        paymentMethod: PaymentMethod.MOBILE_MONEY_IN_PERSON,
         paymentReference: 'REF-123',
         discountCode: 'SAVE20',
       });
@@ -831,7 +830,7 @@ describe('SubscriptionsService', () => {
       await service.adminCreate(adminId, {
         memberId: 'member-1',
         planId: 'plan-1',
-        paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
+        paymentMethod: PaymentMethod.COMPLIMENTARY,
         discountCode: 'SAVE20',
       });
 

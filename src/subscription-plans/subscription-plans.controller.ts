@@ -26,7 +26,10 @@ import { PaginatedPlansResponseDto } from './dto/paginated-plans-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import {
+  PlansSortQueryDto,
+  PaginatedPlansSortQueryDto,
+} from './dto/plans-query.dto';
 
 @ApiTags('Subscription Plans')
 @ApiBearerAuth()
@@ -51,15 +54,20 @@ export class SubscriptionPlansController {
     type: [SubscriptionPlanResponseDto],
     description: 'Active plans only',
   })
-  findActive() {
-    return this.plansService.findActive();
+  findActive(@Query() query: PlansSortQueryDto) {
+    return this.plansService.findActive(query.sortBy, query.sortOrder);
   }
 
   @Get('all')
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: PaginatedPlansResponseDto })
-  findAll(@Query() query: PaginationQueryDto) {
-    return this.plansService.findAll(query.page, query.limit);
+  findAll(@Query() query: PaginatedPlansSortQueryDto) {
+    return this.plansService.findAll(
+      query.page,
+      query.limit,
+      query.sortBy,
+      query.sortOrder,
+    );
   }
 
   @Get(':id')
