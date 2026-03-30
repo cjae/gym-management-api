@@ -241,6 +241,9 @@ export class SubscriptionsService {
 
     const txInclude = { plan: true, members: true } as const;
 
+    const amount =
+      dto.paymentMethod === PaymentMethod.COMPLIMENTARY ? 0 : plan.price;
+
     const subscription = await this.prisma.$transaction(async (tx) => {
       // Reverse any prior discount redemption on existing PENDING subscription
       if (existingPending) {
@@ -249,41 +252,6 @@ export class SubscriptionsService {
           existingPending.id,
         );
       }
-
-      // Validate discount code inside transaction to prevent TOCTOU race
-      let discountResult: {
-        discountCode: {
-          id: string;
-          discountType: string;
-          discountValue: number;
-          maxUses: number | null;
-          maxUsesPerMember: number | null;
-        };
-        finalPrice: number;
-        originalPrice: number;
-      } | null = null;
-      if (
-        dto.discountCode &&
-        dto.paymentMethod !== PaymentMethod.COMPLIMENTARY
-      ) {
-        discountResult = await this.discountCodesService.validateCode(
-          dto.discountCode,
-          dto.planId,
-          dto.memberId,
-        );
-      }
-
-      const discountCodeId = discountResult?.discountCode.id ?? null;
-      const discountAmountValue = discountResult
-        ? discountResult.originalPrice - discountResult.finalPrice
-        : null;
-
-      const amount =
-        dto.paymentMethod === PaymentMethod.COMPLIMENTARY
-          ? 0
-          : discountResult
-            ? discountResult.finalPrice
-            : plan.price;
 
       const txData = {
         planId: dto.planId,
@@ -295,9 +263,6 @@ export class SubscriptionsService {
         autoRenew: false,
         createdBy: adminId,
         paymentNote: dto.paymentNote,
-        discountCodeId,
-        discountAmount: discountAmountValue,
-        originalPlanPrice: plan.price,
       };
 
       const sub = existingPending
@@ -329,19 +294,6 @@ export class SubscriptionsService {
           paymentNote: dto.paymentNote,
         },
       });
-
-      if (discountResult) {
-        await this.discountCodesService.redeemCode(
-          tx,
-          discountResult.discountCode.id,
-          dto.memberId,
-          sub.id,
-          discountResult.originalPrice,
-          discountResult.finalPrice,
-          discountResult.discountCode.maxUses,
-          discountResult.discountCode.maxUsesPerMember,
-        );
-      }
 
       return sub;
     });

@@ -53,9 +53,4 @@ export class AdminCreateSubscriptionDto {
   @MaxLength(500)
   paymentNote?: string;
 
-  @ApiPropertyOptional({ example: 'RETENTION50' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(12)
-  discountCode?: string;
 }
