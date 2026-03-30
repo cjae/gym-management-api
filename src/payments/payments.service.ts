@@ -86,11 +86,27 @@ export class PaymentsService {
     email: string,
     userId: string,
   ) {
+    console.log('[PaymentsService] initializePayment called:', {
+      subscriptionId,
+      email,
+      userId,
+    });
+
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
       include: { plan: true },
     });
-    if (!subscription) throw new BadRequestException('Subscription not found');
+    if (!subscription) {
+      console.log('[PaymentsService] Subscription not found:', subscriptionId);
+      throw new BadRequestException('Subscription not found');
+    }
+
+    console.log('[PaymentsService] Subscription found:', {
+      id: subscription.id,
+      paymentMethod: subscription.paymentMethod,
+      status: subscription.status,
+      primaryMemberId: subscription.primaryMemberId,
+    });
 
     if (subscription.primaryMemberId !== userId) {
       throw new ForbiddenException(
@@ -144,33 +160,59 @@ export class PaymentsService {
 
     const channels = [channel];
 
-    const response = await axios.post<PaystackInitializeResponse>(
-      `${this.paystackBaseUrl}/transaction/initialize`,
-      {
-        email,
-        amount: chargeAmount * 100,
-        currency: 'KES',
-        channels,
-        reference: `gym_${payment.id}_${Date.now()}`,
-        ...(this.paystackCallbackUrl && {
-          callback_url: this.paystackCallbackUrl,
+    const payload = {
+      email,
+      amount: chargeAmount * 100,
+      currency: 'KES',
+      channels,
+      reference: `gym_${payment.id}_${Date.now()}`,
+      ...(this.paystackCallbackUrl && {
+        callback_url: this.paystackCallbackUrl,
+      }),
+      metadata: {
+        subscriptionId,
+        paymentId: payment.id,
+        ...(this.paystackCancelUrl && {
+          cancel_action: this.paystackCancelUrl,
         }),
-        metadata: {
-          subscriptionId,
-          paymentId: payment.id,
-          ...(this.paystackCancelUrl && {
-            cancel_action: this.paystackCancelUrl,
-          }),
-        },
       },
-      {
-        headers: {
-          Authorization: `Bearer ${this.paystackSecretKey}`,
-          'Content-Type': 'application/json',
+    };
+
+    console.log('[PaymentsService] Initializing payment:', {
+      method: subscription.paymentMethod,
+      channel,
+      amount: chargeAmount * 100,
+      baseAmount: effectiveAmount,
+      email,
+    });
+
+    try {
+      const response = await axios.post<PaystackInitializeResponse>(
+        `${this.paystackBaseUrl}/transaction/initialize`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${this.paystackSecretKey}`,
+            'Content-Type': 'application/json',
+          },
         },
-      },
-    );
-    return response.data.data;
+      );
+      return response.data.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error('[PaymentsService] Paystack initialization failed:', {
+          status: error.response?.status,
+          body: error.response?.data,
+          payload: { ...payload, email: '***' },
+        });
+      } else {
+        console.error(
+          '[PaymentsService] Paystack initialization failed:',
+          error instanceof Error ? error.message : error,
+        );
+      }
+      throw new BadRequestException('Payment initialization failed');
+    }
   }
 
   async handleWebhook(rawBody: Buffer, signature: string) {
