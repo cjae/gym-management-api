@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -173,6 +174,12 @@ export class AuthService {
         })
         .catch(() => {});
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedException(
+        'Account is ' + user.status.toLowerCase(),
+      );
     }
 
     this.auditLogService
@@ -391,6 +398,44 @@ export class AuthService {
     }
 
     return { message: 'Logged out successfully.' };
+  }
+
+  async requestDeletion(userId: string, dto: { reason?: string }) {
+    const existing = await this.prisma.accountDeletionRequest.findFirst({
+      where: { userId, status: 'PENDING' },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'You already have a pending deletion request',
+      );
+    }
+
+    return this.prisma.accountDeletionRequest.create({
+      data: { userId, reason: dto.reason },
+    });
+  }
+
+  async getDeletionRequest(userId: string) {
+    return this.prisma.accountDeletionRequest.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async cancelDeletionRequest(userId: string) {
+    const request = await this.prisma.accountDeletionRequest.findFirst({
+      where: { userId, status: 'PENDING' },
+    });
+    if (!request) {
+      throw new NotFoundException('No pending deletion request found');
+    }
+
+    await this.prisma.accountDeletionRequest.update({
+      where: { id: request.id },
+      data: { status: 'CANCELLED' },
+    });
+
+    return { message: 'Deletion request cancelled successfully.' };
   }
 
   private hashToken(token: string): string {
