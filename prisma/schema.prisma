@@ -110,6 +110,13 @@ enum DayOfWeek {
   SUNDAY
 }
 
+enum DeletionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -154,6 +161,21 @@ model User {
   importJobs                 ImportJob[]
   discountRedemptions        DiscountRedemption[]    @relation("UserDiscountRedemptions")
   milestoneNotifications     MilestoneNotification[]
+  deletionRequests         AccountDeletionRequest[]
+  reviewedDeletionRequests AccountDeletionRequest[] @relation("DeletionRequestReviewer")
+}
+
+model AccountDeletionRequest {
+  id           String                @id @default(uuid())
+  userId       String
+  user         User                  @relation(fields: [userId], references: [id])
+  reason       String?
+  status       DeletionRequestStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?                 @relation("DeletionRequestReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 }
 
 model SubscriptionPlan {
