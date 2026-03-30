@@ -117,6 +117,11 @@ enum DeletionRequestStatus {
   CANCELLED
 }
 
+enum TagSource {
+  SYSTEM
+  MANUAL
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -163,6 +168,7 @@ model User {
   milestoneNotifications     MilestoneNotification[]
   deletionRequests         AccountDeletionRequest[]
   reviewedDeletionRequests AccountDeletionRequest[] @relation("DeletionRequestReviewer")
+  memberTags               MemberTag[]
 }
 
 model AccountDeletionRequest {
@@ -481,6 +487,12 @@ model GymSettings {
   timezone             String   @default("Africa/Nairobi")
   referralRewardDays   Int      @default(7)
   maxReferralsPerCycle Int      @default(3)
+  newMemberDays        Int      @default(14)
+  activeDays           Int      @default(7)
+  inactiveDays         Int      @default(14)
+  dormantDays          Int      @default(30)
+  atRiskDays           Int      @default(14)
+  loyalStreakWeeks     Int      @default(4)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -720,4 +732,29 @@ model DiscountRedemption {
   @@unique([discountCodeId, memberId, subscriptionId])
   @@index([discountCodeId])
   @@index([memberId])
+}
+
+model Tag {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  source      TagSource
+  color       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members MemberTag[]
+}
+
+model MemberTag {
+  id         String   @id @default(uuid())
+  memberId   String
+  tagId      String
+  assignedAt DateTime @default(now())
+  assignedBy String?
+
+  member User @relation(fields: [memberId], references: [id])
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, tagId])
 }
