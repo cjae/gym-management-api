@@ -169,11 +169,12 @@ model AccountDeletionRequest {
   id           String                @id @default(uuid())
   userId       String
   user         User                  @relation(fields: [userId], references: [id])
-  reason       String?
-  status       DeletionRequestStatus @default(PENDING)
-  reviewedById String?
-  reviewedBy   User?                 @relation("DeletionRequestReviewer", fields: [reviewedById], references: [id])
-  reviewedAt   DateTime?
+  reason          String?
+  status          DeletionRequestStatus @default(PENDING)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedBy      User?                 @relation("DeletionRequestReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
 }

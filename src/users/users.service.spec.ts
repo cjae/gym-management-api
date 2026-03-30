@@ -301,7 +301,9 @@ describe('UsersService', () => {
           },
         },
       ];
-      prisma.accountDeletionRequest.findMany.mockResolvedValue(mockRequests as any);
+      prisma.accountDeletionRequest.findMany.mockResolvedValue(
+        mockRequests as any,
+      );
       prisma.accountDeletionRequest.count.mockResolvedValue(1);
 
       const result = await service.findAllDeletionRequests(1, 20);
@@ -369,6 +371,31 @@ describe('UsersService', () => {
 
       const result = await service.rejectDeletionRequest('dr-1', 'admin-1');
       expect(result.message).toContain('rejected');
+    });
+
+    it('should store rejection reason when provided', async () => {
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+        id: 'dr-1',
+        status: 'PENDING',
+      } as any);
+      prisma.accountDeletionRequest.update.mockResolvedValue({
+        id: 'dr-1',
+        status: 'REJECTED',
+        rejectionReason: 'Active subscription',
+      } as any);
+
+      await service.rejectDeletionRequest(
+        'dr-1',
+        'admin-1',
+        'Active subscription',
+      );
+      expect(prisma.accountDeletionRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            rejectionReason: 'Active subscription',
+          }),
+        }),
+      );
     });
 
     it('should throw NotFoundException if request not found', async () => {

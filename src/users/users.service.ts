@@ -282,10 +282,16 @@ export class UsersService {
       }),
     ]);
 
-    return { message: 'Deletion request approved. User account has been deleted.' };
+    return {
+      message: 'Deletion request approved. User account has been deleted.',
+    };
   }
 
-  async rejectDeletionRequest(requestId: string, reviewerId: string) {
+  async rejectDeletionRequest(
+    requestId: string,
+    reviewerId: string,
+    rejectionReason?: string,
+  ) {
     const request = await this.prisma.accountDeletionRequest.findUnique({
       where: { id: requestId },
     });
@@ -300,6 +306,7 @@ export class UsersService {
       where: { id: requestId },
       data: {
         status: 'REJECTED',
+        rejectionReason,
         reviewedById: reviewerId,
         reviewedAt: new Date(),
       },

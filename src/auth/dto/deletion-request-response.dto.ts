@@ -27,6 +27,9 @@ export class DeletionRequestResponseDto {
   @ApiProperty({ enum: ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] })
   status: string;
 
+  @ApiPropertyOptional({ description: 'Reason for rejection (set by admin)' })
+  rejectionReason?: string;
+
   @ApiPropertyOptional()
   reviewedById?: string;
 

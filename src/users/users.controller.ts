@@ -110,10 +110,9 @@ export class UsersController {
   rejectDeletionRequest(
     @Param('id') id: string,
     @CurrentUser('id') reviewerId: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     @Body() dto: RejectDeletionRequestDto,
   ) {
-    return this.usersService.rejectDeletionRequest(id, reviewerId);
+    return this.usersService.rejectDeletionRequest(id, reviewerId, dto.reason);
   }
 
   @Get(':id/profile')
