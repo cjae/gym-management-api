@@ -556,7 +556,9 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       } as any);
 
-      const result = await service.requestDeletion('1', { reason: 'Moving away' });
+      const result = await service.requestDeletion('1', {
+        reason: 'Moving away',
+      });
       expect(result.id).toBe('dr-1');
       expect(result.status).toBe('PENDING');
     });
@@ -567,9 +569,9 @@ describe('AuthService', () => {
         status: 'PENDING',
       } as any);
 
-      await expect(
-        service.requestDeletion('1', {}),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.requestDeletion('1', {})).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -615,9 +617,9 @@ describe('AuthService', () => {
     it('should throw NotFoundException if no pending request', async () => {
       prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.cancelDeletionRequest('1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.cancelDeletionRequest('1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

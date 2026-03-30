@@ -52,5 +52,4 @@ export class AdminCreateSubscriptionDto {
   @IsString()
   @MaxLength(500)
   paymentNote?: string;
-
 }
