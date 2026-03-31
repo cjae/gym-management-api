@@ -340,15 +340,15 @@ export class PaymentsService {
             updateData.paymentMethod = channelToMethod[channel];
           }
 
-          // Save card authorization and enable auto-renewal for future recurring charges
+          // Enable auto-renewal for all successful payments so the billing
+          // cron can auto-charge card users and send reminders to non-card users.
+          updateData.autoRenew = true;
+
+          // Save card authorization for future auto-charges
           if (channel === 'card' && authorization?.authorization_code) {
             updateData.paystackAuthorizationCode = this.encryptionKey
               ? encrypt(authorization.authorization_code, this.encryptionKey)
               : authorization.authorization_code;
-            updateData.autoRenew = true;
-          } else {
-            // Non-card channels can't be auto-charged — disable if previously enabled
-            updateData.autoRenew = false;
           }
 
           await this.prisma.memberSubscription.update({
