@@ -51,4 +51,15 @@ export const safeUserWithSubscriptionSelect =
         },
       },
     },
+    memberTags: {
+      select: {
+        tag: {
+          select: {
+            name: true,
+            source: true,
+            color: true,
+          },
+        },
+      },
+    },
   });

@@ -64,6 +64,7 @@ export class UsersController {
       query.limit,
       query.role,
       query.search,
+      query.tags,
     );
   }
 

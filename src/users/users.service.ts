@@ -136,7 +136,14 @@ export class UsersService {
     limit: number = 20,
     role?: Role[],
     search?: string,
+    tags?: string,
   ) {
+    const tagNames = tags
+      ? tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
     const where = {
       deletedAt: null,
       ...(role?.length ? { role: { in: role } } : {}),
@@ -147,6 +154,13 @@ export class UsersService {
               { lastName: { contains: search, mode: 'insensitive' as const } },
               { email: { contains: search, mode: 'insensitive' as const } },
             ],
+          }
+        : {}),
+      ...(tagNames.length
+        ? {
+            AND: tagNames.map((name) => ({
+              memberTags: { some: { tag: { name } } },
+            })),
           }
         : {}),
     };
@@ -160,7 +174,13 @@ export class UsersService {
       }),
       this.prisma.user.count({ where }),
     ]);
-    const data = users.map((user) => this.flattenSubscription(user));
+    const data = users.map((user) => {
+      const flat = this.flattenSubscription(user);
+      return {
+        ...flat,
+        tags: (user as any).memberTags?.map((mt: any) => mt.tag) ?? [],
+      };
+    });
     return { data, total, page, limit };
   }
 
@@ -190,7 +210,11 @@ export class UsersService {
     if (!user || user.deletedAt) {
       throw new NotFoundException(`User with id ${id} not found`);
     }
-    return this.flattenSubscription(user);
+    const flat = this.flattenSubscription(user);
+    return {
+      ...flat,
+      tags: (user as any).memberTags?.map((mt: any) => mt.tag) ?? [],
+    };
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -319,9 +343,11 @@ export class UsersService {
     user: Record<string, unknown> & {
       subscriptionMembers?: { subscription: Record<string, unknown> }[];
       attendances?: { checkInDate: Date }[];
+      memberTags?: { tag: Record<string, unknown> }[];
     },
   ) {
-    const { subscriptionMembers, attendances, ...rest } = user;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { subscriptionMembers, attendances, memberTags, ...rest } = user;
     const active = subscriptionMembers?.[0]?.subscription ?? null;
     const lastAttendance = attendances?.[0]?.checkInDate ?? null;
     return { ...rest, subscription: active, lastAttendance };

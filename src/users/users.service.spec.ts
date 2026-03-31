@@ -49,6 +49,7 @@ describe('UsersService', () => {
         },
       },
     ],
+    memberTags: [],
   };
 
   const mockUser = {
@@ -68,6 +69,7 @@ describe('UsersService', () => {
     updatedAt: mockUserFromDb.updatedAt,
     subscription: mockUserFromDb.subscriptionMembers[0].subscription,
     lastAttendance: mockUserFromDb.attendances[0].checkInDate,
+    tags: [],
   };
 
   const mockEmailService = {

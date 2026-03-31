@@ -27,4 +27,14 @@ export class UsersQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(100)
   search?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by tag names (comma-separated). Returns users with ALL specified tags.',
+    example: 'at-risk,inactive',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  tags?: string;
 }
