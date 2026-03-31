@@ -89,6 +89,7 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `PAYSTACK_SECRET_KEY` — **Required** — app throws at startup if missing
 - `ENCRYPTION_KEY` — 32-byte hex key for encrypting Paystack auth codes at rest (optional, no encryption when unset)
 - `ADMIN_URL` — CORS origin (defaults to `http://localhost:3001`)
+- `MEMBER_APP_URL` — URL for member-facing email links (defaults to `powerbarnfitness://manage-subscription`). In production, use a universal link / app link domain that redirects to the mobile app
 - `PORT` — Server port (defaults to 3000)
 - `SENTRY_DSN` — Sentry project DSN (optional in dev, required in prod)
 - `SENTRY_ENVIRONMENT` — Defaults to `development`

@@ -17,7 +17,7 @@ import { UsersService } from '../users/users.service';
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
-  private readonly adminUrl: string;
+  private readonly memberAppUrl: string;
   private readonly encryptionKey: string;
 
   constructor(
@@ -28,8 +28,8 @@ export class BillingService {
     private readonly notificationsService: NotificationsService,
     private readonly usersService: UsersService,
   ) {
-    this.adminUrl =
-      this.configService.get<AppConfig>(getAppConfigName())!.adminUrl;
+    this.memberAppUrl =
+      this.configService.get<AppConfig>(getAppConfigName())!.memberAppUrl;
     this.encryptionKey = this.configService.get<PaymentConfig>(
       getPaymentConfigName(),
     )!.encryptionKey;
@@ -154,7 +154,7 @@ export class BillingService {
           sub.primaryMember.firstName,
           sub.plan.name,
           sub.plan.price,
-          `${this.adminUrl}/subscriptions`,
+          `${this.memberAppUrl}`,
         );
         this.logger.warn(
           `Expired subscription ${sub.id} after 2 card failures`,
@@ -212,7 +212,7 @@ export class BillingService {
           sub.plan.name,
           sub.plan.price,
           daysUntil,
-          `${this.adminUrl}/subscriptions`,
+          `${this.memberAppUrl}`,
         );
 
         this.notificationsService
@@ -280,7 +280,7 @@ export class BillingService {
         sub.primaryMember.email,
         sub.primaryMember.firstName,
         sub.plan.name,
-        `${this.adminUrl}/subscriptions`,
+        `${this.memberAppUrl}`,
       );
 
       this.notificationsService

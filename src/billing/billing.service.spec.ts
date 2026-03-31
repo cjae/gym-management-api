@@ -25,7 +25,8 @@ describe('BillingService', () => {
 
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string) => {
-      if (key === 'app') return { adminUrl: 'http://localhost:3001' };
+      if (key === 'app')
+        return { memberAppUrl: 'powerbarnfitness://manage-subscription' };
       if (key === 'payment')
         return { paystackSecretKey: 'sk_test', encryptionKey: '' };
       return {};
@@ -182,7 +183,7 @@ describe('BillingService', () => {
         'Monthly',
         2500,
         3,
-        expect.stringContaining('/subscriptions'),
+        'powerbarnfitness://manage-subscription',
       );
     });
   });
