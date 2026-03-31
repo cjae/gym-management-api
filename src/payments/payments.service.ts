@@ -86,9 +86,8 @@ export class PaymentsService {
     email: string,
     userId: string,
   ) {
-    console.log('[PaymentsService] initializePayment called:', {
+    this.logger.debug('initializePayment called', {
       subscriptionId,
-      email,
       userId,
     });
 
@@ -97,15 +96,14 @@ export class PaymentsService {
       include: { plan: true },
     });
     if (!subscription) {
-      console.log('[PaymentsService] Subscription not found:', subscriptionId);
+      this.logger.warn('Subscription not found', { subscriptionId });
       throw new BadRequestException('Subscription not found');
     }
 
-    console.log('[PaymentsService] Subscription found:', {
+    this.logger.debug('Subscription found', {
       id: subscription.id,
       paymentMethod: subscription.paymentMethod,
       status: subscription.status,
-      primaryMemberId: subscription.primaryMemberId,
     });
 
     if (subscription.primaryMemberId !== userId) {
@@ -178,12 +176,11 @@ export class PaymentsService {
       },
     };
 
-    console.log('[PaymentsService] Initializing payment:', {
+    this.logger.debug('Initializing Paystack payment', {
       method: subscription.paymentMethod,
       channel,
       amount: chargeAmount * 100,
       baseAmount: effectiveAmount,
-      email,
     });
 
     try {
@@ -200,15 +197,15 @@ export class PaymentsService {
       return response.data.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('[PaymentsService] Paystack initialization failed:', {
+        this.logger.error('Paystack initialization failed', {
           status: error.response?.status,
           body: error.response?.data,
           payload: { ...payload, email: '***' },
         });
       } else {
-        console.error(
-          '[PaymentsService] Paystack initialization failed:',
-          error instanceof Error ? error.message : error,
+        this.logger.error(
+          'Paystack initialization failed',
+          error instanceof Error ? error.stack : String(error),
         );
       }
       throw new BadRequestException('Payment initialization failed');

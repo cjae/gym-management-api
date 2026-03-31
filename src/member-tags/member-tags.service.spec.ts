@@ -368,7 +368,10 @@ describe('MemberTagsService', () => {
         },
       ];
 
-      prisma.user.findMany.mockResolvedValueOnce(members as any);
+      // First call returns members, second call returns empty to end the loop
+      txPrisma.user.findMany
+        .mockResolvedValueOnce(members as any)
+        .mockResolvedValueOnce([]);
 
       await service.refreshSystemTags();
 
@@ -378,9 +381,8 @@ describe('MemberTagsService', () => {
 
       expect(txPrisma.memberTag.createMany).toHaveBeenCalledWith({
         data: expect.arrayContaining([
-          // New member: new-member + inactive (no check-ins, daysSinceCheckIn null >= 14)
+          // New member: new-member only (joined 5 days ago, no check-ins — inactivityDays=5 < 14)
           { memberId: 'member-new', tagId: 'tag-new' },
-          { memberId: 'member-new', tagId: 'tag-inactive' },
           // Active member: active + loyal (streak 5 >= 4 weeks)
           { memberId: 'member-active', tagId: 'tag-active' },
           { memberId: 'member-active', tagId: 'tag-loyal' },

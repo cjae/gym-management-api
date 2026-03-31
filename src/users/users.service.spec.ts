@@ -333,11 +333,20 @@ describe('UsersService', () => {
         userId: 'user-1',
         status: 'PENDING',
       } as any);
-      prisma.$transaction.mockResolvedValue([{}, {}] as any);
+      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 1,
+      } as any);
+      prisma.user.update.mockResolvedValue({} as any);
 
       const result = await service.approveDeletionRequest('dr-1', 'admin-1');
       expect(result.message).toContain('approved');
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.accountDeletionRequest.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'dr-1', status: 'PENDING' },
+        }),
+      );
     });
 
     it('should throw NotFoundException if request not found', async () => {
@@ -351,7 +360,12 @@ describe('UsersService', () => {
     it('should throw BadRequestException if request is not PENDING', async () => {
       prisma.accountDeletionRequest.findUnique.mockResolvedValue({
         id: 'dr-1',
+        userId: 'user-1',
         status: 'APPROVED',
+      } as any);
+      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 0,
       } as any);
 
       await expect(
@@ -366,9 +380,8 @@ describe('UsersService', () => {
         id: 'dr-1',
         status: 'PENDING',
       } as any);
-      prisma.accountDeletionRequest.update.mockResolvedValue({
-        id: 'dr-1',
-        status: 'REJECTED',
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 1,
       } as any);
 
       const result = await service.rejectDeletionRequest('dr-1', 'admin-1');
@@ -380,10 +393,8 @@ describe('UsersService', () => {
         id: 'dr-1',
         status: 'PENDING',
       } as any);
-      prisma.accountDeletionRequest.update.mockResolvedValue({
-        id: 'dr-1',
-        status: 'REJECTED',
-        rejectionReason: 'Active subscription',
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 1,
       } as any);
 
       await service.rejectDeletionRequest(
@@ -391,7 +402,7 @@ describe('UsersService', () => {
         'admin-1',
         'Active subscription',
       );
-      expect(prisma.accountDeletionRequest.update).toHaveBeenCalledWith(
+      expect(prisma.accountDeletionRequest.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             rejectionReason: 'Active subscription',
@@ -412,6 +423,9 @@ describe('UsersService', () => {
       prisma.accountDeletionRequest.findUnique.mockResolvedValue({
         id: 'dr-1',
         status: 'APPROVED',
+      } as any);
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 0,
       } as any);
 
       await expect(

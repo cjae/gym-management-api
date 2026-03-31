@@ -278,24 +278,24 @@ export class UsersService {
     if (!request) {
       throw new NotFoundException('Deletion request not found');
     }
-    if (request.status !== 'PENDING') {
-      throw new BadRequestException('Request is not pending');
-    }
 
-    await this.prisma.$transaction([
-      this.prisma.accountDeletionRequest.update({
-        where: { id: requestId },
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.accountDeletionRequest.updateMany({
+        where: { id: requestId, status: 'PENDING' },
         data: {
           status: 'APPROVED',
           reviewedById: reviewerId,
           reviewedAt: new Date(),
         },
-      }),
-      this.prisma.user.update({
+      });
+      if (result.count !== 1) {
+        throw new BadRequestException('Request is no longer pending');
+      }
+      await tx.user.update({
         where: { id: request.userId },
         data: { deletedAt: new Date() },
-      }),
-    ]);
+      });
+    });
 
     return {
       message: 'Deletion request approved. User account has been deleted.',
@@ -313,12 +313,9 @@ export class UsersService {
     if (!request) {
       throw new NotFoundException('Deletion request not found');
     }
-    if (request.status !== 'PENDING') {
-      throw new BadRequestException('Request is not pending');
-    }
 
-    await this.prisma.accountDeletionRequest.update({
-      where: { id: requestId },
+    const result = await this.prisma.accountDeletionRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
       data: {
         status: 'REJECTED',
         rejectionReason,
@@ -326,6 +323,9 @@ export class UsersService {
         reviewedAt: new Date(),
       },
     });
+    if (result.count !== 1) {
+      throw new BadRequestException('Request is no longer pending');
+    }
 
     return { message: 'Deletion request rejected.' };
   }
