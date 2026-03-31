@@ -21,7 +21,12 @@ import {
 } from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
 import { addPaystackCommission } from '../common/utils/paystack-commission.util';
-import { NotificationType, Payment, Prisma } from '@prisma/client';
+import {
+  NotificationType,
+  Payment,
+  PaymentMethod,
+  Prisma,
+} from '@prisma/client';
 import axios from 'axios';
 import * as crypto from 'crypto';
 
@@ -126,6 +131,39 @@ export class PaymentsService {
       });
     }
 
+    const channelMap: Record<
+      string,
+      {
+        channel: string;
+        onlineMethod: 'CARD' | 'MOBILE_MONEY' | 'BANK_TRANSFER';
+      }
+    > = {
+      CARD: { channel: 'card', onlineMethod: 'CARD' },
+      CARD_IN_PERSON: { channel: 'card', onlineMethod: 'CARD' },
+      MOBILE_MONEY: { channel: 'mobile_money', onlineMethod: 'MOBILE_MONEY' },
+      MOBILE_MONEY_IN_PERSON: {
+        channel: 'mobile_money',
+        onlineMethod: 'MOBILE_MONEY',
+      },
+      BANK_TRANSFER: {
+        channel: 'bank_transfer',
+        onlineMethod: 'BANK_TRANSFER',
+      },
+      BANK_TRANSFER_IN_PERSON: {
+        channel: 'bank_transfer',
+        onlineMethod: 'BANK_TRANSFER',
+      },
+    };
+
+    const mapping = channelMap[subscription.paymentMethod];
+    if (!mapping) {
+      throw new BadRequestException(
+        `Unsupported payment method: ${subscription.paymentMethod}`,
+      );
+    }
+
+    const { channel, onlineMethod } = mapping;
+
     const basePrice = subscription.originalPlanPrice ?? subscription.plan.price;
     const effectiveAmount = basePrice - (subscription.discountAmount ?? 0);
 
@@ -133,27 +171,10 @@ export class PaymentsService {
       data: {
         subscriptionId,
         amount: effectiveAmount,
-        paymentMethod: subscription.paymentMethod,
+        paymentMethod: onlineMethod,
       },
     });
 
-    const channelMap: Record<string, string> = {
-      CARD: 'card',
-      MOBILE_MONEY: 'mobile_money',
-      BANK_TRANSFER: 'bank_transfer',
-    };
-
-    const channel = channelMap[subscription.paymentMethod];
-    if (!channel) {
-      throw new BadRequestException(
-        `Unsupported online payment method: ${subscription.paymentMethod}`,
-      );
-    }
-
-    const onlineMethod = subscription.paymentMethod as
-      | 'CARD'
-      | 'MOBILE_MONEY'
-      | 'BANK_TRANSFER';
     const chargeAmount = addPaystackCommission(effectiveAmount, onlineMethod);
 
     const channels = [channel];
@@ -308,12 +329,26 @@ export class PaymentsService {
             originalPlanPrice: null,
           };
 
-          // Save card authorization for future recurring charges
+          // Update subscription to the online payment method so billing
+          // cron picks it up for auto-charges / reminders going forward.
+          const channelToMethod: Record<string, PaymentMethod> = {
+            card: PaymentMethod.CARD,
+            mobile_money: PaymentMethod.MOBILE_MONEY,
+            bank_transfer: PaymentMethod.BANK_TRANSFER,
+          };
+          if (channel && channelToMethod[channel]) {
+            updateData.paymentMethod = channelToMethod[channel];
+          }
+
+          // Enable auto-renewal for all successful payments so the billing
+          // cron can auto-charge card users and send reminders to non-card users.
+          updateData.autoRenew = true;
+
+          // Save card authorization for future auto-charges
           if (channel === 'card' && authorization?.authorization_code) {
             updateData.paystackAuthorizationCode = this.encryptionKey
               ? encrypt(authorization.authorization_code, this.encryptionKey)
               : authorization.authorization_code;
-            updateData.paymentMethod = 'CARD';
           }
 
           await this.prisma.memberSubscription.update({
