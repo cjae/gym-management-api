@@ -24,6 +24,7 @@ import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { AddDuoMemberDto } from './dto/add-duo-member.dto';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
+import { UpdatePaymentReferenceDto } from './dto/update-payment-reference.dto';
 import { FreezeSubscriptionDto } from './dto/freeze-subscription.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
 import { SubscriptionMemberResponseDto } from './dto/subscription-member-response.dto';
@@ -65,6 +66,24 @@ export class SubscriptionsController {
     @Body() dto: AdminCreateSubscriptionDto,
   ) {
     return this.subscriptionsService.adminCreate(adminId, dto);
+  }
+
+  @Patch(':id/payment-reference')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ description: 'Payment reference updated' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
+  @ApiNotFoundResponse({ description: 'Subscription or payment not found' })
+  @ApiBadRequestResponse({
+    description: 'Cannot update payment reference for online subscriptions',
+  })
+  updatePaymentReference(
+    @Param('id') id: string,
+    @Body() dto: UpdatePaymentReferenceDto,
+  ) {
+    return this.subscriptionsService.updatePaymentReference(
+      id,
+      dto.paymentReference,
+    );
   }
 
   @Post(':id/duo')
