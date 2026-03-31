@@ -11,7 +11,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -59,6 +61,8 @@ export class MemberTagsController {
 
   @Post()
   @ApiCreatedResponse({ type: TagResponseDto })
+  @ApiConflictResponse({ description: 'Tag name already exists' })
+  @ApiBadRequestResponse({ description: 'Validation failed' })
   create(@Body() dto: CreateTagDto) {
     return this.memberTagsService.create(dto);
   }
@@ -66,6 +70,7 @@ export class MemberTagsController {
   @Patch(':id')
   @ApiOkResponse({ type: TagResponseDto })
   @ApiNotFoundResponse({ description: 'Tag not found' })
+  @ApiBadRequestResponse({ description: 'Cannot update SYSTEM tags' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTagDto) {
     return this.memberTagsService.update(id, dto);
   }
@@ -74,6 +79,7 @@ export class MemberTagsController {
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ type: TagResponseDto })
   @ApiNotFoundResponse({ description: 'Tag not found' })
+  @ApiBadRequestResponse({ description: 'Cannot delete SYSTEM tags' })
   delete(@Param('id', ParseUUIDPipe) id: string) {
     return this.memberTagsService.delete(id);
   }
@@ -81,6 +87,7 @@ export class MemberTagsController {
   @Post(':tagId/members')
   @ApiCreatedResponse({ description: 'Tag assigned to members' })
   @ApiNotFoundResponse({ description: 'Tag not found' })
+  @ApiBadRequestResponse({ description: 'Cannot assign SYSTEM tags or no valid member IDs' })
   assignTag(
     @Param('tagId', ParseUUIDPipe) tagId: string,
     @Body() dto: AssignTagDto,
