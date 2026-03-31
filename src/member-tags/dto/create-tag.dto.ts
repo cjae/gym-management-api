@@ -12,6 +12,10 @@ export class CreateTagDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
+  @Matches(/^[a-z0-9][a-z0-9 -]*$/, {
+    message:
+      'Tag name may only contain lowercase letters, numbers, hyphens, and spaces',
+  })
   name: string;
 
   @ApiPropertyOptional({ example: 'High-value members' })

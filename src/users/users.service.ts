@@ -143,6 +143,7 @@ export class UsersService {
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean)
+          .slice(0, 10)
       : [];
     const where = {
       deletedAt: null,
