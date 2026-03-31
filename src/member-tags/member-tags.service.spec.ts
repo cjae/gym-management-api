@@ -310,6 +310,8 @@ describe('MemberTagsService', () => {
       },
     ];
 
+    let txPrisma: DeepMockProxy<PrismaClient>;
+
     beforeEach(() => {
       jest.useFakeTimers().setSystemTime(now);
       gymSettingsService.getCachedSettings.mockResolvedValue({
@@ -324,9 +326,13 @@ describe('MemberTagsService', () => {
       prisma.tag.upsert.mockResolvedValue({} as any);
       // system tags lookup
       prisma.tag.findMany.mockResolvedValue(systemTagsList as any);
-      // clear existing system assignments
-      prisma.memberTag.deleteMany.mockResolvedValue({ count: 0 });
-      prisma.memberTag.createMany.mockResolvedValue({ count: 0 });
+      // Mock $transaction to execute the callback with a mock tx client
+      txPrisma = mockDeep<PrismaClient>();
+      txPrisma.memberTag.deleteMany.mockResolvedValue({ count: 0 });
+      txPrisma.memberTag.createMany.mockResolvedValue({ count: 0 });
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn: any) =>
+        fn(txPrisma),
+      );
     });
 
     afterEach(() => {
@@ -366,11 +372,11 @@ describe('MemberTagsService', () => {
 
       await service.refreshSystemTags();
 
-      expect(prisma.memberTag.deleteMany).toHaveBeenCalledWith({
+      expect(txPrisma.memberTag.deleteMany).toHaveBeenCalledWith({
         where: { tag: { source: TagSource.SYSTEM } },
       });
 
-      expect(prisma.memberTag.createMany).toHaveBeenCalledWith({
+      expect(txPrisma.memberTag.createMany).toHaveBeenCalledWith({
         data: expect.arrayContaining([
           // New member: new-member + inactive (no check-ins, daysSinceCheckIn null >= 14)
           { memberId: 'member-new', tagId: 'tag-new' },
