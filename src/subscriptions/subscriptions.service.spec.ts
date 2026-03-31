@@ -653,6 +653,45 @@ describe('SubscriptionsService', () => {
         }),
       );
     });
+
+    it('should create subscription without paymentReference', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
+      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
+
+      const createdSub = {
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+      };
+      prisma.memberSubscription.create.mockResolvedValueOnce(createdSub as any);
+      prisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' } as any);
+
+      const dto = {
+        memberId: 'member-1',
+        planId: 'plan-1',
+        paymentMethod: PaymentMethod.MOBILE_MONEY_IN_PERSON,
+        // no paymentReference
+      };
+
+      const result = await service.adminCreate(adminId, dto);
+
+      expect(result.status).toBe('ACTIVE');
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            paystackReference: undefined,
+          }),
+        }),
+      );
+    });
   });
 
   describe('create with discount code', () => {
