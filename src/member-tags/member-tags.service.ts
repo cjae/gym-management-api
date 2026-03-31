@@ -190,11 +190,6 @@ export class MemberTagsService {
     });
     const tagMap = new Map(systemTags.map((t) => [t.name, t.id]));
 
-    // Delete all existing system tag assignments
-    await this.prisma.memberTag.deleteMany({
-      where: { tag: { source: TagSource.SYSTEM } },
-    });
-
     const newMemberDays = settings?.newMemberDays ?? 14;
     const activeDays = settings?.activeDays ?? 7;
     const inactiveDays = settings?.inactiveDays ?? 14;
@@ -203,132 +198,158 @@ export class MemberTagsService {
     const loyalStreakWeeks = settings?.loyalStreakWeeks ?? 4;
 
     const assignments: { memberId: string; tagId: string }[] = [];
+    const BATCH_SIZE = 500;
 
-    const members = await this.prisma.user.findMany({
-      where: { role: 'MEMBER', deletedAt: null },
-      select: {
-        id: true,
-        createdAt: true,
-        attendances: {
-          orderBy: { checkInDate: 'desc' },
-          take: 1,
-          select: { checkInDate: true },
-        },
-        subscriptionMembers: {
-          where: {
-            subscription: { status: { in: ['ACTIVE', 'FROZEN', 'EXPIRED'] } },
+    let cursor: string | undefined;
+    let totalMembers = 0;
+
+    // Cursor-based batching to avoid loading all members at once
+    while (true) {
+      const members = await this.prisma.user.findMany({
+        where: { role: 'MEMBER', deletedAt: null },
+        select: {
+          id: true,
+          createdAt: true,
+          attendances: {
+            orderBy: { checkInDate: 'desc' },
+            take: 1,
+            select: { checkInDate: true },
           },
-          select: { subscription: { select: { status: true } } },
+          subscriptionMembers: {
+            where: {
+              subscription: {
+                status: { in: ['ACTIVE', 'FROZEN', 'EXPIRED'] },
+              },
+            },
+            select: { subscription: { select: { status: true } } },
+          },
+          streak: {
+            select: { weeklyStreak: true },
+          },
         },
-        streak: {
-          select: { weeklyStreak: true },
-        },
-      },
+        orderBy: { id: 'asc' },
+        take: BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+
+      if (members.length === 0) break;
+
+      totalMembers += members.length;
+      cursor = members[members.length - 1].id;
+
+      for (const member of members) {
+        const lastCheckIn = member.attendances[0]?.checkInDate;
+        const daysSinceCheckIn = lastCheckIn
+          ? Math.floor(
+              (now.getTime() - new Date(lastCheckIn).getTime()) /
+                (1000 * 60 * 60 * 24),
+            )
+          : null;
+        const daysSinceJoined = Math.floor(
+          (now.getTime() - member.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        const subStatuses = member.subscriptionMembers.map(
+          (sm) => sm.subscription.status,
+        );
+        const hasActive = subStatuses.includes('ACTIVE');
+        const hasFrozen = subStatuses.includes('FROZEN');
+        const hasExpired = subStatuses.includes('EXPIRED');
+
+        if (daysSinceJoined <= newMemberDays && tagMap.has('new-member')) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('new-member')!,
+          });
+        }
+
+        if (
+          daysSinceCheckIn !== null &&
+          daysSinceCheckIn <= activeDays &&
+          tagMap.has('active')
+        ) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('active')!,
+          });
+        }
+
+        if (
+          (daysSinceCheckIn === null || daysSinceCheckIn >= inactiveDays) &&
+          tagMap.has('inactive')
+        ) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('inactive')!,
+          });
+        }
+
+        if (
+          (daysSinceCheckIn === null || daysSinceCheckIn >= dormantDays) &&
+          tagMap.has('dormant')
+        ) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('dormant')!,
+          });
+        }
+
+        if (
+          hasActive &&
+          (daysSinceCheckIn === null || daysSinceCheckIn >= atRiskDays) &&
+          tagMap.has('at-risk')
+        ) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('at-risk')!,
+          });
+        }
+
+        if (hasExpired && !hasActive && tagMap.has('expired')) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('expired')!,
+          });
+        }
+
+        if (
+          member.streak?.weeklyStreak &&
+          member.streak.weeklyStreak >= loyalStreakWeeks &&
+          tagMap.has('loyal')
+        ) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('loyal')!,
+          });
+        }
+
+        if (hasFrozen && tagMap.has('frozen')) {
+          assignments.push({
+            memberId: member.id,
+            tagId: tagMap.get('frozen')!,
+          });
+        }
+      }
+
+      if (members.length < BATCH_SIZE) break;
+    }
+
+    // Wrap delete + insert in a transaction so tags are never missing
+    await this.prisma.$transaction(async (tx) => {
+      await tx.memberTag.deleteMany({
+        where: { tag: { source: TagSource.SYSTEM } },
+      });
+
+      if (assignments.length > 0) {
+        await tx.memberTag.createMany({
+          data: assignments,
+          skipDuplicates: true,
+        });
+      }
     });
 
-    for (const member of members) {
-      const lastCheckIn = member.attendances[0]?.checkInDate;
-      const daysSinceCheckIn = lastCheckIn
-        ? Math.floor(
-            (now.getTime() - new Date(lastCheckIn).getTime()) /
-              (1000 * 60 * 60 * 24),
-          )
-        : null;
-      const daysSinceJoined = Math.floor(
-        (now.getTime() - member.createdAt.getTime()) / (1000 * 60 * 60 * 24),
-      );
-
-      const subStatuses = member.subscriptionMembers.map(
-        (sm) => sm.subscription.status,
-      );
-      const hasActive = subStatuses.includes('ACTIVE');
-      const hasFrozen = subStatuses.includes('FROZEN');
-      const hasExpired = subStatuses.includes('EXPIRED');
-
-      if (daysSinceJoined <= newMemberDays && tagMap.has('new-member')) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('new-member')!,
-        });
-      }
-
-      if (
-        daysSinceCheckIn !== null &&
-        daysSinceCheckIn <= activeDays &&
-        tagMap.has('active')
-      ) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('active')!,
-        });
-      }
-
-      if (
-        (daysSinceCheckIn === null || daysSinceCheckIn >= inactiveDays) &&
-        tagMap.has('inactive')
-      ) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('inactive')!,
-        });
-      }
-
-      if (
-        (daysSinceCheckIn === null || daysSinceCheckIn >= dormantDays) &&
-        tagMap.has('dormant')
-      ) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('dormant')!,
-        });
-      }
-
-      if (
-        hasActive &&
-        (daysSinceCheckIn === null || daysSinceCheckIn >= atRiskDays) &&
-        tagMap.has('at-risk')
-      ) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('at-risk')!,
-        });
-      }
-
-      if (hasExpired && !hasActive && tagMap.has('expired')) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('expired')!,
-        });
-      }
-
-      if (
-        member.streak?.weeklyStreak &&
-        member.streak.weeklyStreak >= loyalStreakWeeks &&
-        tagMap.has('loyal')
-      ) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('loyal')!,
-        });
-      }
-
-      if (hasFrozen && tagMap.has('frozen')) {
-        assignments.push({
-          memberId: member.id,
-          tagId: tagMap.get('frozen')!,
-        });
-      }
-    }
-
-    if (assignments.length > 0) {
-      await this.prisma.memberTag.createMany({
-        data: assignments,
-        skipDuplicates: true,
-      });
-    }
-
     this.logger.log(
-      `System tag refresh complete: ${assignments.length} assignments for ${members.length} members`,
+      `System tag refresh complete: ${assignments.length} assignments for ${totalMembers} members`,
     );
   }
 
