@@ -1,12 +1,4 @@
-import {
-  IsString,
-  IsIn,
-  IsOptional,
-  MaxLength,
-  IsUUID,
-  ValidateIf,
-  IsNotEmpty,
-} from 'class-validator';
+import { IsString, IsIn, IsOptional, MaxLength, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '@prisma/client';
 import { ADMIN_PAYMENT_METHODS } from '../../common/constants/payment-methods';
@@ -28,17 +20,13 @@ export class AdminCreateSubscriptionDto {
   @IsIn(ADMIN_PAYMENT_METHODS)
   paymentMethod: PaymentMethod;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'QWERTY123',
     maxLength: 200,
     description:
-      'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Required for all methods except COMPLIMENTARY.',
+      'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Optional — can be added later via PATCH.',
   })
-  @ValidateIf(
-    (o: AdminCreateSubscriptionDto) =>
-      o.paymentMethod !== PaymentMethod.COMPLIMENTARY,
-  )
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
   @MaxLength(200)
   paymentReference?: string;
