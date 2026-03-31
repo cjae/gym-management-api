@@ -17,6 +17,9 @@ export class UserSummaryResponseDto {
   @ApiProperty({ enum: UserStatus })
   status: UserStatus;
 
-  @ApiPropertyOptional({ example: 'https://res.cloudinary.com/example/image/upload/v1/avatars/abc.jpg' })
+  @ApiPropertyOptional({
+    example:
+      'https://res.cloudinary.com/example/image/upload/v1/avatars/abc.jpg',
+  })
   displayPicture?: string;
 }
