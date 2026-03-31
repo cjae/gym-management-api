@@ -248,8 +248,11 @@ describe('AnalyticsService', () => {
         },
       ] as any);
 
-      // subscribersAtStart = 48 (existing subs before period)
-      prisma.memberSubscription.count.mockResolvedValue(48);
+      // First count call: churnedInPeriod = 2 (1 cancelled + 1 expired)
+      // Second count call: subscribersAtStart = 48
+      prisma.memberSubscription.count
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(48);
 
       const result = await service.getSubscriptionTrends({
         from: '2026-03-01',
@@ -258,13 +261,14 @@ describe('AnalyticsService', () => {
       });
 
       expect(result.series).toHaveLength(1);
-      expect(result.series[0].newSubscriptions).toBe(2);
+      // All 4 non-PENDING subscriptions count as new in the period
+      expect(result.series[0].newSubscriptions).toBe(4);
       expect(result.series[0].cancellations).toBe(1);
       expect(result.series[0].expirations).toBe(1);
       expect(result.byPlan).toEqual({ Basic: 1, Premium: 1 });
       expect(result.byPaymentMethod).toEqual({ CARD: 1, MOBILE_MONEY: 1 });
-      // churnRate = (1 + 1) / (48 + 2) * 100 = 4
-      expect(result.churnRate).toBe(4);
+      // churnRate = 2 / (48 + 4) * 100 = 3.85
+      expect(result.churnRate).toBe(3.85);
     });
   });
 

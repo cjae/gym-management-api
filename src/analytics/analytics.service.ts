@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { Granularity } from './dto/analytics-query.dto';
@@ -445,15 +446,26 @@ export class AnalyticsService {
     const { from, to } = this.getDateRange(query);
     const granularity = query.granularity || Granularity.MONTHLY;
 
+    // Subscriptions created during the period (for time-series buckets)
     const subscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         createdAt: { gte: from, lte: to },
+        status: { not: 'PENDING' as SubscriptionStatus },
       },
       select: {
         status: true,
         createdAt: true,
         plan: { select: { name: true } },
         paymentMethod: true,
+      },
+    });
+
+    // Subscriptions that churned during the period (for churn rate)
+    // Uses updatedAt to capture when the status actually changed
+    const churnedInPeriod = await this.prisma.memberSubscription.count({
+      where: {
+        status: { in: ['CANCELLED', 'EXPIRED'] },
+        updatedAt: { gte: from, lte: to },
       },
     });
 
@@ -475,49 +487,39 @@ export class AnalyticsService {
       }
       const bucket = buckets.get(period)!;
 
-      if (sub.status === 'ACTIVE' || sub.status === 'FROZEN') {
-        bucket.newSubscriptions++;
-        byPlan[sub.plan.name] = (byPlan[sub.plan.name] || 0) + 1;
-        byPaymentMethod[sub.paymentMethod] =
-          (byPaymentMethod[sub.paymentMethod] || 0) + 1;
-      } else if (sub.status === 'CANCELLED') {
+      // Every non-PENDING subscription created in the period is a new subscription
+      bucket.newSubscriptions++;
+
+      if (sub.status === 'CANCELLED') {
         bucket.cancellations++;
       } else if (sub.status === 'EXPIRED') {
         bucket.expirations++;
       }
+
+      // Active breakdown by plan and payment method
+      if (sub.status === 'ACTIVE' || sub.status === 'FROZEN') {
+        byPlan[sub.plan.name] = (byPlan[sub.plan.name] || 0) + 1;
+        byPaymentMethod[sub.paymentMethod] =
+          (byPaymentMethod[sub.paymentMethod] || 0) + 1;
+      }
     }
 
-    // Count subscribers that existed at the start of the period
-    // (created before period start, not yet expired/cancelled before period start)
+    // Subscribers at the start of the period: created before the period,
+    // with endDate still in the future (were not yet naturally expired)
     const subscribersAtStart = await this.prisma.memberSubscription.count({
       where: {
         createdAt: { lt: from },
-        status: { in: ['ACTIVE', 'FROZEN', 'CANCELLED', 'EXPIRED'] },
-        OR: [
-          { endDate: { gte: from } },
-          { status: { in: ['CANCELLED', 'EXPIRED'] } },
-        ],
+        endDate: { gte: from },
+        status: { not: 'PENDING' as SubscriptionStatus },
       },
     });
 
-    // Also count new subscriptions created during the period
-    const newInPeriod = subscriptions.filter(
-      (s) => s.status === 'ACTIVE' || s.status === 'FROZEN',
-    ).length;
+    // Total base = existing subscribers + all new subscriptions in the period
+    const totalBase = subscribersAtStart + subscriptions.length;
 
-    const totalBase = subscribersAtStart + newInPeriod;
-
-    const totalCancelled = subscriptions.filter(
-      (s) => s.status === 'CANCELLED',
-    ).length;
-    const totalExpired = subscriptions.filter(
-      (s) => s.status === 'EXPIRED',
-    ).length;
     const churnRate =
       totalBase > 0
-        ? Math.round(
-            ((totalCancelled + totalExpired) / totalBase) * 100 * 100,
-          ) / 100
+        ? Math.round((churnedInPeriod / totalBase) * 100 * 100) / 100
         : 0;
 
     const series = Array.from(buckets.entries())
