@@ -393,27 +393,33 @@ export class EventsService {
     startTime: string;
     location: string | null;
   }) {
-    const members = await this.prisma.user.findMany({
-      where: { role: 'MEMBER', deletedAt: null },
-      select: { id: true },
-    });
+    try {
+      const members = await this.prisma.user.findMany({
+        where: { role: 'MEMBER', deletedAt: null },
+        select: { id: true },
+      });
 
-    const date = event.date.toISOString().split('T')[0];
+      const date = event.date.toISOString().split('T')[0];
 
-    for (const member of members) {
-      this.notificationsService
-        .create({
-          userId: member.id,
-          title: `New Event: ${event.title}`,
-          body: `${date} at ${event.startTime} — ${event.location || 'TBA'}`,
-          type: NotificationType.EVENT_UPDATE,
-          metadata: { eventId: event.id },
-        })
-        .catch((err) =>
-          this.logger.error(
-            `Failed to create new event notification: ${err.message}`,
-          ),
-        );
+      for (const member of members) {
+        this.notificationsService
+          .create({
+            userId: member.id,
+            title: `New Event: ${event.title}`,
+            body: `${date} at ${event.startTime} — ${event.location || 'TBD'}`,
+            type: NotificationType.EVENT_UPDATE,
+            metadata: { eventId: event.id },
+          })
+          .catch((err) =>
+            this.logger.error(
+              `Failed to create new event notification: ${err.message}`,
+            ),
+          );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to notify members of new event: ${err.message}`,
+      );
     }
   }
 }
