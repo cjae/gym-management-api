@@ -41,7 +41,7 @@ export class EventsService {
       throw new BadRequestException('Cannot create an event in the past');
     }
 
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: {
         title: dto.title,
         description: dto.description,
@@ -52,6 +52,12 @@ export class EventsService {
         maxCapacity: dto.maxCapacity ?? 50,
       },
     });
+
+    if (dto.notifyMembers) {
+      this.notifyNewEvent(event);
+    }
+
+    return event;
   }
 
   async findAll(page: number = 1, limit: number = 20) {
@@ -375,6 +381,37 @@ export class EventsService {
         .catch((err) =>
           this.logger.error(
             `Failed to create event cancelled notification: ${err.message}`,
+          ),
+        );
+    }
+  }
+
+  private async notifyNewEvent(event: {
+    id: string;
+    title: string;
+    date: Date;
+    startTime: string;
+    location: string | null;
+  }) {
+    const members = await this.prisma.user.findMany({
+      where: { role: 'MEMBER', deletedAt: null },
+      select: { id: true },
+    });
+
+    const date = event.date.toISOString().split('T')[0];
+
+    for (const member of members) {
+      this.notificationsService
+        .create({
+          userId: member.id,
+          title: `New Event: ${event.title}`,
+          body: `${date} at ${event.startTime} — ${event.location || 'TBA'}`,
+          type: NotificationType.EVENT_UPDATE,
+          metadata: { eventId: event.id },
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Failed to create new event notification: ${err.message}`,
           ),
         );
     }
