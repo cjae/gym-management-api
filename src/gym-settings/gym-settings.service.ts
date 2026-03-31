@@ -46,6 +46,18 @@ export class GymSettingsService {
         ...(dto.maxReferralsPerCycle !== undefined && {
           maxReferralsPerCycle: dto.maxReferralsPerCycle,
         }),
+        ...(dto.newMemberDays !== undefined && {
+          newMemberDays: dto.newMemberDays,
+        }),
+        ...(dto.activeDays !== undefined && { activeDays: dto.activeDays }),
+        ...(dto.inactiveDays !== undefined && {
+          inactiveDays: dto.inactiveDays,
+        }),
+        ...(dto.dormantDays !== undefined && { dormantDays: dto.dormantDays }),
+        ...(dto.atRiskDays !== undefined && { atRiskDays: dto.atRiskDays }),
+        ...(dto.loyalStreakWeeks !== undefined && {
+          loyalStreakWeeks: dto.loyalStreakWeeks,
+        }),
       },
       update: {
         ...(dto.timezone && { timezone: dto.timezone }),
@@ -54,6 +66,18 @@ export class GymSettingsService {
         }),
         ...(dto.maxReferralsPerCycle !== undefined && {
           maxReferralsPerCycle: dto.maxReferralsPerCycle,
+        }),
+        ...(dto.newMemberDays !== undefined && {
+          newMemberDays: dto.newMemberDays,
+        }),
+        ...(dto.activeDays !== undefined && { activeDays: dto.activeDays }),
+        ...(dto.inactiveDays !== undefined && {
+          inactiveDays: dto.inactiveDays,
+        }),
+        ...(dto.dormantDays !== undefined && { dormantDays: dto.dormantDays }),
+        ...(dto.atRiskDays !== undefined && { atRiskDays: dto.atRiskDays }),
+        ...(dto.loyalStreakWeeks !== undefined && {
+          loyalStreakWeeks: dto.loyalStreakWeeks,
         }),
       },
       include: { offPeakWindows: true },
