@@ -852,6 +852,10 @@ describe('SubscriptionsService', () => {
       expect(prisma.payment.update).toHaveBeenCalledWith({
         where: { id: 'pay-1' },
         data: { paystackReference: paymentReference },
+        select: expect.objectContaining({
+          id: true,
+          paystackReference: true,
+        }),
       });
     });
 

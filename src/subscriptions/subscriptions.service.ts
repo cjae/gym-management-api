@@ -332,9 +332,7 @@ export class SubscriptionsService {
       );
     }
 
-    if (
-      !ADMIN_PAYMENT_METHODS.includes(subscription.paymentMethod as any)
-    ) {
+    if (!ADMIN_PAYMENT_METHODS.includes(subscription.paymentMethod as any)) {
       throw new BadRequestException(
         'Payment reference can only be updated for offline/in-person subscriptions',
       );
@@ -354,6 +352,18 @@ export class SubscriptionsService {
     return this.prisma.payment.update({
       where: { id: payment.id },
       data: { paystackReference: paymentReference },
+      select: {
+        id: true,
+        subscriptionId: true,
+        amount: true,
+        currency: true,
+        status: true,
+        paymentMethod: true,
+        paystackReference: true,
+        paymentNote: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 
