@@ -29,7 +29,10 @@ import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { AssignTagDto } from './dto/assign-tag.dto';
 import { TagQueryDto } from './dto/tag-query.dto';
-import { TagResponseDto, TagSummaryResponseDto } from './dto/tag-response.dto';
+import {
+  TagResponseDto,
+  TagWithCountResponseDto,
+} from './dto/tag-response.dto';
 
 @ApiTags('Member Tags')
 @ApiBearerAuth()
@@ -49,7 +52,7 @@ export class MemberTagsController {
   }
 
   @Get('summary')
-  @ApiOkResponse({ type: TagSummaryResponseDto })
+  @ApiOkResponse({ type: [TagWithCountResponseDto] })
   getSummary() {
     return this.memberTagsService.getSummary();
   }

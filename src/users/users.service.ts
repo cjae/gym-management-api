@@ -174,13 +174,7 @@ export class UsersService {
       }),
       this.prisma.user.count({ where }),
     ]);
-    const data = users.map((user) => {
-      const flat = this.flattenSubscription(user);
-      return {
-        ...flat,
-        tags: (user as any).memberTags?.map((mt: any) => mt.tag) ?? [],
-      };
-    });
+    const data = users.map((user) => this.flattenSubscription(user));
     return { data, total, page, limit };
   }
 
@@ -210,11 +204,7 @@ export class UsersService {
     if (!user || user.deletedAt) {
       throw new NotFoundException(`User with id ${id} not found`);
     }
-    const flat = this.flattenSubscription(user);
-    return {
-      ...flat,
-      tags: (user as any).memberTags?.map((mt: any) => mt.tag) ?? [],
-    };
+    return this.flattenSubscription(user);
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -343,13 +333,15 @@ export class UsersService {
     user: Record<string, unknown> & {
       subscriptionMembers?: { subscription: Record<string, unknown> }[];
       attendances?: { checkInDate: Date }[];
-      memberTags?: { tag: Record<string, unknown> }[];
+      memberTags?: {
+        tag: { name: string; source: string; color: string | null };
+      }[];
     },
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { subscriptionMembers, attendances, memberTags, ...rest } = user;
     const active = subscriptionMembers?.[0]?.subscription ?? null;
     const lastAttendance = attendances?.[0]?.checkInDate ?? null;
-    return { ...rest, subscription: active, lastAttendance };
+    const tags = memberTags?.map((mt) => mt.tag) ?? [];
+    return { ...rest, subscription: active, lastAttendance, tags };
   }
 }

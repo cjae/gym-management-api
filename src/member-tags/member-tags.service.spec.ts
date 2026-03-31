@@ -187,6 +187,161 @@ describe('MemberTagsService', () => {
     });
   });
 
+  describe('refreshSystemTags', () => {
+    const now = new Date('2026-03-30T02:00:00Z');
+
+    const systemTagsList = [
+      {
+        id: 'tag-new',
+        name: 'new-member',
+        source: TagSource.SYSTEM,
+        color: '#4CAF50',
+        description: 'Joined recently',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-active',
+        name: 'active',
+        source: TagSource.SYSTEM,
+        color: '#2196F3',
+        description: 'Checked in recently',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-inactive',
+        name: 'inactive',
+        source: TagSource.SYSTEM,
+        color: '#FF9800',
+        description: 'No recent check-ins',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-dormant',
+        name: 'dormant',
+        source: TagSource.SYSTEM,
+        color: '#9E9E9E',
+        description: 'No check-ins for extended period',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-atrisk',
+        name: 'at-risk',
+        source: TagSource.SYSTEM,
+        color: '#F44336',
+        description: 'Active sub but not visiting',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-expired',
+        name: 'expired',
+        source: TagSource.SYSTEM,
+        color: '#795548',
+        description: 'Subscription expired',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-loyal',
+        name: 'loyal',
+        source: TagSource.SYSTEM,
+        color: '#9C27B0',
+        description: 'Consistent weekly attendance',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tag-frozen',
+        name: 'frozen',
+        source: TagSource.SYSTEM,
+        color: '#607D8B',
+        description: 'Subscription currently frozen',
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(now);
+      gymSettingsService.getCachedSettings.mockResolvedValue({
+        newMemberDays: 14,
+        activeDays: 7,
+        inactiveDays: 14,
+        dormantDays: 30,
+        atRiskDays: 14,
+        loyalStreakWeeks: 4,
+      });
+      // ensureSystemTags upserts
+      prisma.tag.upsert.mockResolvedValue({} as any);
+      // system tags lookup
+      prisma.tag.findMany.mockResolvedValue(systemTagsList as any);
+      // clear existing system assignments
+      prisma.memberTag.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.memberTag.createMany.mockResolvedValue({ count: 0 });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should assign correct tags based on member states', async () => {
+      const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+      const twentyDaysAgo = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
+
+      const members = [
+        {
+          id: 'member-new',
+          createdAt: fiveDaysAgo,
+          attendances: [],
+          subscriptionMembers: [],
+          streak: null,
+        },
+        {
+          id: 'member-active',
+          createdAt: new Date('2025-01-01'),
+          attendances: [{ checkInDate: threeDaysAgo }],
+          subscriptionMembers: [{ subscription: { status: 'ACTIVE' } }],
+          streak: { weeklyStreak: 5 },
+        },
+        {
+          id: 'member-atrisk',
+          createdAt: new Date('2025-01-01'),
+          attendances: [{ checkInDate: twentyDaysAgo }],
+          subscriptionMembers: [{ subscription: { status: 'ACTIVE' } }],
+          streak: null,
+        },
+      ];
+
+      prisma.user.findMany.mockResolvedValueOnce(members as any);
+
+      await service.refreshSystemTags();
+
+      expect(prisma.memberTag.deleteMany).toHaveBeenCalledWith({
+        where: { tag: { source: TagSource.SYSTEM } },
+      });
+
+      expect(prisma.memberTag.createMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          // New member: new-member + inactive (no check-ins, daysSinceCheckIn null >= 14)
+          { memberId: 'member-new', tagId: 'tag-new' },
+          { memberId: 'member-new', tagId: 'tag-inactive' },
+          // Active member: active + loyal (streak 5 >= 4 weeks)
+          { memberId: 'member-active', tagId: 'tag-active' },
+          { memberId: 'member-active', tagId: 'tag-loyal' },
+          // At-risk member: inactive (20 >= 14) + at-risk (active sub + 20 >= 14)
+          { memberId: 'member-atrisk', tagId: 'tag-inactive' },
+          { memberId: 'member-atrisk', tagId: 'tag-atrisk' },
+        ]),
+        skipDuplicates: true,
+      });
+    });
+  });
+
   describe('getSummary', () => {
     it('should return tag counts', async () => {
       prisma.tag.findMany.mockResolvedValueOnce([

@@ -1,4 +1,4 @@
-import { IsArray, IsUUID, ArrayMinSize } from 'class-validator';
+import { IsArray, IsUUID, ArrayMinSize, ArrayMaxSize } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AssignTagDto {
@@ -8,6 +8,7 @@ export class AssignTagDto {
   })
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @IsUUID('4', { each: true })
   memberIds: string[];
 }
