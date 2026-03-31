@@ -288,8 +288,15 @@ export class PaymentsService {
         });
 
         if (subscription) {
+          // If subscription is still active with remaining time, extend from
+          // current endDate so early renewals don't lose leftover days.
+          const now = new Date();
+          const baseDate =
+            subscription.status === 'ACTIVE' && subscription.endDate > now
+              ? subscription.endDate
+              : now;
           const nextBillingDate = getNextBillingDate(
-            new Date(),
+            baseDate,
             subscription.plan.billingInterval,
           );
 

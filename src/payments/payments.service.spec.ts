@@ -253,12 +253,14 @@ describe('PaymentsService', () => {
         },
       } as any);
 
-      // Subscription lookup
+      // Subscription lookup — PENDING so baseDate = now
       prisma.memberSubscription.findUnique.mockResolvedValue({
         id: subscriptionId,
+        status: 'PENDING',
         primaryMemberId: 'user-1',
         discountAmount: 500,
         originalPlanPrice: 2500,
+        endDate: new Date('2026-04-15'),
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
@@ -280,6 +282,122 @@ describe('PaymentsService', () => {
           }),
         }),
       );
+    });
+
+    it('should extend from current endDate when renewing an active subscription early', async () => {
+      const subscriptionId = 'sub-2';
+      const paymentId = 'pay-2';
+      const reference = 'ref_early_renew';
+
+      const body = {
+        event: 'charge.success',
+        data: {
+          reference,
+          metadata: { subscriptionId, paymentId },
+          channel: 'mobile_money',
+        },
+      };
+      const { raw, signature } = buildWebhookPayload(body);
+
+      prisma.payment.findFirst.mockResolvedValue(null);
+
+      prisma.payment.update.mockResolvedValue({
+        id: paymentId,
+        amount: 2500,
+        currency: 'KES',
+        subscription: {
+          primaryMember: {
+            id: 'user-1',
+            email: 'test@test.com',
+            firstName: 'Jane',
+            lastName: 'Doe',
+          },
+        },
+      } as any);
+
+      // Subscription is ACTIVE with 5 days remaining
+      const futureEndDate = new Date();
+      futureEndDate.setDate(futureEndDate.getDate() + 5);
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        id: subscriptionId,
+        status: 'ACTIVE',
+        primaryMemberId: 'user-1',
+        endDate: futureEndDate,
+        plan: { price: 2500, billingInterval: 'MONTHLY' },
+      } as any);
+
+      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.handleWebhook(raw, signature);
+
+      const updateCall = prisma.memberSubscription.update.mock.calls[0][0];
+      const newEndDate = updateCall.data.endDate as Date;
+
+      // Should be ~1 month from futureEndDate (not from now)
+      // futureEndDate + 1 month should be > now + 1 month
+      const oneMonthFromNow = new Date();
+      oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+      expect(newEndDate.getTime()).toBeGreaterThan(oneMonthFromNow.getTime());
+    });
+
+    it('should extend from now when renewing an expired subscription', async () => {
+      const subscriptionId = 'sub-3';
+      const paymentId = 'pay-3';
+      const reference = 'ref_expired_renew';
+
+      const body = {
+        event: 'charge.success',
+        data: {
+          reference,
+          metadata: { subscriptionId, paymentId },
+          channel: 'mobile_money',
+        },
+      };
+      const { raw, signature } = buildWebhookPayload(body);
+
+      prisma.payment.findFirst.mockResolvedValue(null);
+
+      prisma.payment.update.mockResolvedValue({
+        id: paymentId,
+        amount: 2500,
+        currency: 'KES',
+        subscription: {
+          primaryMember: {
+            id: 'user-1',
+            email: 'test@test.com',
+            firstName: 'Jane',
+            lastName: 'Doe',
+          },
+        },
+      } as any);
+
+      // Subscription is EXPIRED with endDate in the past
+      const pastEndDate = new Date();
+      pastEndDate.setDate(pastEndDate.getDate() - 3);
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        id: subscriptionId,
+        status: 'EXPIRED',
+        primaryMemberId: 'user-1',
+        endDate: pastEndDate,
+        plan: { price: 2500, billingInterval: 'MONTHLY' },
+      } as any);
+
+      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.handleWebhook(raw, signature);
+
+      const updateCall = prisma.memberSubscription.update.mock.calls[0][0];
+      const newEndDate = updateCall.data.endDate as Date;
+
+      // Should be ~1 month from now (not from the past endDate)
+      const oneMonthFromNow = new Date();
+      oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+      // Allow 1 minute tolerance
+      expect(
+        Math.abs(newEndDate.getTime() - oneMonthFromNow.getTime()),
+      ).toBeLessThan(60_000);
     });
   });
 });
