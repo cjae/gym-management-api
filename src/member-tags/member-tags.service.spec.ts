@@ -51,6 +51,7 @@ describe('MemberTagsService', () => {
       expect(prisma.tag.findMany).toHaveBeenCalledWith({
         where: { source: TagSource.SYSTEM },
         orderBy: { name: 'asc' },
+        take: 100,
       });
     });
   });
@@ -154,10 +155,54 @@ describe('MemberTagsService', () => {
         id: 't1',
         source: TagSource.MANUAL,
       } as any);
+      prisma.user.findMany.mockResolvedValueOnce([
+        { id: 'm1' },
+        { id: 'm2' },
+      ] as any);
       prisma.memberTag.createMany.mockResolvedValueOnce({ count: 2 });
 
       const result = await service.assignTag('t1', ['m1', 'm2'], 'admin-1');
       expect(result.count).toBe(2);
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['m1', 'm2'] },
+          role: 'MEMBER',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+    });
+
+    it('should throw BadRequestException when no valid member IDs', async () => {
+      prisma.tag.findUnique.mockResolvedValueOnce({
+        id: 't1',
+        source: TagSource.MANUAL,
+      } as any);
+      prisma.user.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.assignTag('t1', ['invalid-id'], 'admin-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should only assign to valid members and skip invalid ones', async () => {
+      prisma.tag.findUnique.mockResolvedValueOnce({
+        id: 't1',
+        source: TagSource.MANUAL,
+      } as any);
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'm1' }] as any);
+      prisma.memberTag.createMany.mockResolvedValueOnce({ count: 1 });
+
+      const result = await service.assignTag(
+        't1',
+        ['m1', 'invalid-id'],
+        'admin-1',
+      );
+      expect(result.count).toBe(1);
+      expect(prisma.memberTag.createMany).toHaveBeenCalledWith({
+        data: [{ tagId: 't1', memberId: 'm1', assignedBy: 'admin-1' }],
+        skipDuplicates: true,
+      });
     });
 
     it('should reject assigning a SYSTEM tag', async () => {

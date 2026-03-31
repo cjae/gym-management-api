@@ -55,6 +55,7 @@ export class MemberTagsService {
     return this.prisma.tag.findMany({
       where,
       orderBy: { name: 'asc' },
+      take: 100,
     });
   }
 
@@ -119,8 +120,23 @@ export class MemberTagsService {
       throw new BadRequestException('Cannot manually assign system tags');
     }
 
+    const validMembers = await this.prisma.user.findMany({
+      where: {
+        id: { in: memberIds },
+        role: 'MEMBER',
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    const validIds = validMembers.map((m) => m.id);
+
+    if (validIds.length === 0) {
+      throw new BadRequestException('No valid member IDs provided');
+    }
+
     return this.prisma.memberTag.createMany({
-      data: memberIds.map((memberId) => ({
+      data: validIds.map((memberId) => ({
         tagId,
         memberId,
         assignedBy,
@@ -145,6 +161,7 @@ export class MemberTagsService {
     const tags = await this.prisma.tag.findMany({
       include: { _count: { select: { members: true } } },
       orderBy: { name: 'asc' },
+      take: 100,
     });
 
     return tags.map((tag) => ({
