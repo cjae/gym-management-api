@@ -1,19 +1,7 @@
-import {
-  IsString,
-  IsEnum,
-  IsOptional,
-  MaxLength,
-  IsUUID,
-  ValidateIf,
-  IsNotEmpty,
-} from 'class-validator';
+import { IsString, IsIn, IsOptional, MaxLength, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-export enum AdminPaymentMethod {
-  OFFLINE = 'OFFLINE',
-  BANK_TRANSFER = 'BANK_TRANSFER',
-  COMPLIMENTARY = 'COMPLIMENTARY',
-}
+import { PaymentMethod } from '@prisma/client';
+import { ADMIN_PAYMENT_METHODS } from '../../common/constants/payment-methods';
 
 export class AdminCreateSubscriptionDto {
   @ApiProperty({ format: 'uuid', description: 'Target member ID' })
@@ -25,24 +13,20 @@ export class AdminCreateSubscriptionDto {
   planId: string;
 
   @ApiProperty({
-    enum: AdminPaymentMethod,
-    example: 'OFFLINE',
-    description: 'Only offline payment methods allowed',
+    enum: ADMIN_PAYMENT_METHODS,
+    example: 'MOBILE_MONEY_IN_PERSON',
+    description: 'Only in-person/offline payment methods allowed',
   })
-  @IsEnum(AdminPaymentMethod)
-  paymentMethod: AdminPaymentMethod;
+  @IsIn(ADMIN_PAYMENT_METHODS)
+  paymentMethod: PaymentMethod;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'QWERTY123',
     maxLength: 200,
     description:
-      'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Required for OFFLINE and BANK_TRANSFER.',
+      'Payment reference (e.g., M-Pesa transaction code, bank transfer ref). Optional — can be added later via PATCH.',
   })
-  @ValidateIf(
-    (o: AdminCreateSubscriptionDto) =>
-      o.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY,
-  )
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
   @MaxLength(200)
   paymentReference?: string;
@@ -56,10 +40,4 @@ export class AdminCreateSubscriptionDto {
   @IsString()
   @MaxLength(500)
   paymentNote?: string;
-
-  @ApiPropertyOptional({ example: 'RETENTION50' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(12)
-  discountCode?: string;
 }

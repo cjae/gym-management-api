@@ -186,7 +186,7 @@ export class BillingService {
       {
         where: {
           status: 'ACTIVE',
-          paymentMethod: 'MOBILE_MONEY',
+          paymentMethod: { in: ['MOBILE_MONEY', 'BANK_TRANSFER'] },
           autoRenew: true,
           nextBillingDate: { lte: threeDaysFromNow, gte: now },
         },
@@ -260,8 +260,7 @@ export class BillingService {
     const overdueSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         status: 'ACTIVE',
-        paymentMethod: 'MOBILE_MONEY',
-        nextBillingDate: { lt: now },
+        endDate: { lt: now },
       },
       include: {
         primaryMember: {
@@ -294,7 +293,7 @@ export class BillingService {
         })
         .catch(() => {});
 
-      this.logger.log(`Expired overdue M-Pesa subscription ${sub.id}`);
+      this.logger.log(`Expired overdue subscription ${sub.id}`);
     }
   }
 }

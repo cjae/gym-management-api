@@ -27,7 +27,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 
 **Modules** (all in `src/`):
 - `prisma/` — Global PrismaService, injected everywhere
-- `auth/` — JWT strategy (30m access tokens, 7d refresh tokens), login/register/forgot-password/reset-password/change-password endpoints. Refresh token rotation via `POST /auth/refresh`. Registration requires `acceptTos` and `acceptWaiver` (both `true`), which sets `tosAcceptedAt` and `waiverAcceptedAt` timestamps on the User. Optional `referralCode` field during registration creates a PENDING referral record.
+- `auth/` — JWT strategy (30m access tokens, 7d refresh tokens), login/register/forgot-password/reset-password/change-password endpoints. Refresh token rotation via `POST /auth/refresh`. Registration requires `acceptTos` and `acceptWaiver` (both `true`), which sets `tosAcceptedAt` and `waiverAcceptedAt` timestamps on the User. Optional `referralCode` field during registration creates a PENDING referral record. Account deletion request flow: member submits via `POST /auth/delete-request`, can check status (`GET`) or cancel (`DELETE`). Admin reviews via `GET /users/deletion-requests`, approves (`PATCH .../approve`) or rejects (`PATCH .../reject`). Approval triggers soft-delete (`deletedAt`).
 - `users/` — CRUD with role-based access. Admin user creation (`POST /users`): ADMIN creates MEMBER/TRAINER, SUPER_ADMIN also creates ADMIN. Generates temp password, sets `mustChangePassword: true`, sends welcome email with credentials.
 - `subscription-plans/` — Plan definitions (price in KES, duration, max members). Supports `isOffPeak` flag for time-restricted plans.
 - `subscriptions/` — Member subscriptions with duo support (2 members share 1 subscription via `SubscriptionMember` join table). Member-created subscriptions start as `PENDING` until payment completes (webhook sets `ACTIVE`). Admin subscription creation (`POST /subscriptions/admin`): ADMIN/SUPER_ADMIN creates ACTIVE subscription for a MEMBER with offline payment (OFFLINE/BANK_TRANSFER/COMPLIMENTARY), includes Payment record. Hourly cron cleans up PENDING subscriptions older than 1 hour. Freeze capability: members can freeze their subscription (up to plan's `maxFreezeDays` per billing cycle, configurable freeze count per plan), blocking check-in and extending end date by actual frozen days on unfreeze. One freeze per billing cycle, auto-unfreeze via daily cron. Optional cancellation reason on cancel.
@@ -38,7 +38,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `qr/` — GymQrCode generation and validation. Daily QR code rotation cron.
 - `trainers/` — Profiles, 1:1 member assignments
 - `entrances/` — Multi-entrance support. CRUD for gym entrances (ADMIN+). QR payloads include entrance ID, attendance records track which entrance was used.
-- `gym-settings/` — Global gym configuration (singleton). Off-peak windows, referral settings (reward days, per-cycle cap). Cached in-memory. ADMIN+ CRUD.
+- `gym-settings/` — Global gym configuration (singleton). Off-peak windows, referral settings (reward days, per-cycle cap), member tag thresholds (active/inactive/dormant/at-risk days, loyal streak weeks). Cached in-memory. ADMIN+ CRUD.
 - `gym-classes/` — Independent class scheduling with member enrollment. Classes exist as standalone weekly time slots, optionally assigned a trainer. Members self-enroll. Email notifications on time changes and cancellations. Time overlap validation prevents scheduling conflicts.
 - `events/` — One-off gym events (special classes, community events, workshops). Members enroll with capacity limits. Email notifications on changes/cancellations. No trainer assignment, no time overlap validation. `GET /events` returns upcoming events (date >= today). Free for all members.
 - `salary/` — Staff payroll, SUPER_ADMIN only
@@ -47,12 +47,13 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `banners/` — In-app promotional banners with scheduling (startDate/endDate), targeting (by role, subscription status), priority ordering, and interaction tracking (views, clicks, dismissals). ADMIN+ CRUD with analytics endpoint.
 - `notifications/` — In-app notification system with push delivery via Expo. Broadcast notifications (ADMIN+). Background push job processor with PushJob/PushTicket tables. Daily cleanup cron for old notifications. Endpoints: list, mark read, mark all read, unread count. Push token registration/removal.
 - `imports/` — CSV member import with background processing. Validates emails, generates temp passwords, sends welcome emails. Import job tracking with status/progress. Admin-only with import report email on completion.
+- `member-tags/` — Member tagging and segmentation. Auto-computed system tags (daily cron: new-member, active, inactive, dormant, at-risk, expired, loyal, frozen) with configurable thresholds via GymSettings. Manual admin tags with CRUD. Tag filtering on `GET /users` via `?tags=` query param. Feature-gated (`member-tags`).
 - `exports/` — Data export for members, payments, and subscriptions. Supports CSV, Excel (.xlsx), and PDF formats. Synchronous file downloads with denormalized data (human-readable names, no raw IDs). ADMIN+ only, feature-gated (`exports`). Filterable by status, date range, and resource-specific params.
 - `analytics/` — Dashboard stats (members, revenue, subscriptions, attendance). Trend endpoints (member, revenue, subscription, attendance). Expiring memberships report. WebSocket `ActivityGateway` for real-time activity feed (check-ins, registrations, payments, cancellations).
 - `common/config/` — Typed config factories (app, auth, mail, payment, sentry, cloudinary)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
 - `uploads/` — Image upload to Cloudinary (avatars), returns URL
-- `licensing/` — SaaS license validation and feature gating. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset (all features enabled). `FeatureGuard` enforces feature access via `@RequiresFeature()` decorator — returns 403 when feature not in license. Gated modules: referrals, discount-codes, gym-classes, events, analytics (except dashboard), notifications, banners, multi-entrance, attendance-streaks, subscription-freeze, trainer-management, salary, audit-logs, exports.
+- `licensing/` — SaaS license validation and feature gating. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset (all features enabled). `FeatureGuard` enforces feature access via `@RequiresFeature()` decorator — returns 403 when feature not in license. Gated modules: referrals, discount-codes, gym-classes, events, analytics (except dashboard), notifications, banners, multi-entrance, attendance-streaks, subscription-freeze, trainer-management, salary, audit-logs, exports, member-tags.
 - `audit-logs/` — Audit logging for admin actions and auth events. Global interceptor auto-logs POST/PUT/PATCH/DELETE by ADMIN/SUPER_ADMIN with before/after JSON diffs. Auth events (login, logout, password reset/change) logged explicitly. `@NoAudit()` decorator to opt out. SUPER_ADMIN-only `GET /audit-logs` endpoint with filters.
 - `sentry/` — Sentry integration module (filter, interceptor)
 
@@ -100,6 +101,8 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `CLOUDINARY_API_KEY` — Cloudinary API key (optional in dev)
 - `CLOUDINARY_API_SECRET` — Cloudinary API secret (optional in dev)
 - `LICENSE_KEY` — Unique license key per gym instance (optional in dev — unlicensed mode when unset)
+- `PAYSTACK_CALLBACK_URL` — URL to redirect customer after successful payment (optional)
+- `PAYSTACK_CANCEL_URL` — URL to redirect customer when they cancel checkout (optional)
 - `LICENSE_SERVER_URL` — Control plane base URL for license validation (optional in dev)
 
 ## Security

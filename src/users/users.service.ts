@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { DeletionRequestStatus, Role } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -135,7 +136,15 @@ export class UsersService {
     limit: number = 20,
     role?: Role[],
     search?: string,
+    tags?: string,
   ) {
+    const tagNames = tags
+      ? tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .slice(0, 10)
+      : [];
     const where = {
       deletedAt: null,
       ...(role?.length ? { role: { in: role } } : {}),
@@ -146,6 +155,13 @@ export class UsersService {
               { lastName: { contains: search, mode: 'insensitive' as const } },
               { email: { contains: search, mode: 'insensitive' as const } },
             ],
+          }
+        : {}),
+      ...(tagNames.length
+        ? {
+            AND: tagNames.map((name) => ({
+              memberTags: { some: { tag: { name } } },
+            })),
           }
         : {}),
     };
@@ -232,15 +248,101 @@ export class UsersService {
     });
   }
 
+  async findAllDeletionRequests(
+    page: number = 1,
+    limit: number = 20,
+    status?: DeletionRequestStatus,
+  ) {
+    const where = status ? { status } : {};
+    const [data, total] = await Promise.all([
+      this.prisma.accountDeletionRequest.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.accountDeletionRequest.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  async approveDeletionRequest(requestId: string, reviewerId: string) {
+    const request = await this.prisma.accountDeletionRequest.findUnique({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Deletion request not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.accountDeletionRequest.updateMany({
+        where: { id: requestId, status: 'PENDING' },
+        data: {
+          status: 'APPROVED',
+          reviewedById: reviewerId,
+          reviewedAt: new Date(),
+        },
+      });
+      if (result.count !== 1) {
+        throw new BadRequestException('Request is no longer pending');
+      }
+      await tx.user.update({
+        where: { id: request.userId },
+        data: { deletedAt: new Date() },
+      });
+    });
+
+    return {
+      message: 'Deletion request approved. User account has been deleted.',
+    };
+  }
+
+  async rejectDeletionRequest(
+    requestId: string,
+    reviewerId: string,
+    rejectionReason?: string,
+  ) {
+    const request = await this.prisma.accountDeletionRequest.findUnique({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Deletion request not found');
+    }
+
+    const result = await this.prisma.accountDeletionRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
+      data: {
+        status: 'REJECTED',
+        rejectionReason,
+        reviewedById: reviewerId,
+        reviewedAt: new Date(),
+      },
+    });
+    if (result.count !== 1) {
+      throw new BadRequestException('Request is no longer pending');
+    }
+
+    return { message: 'Deletion request rejected.' };
+  }
+
   private flattenSubscription(
     user: Record<string, unknown> & {
       subscriptionMembers?: { subscription: Record<string, unknown> }[];
       attendances?: { checkInDate: Date }[];
+      memberTags?: {
+        tag: { name: string; source: string; color: string | null };
+      }[];
     },
   ) {
-    const { subscriptionMembers, attendances, ...rest } = user;
+    const { subscriptionMembers, attendances, memberTags, ...rest } = user;
     const active = subscriptionMembers?.[0]?.subscription ?? null;
     const lastAttendance = attendances?.[0]?.checkInDate ?? null;
-    return { ...rest, subscription: active, lastAttendance };
+    const tags = memberTags?.map((mt) => mt.tag) ?? [];
+    return { ...rest, subscription: active, lastAttendance, tags };
   }
 }

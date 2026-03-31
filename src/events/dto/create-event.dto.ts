@@ -2,6 +2,7 @@ import {
   IsString,
   IsOptional,
   IsInt,
+  IsBoolean,
   IsDateString,
   Min,
   Max,
@@ -60,4 +61,13 @@ export class CreateEventDto {
   @Min(1)
   @Max(10000)
   maxCapacity?: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Send notification to all members about this event',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  notifyMembers?: boolean;
 }

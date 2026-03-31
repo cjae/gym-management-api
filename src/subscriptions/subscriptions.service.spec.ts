@@ -2,12 +2,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
-import { PrismaClient } from '@prisma/client';
+import { PaymentMethod, PrismaClient } from '@prisma/client';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DiscountCodesService } from '../discount-codes/discount-codes.service';
-import { AdminPaymentMethod } from './dto/admin-create-subscription.dto';
 import { MemberPaymentMethod } from './dto/create-subscription.dto';
 
 describe('SubscriptionsService', () => {
@@ -455,7 +454,7 @@ describe('SubscriptionsService', () => {
     const baseDto = {
       memberId: 'member-1',
       planId: 'plan-1',
-      paymentMethod: AdminPaymentMethod.OFFLINE,
+      paymentMethod: PaymentMethod.MOBILE_MONEY_IN_PERSON,
       paymentReference: 'MPESA-TXN-ABC123',
     };
 
@@ -476,7 +475,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'OFFLINE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -501,7 +500,7 @@ describe('SubscriptionsService', () => {
           data: expect.objectContaining({
             amount: 5000,
             status: 'PAID',
-            paymentMethod: 'OFFLINE',
+            paymentMethod: 'MOBILE_MONEY_IN_PERSON',
             paystackReference: 'MPESA-TXN-ABC123',
           }),
         }),
@@ -531,7 +530,7 @@ describe('SubscriptionsService', () => {
         primaryMemberId: 'member-1',
         planId: 'plan-1',
         status: 'ACTIVE',
-        paymentMethod: 'OFFLINE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
         plan: mockPlanActive,
         members: [{ memberId: 'member-1' }],
       };
@@ -643,13 +642,52 @@ describe('SubscriptionsService', () => {
 
       await service.adminCreate(adminId, {
         ...baseDto,
-        paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
+        paymentMethod: PaymentMethod.COMPLIMENTARY,
       });
 
       expect(prisma.payment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             amount: 0,
+          }),
+        }),
+      );
+    });
+
+    it('should create subscription without paymentReference', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
+      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
+
+      const createdSub = {
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        planId: 'plan-1',
+        status: 'ACTIVE',
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
+        plan: mockPlanActive,
+        members: [{ memberId: 'member-1' }],
+      };
+      prisma.memberSubscription.create.mockResolvedValueOnce(createdSub as any);
+      prisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' } as any);
+
+      const dto = {
+        memberId: 'member-1',
+        planId: 'plan-1',
+        paymentMethod: PaymentMethod.MOBILE_MONEY_IN_PERSON,
+        // no paymentReference
+      };
+
+      const result = await service.adminCreate(adminId, dto);
+
+      expect(result.status).toBe('ACTIVE');
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            paystackReference: undefined,
           }),
         }),
       );
@@ -728,89 +766,27 @@ describe('SubscriptionsService', () => {
     });
   });
 
-  describe('adminCreate with discount code', () => {
+  describe('adminCreate complimentary', () => {
     const adminId = 'admin-1';
-    const mockMember = {
-      id: 'member-1',
-      firstName: 'Jane',
-      lastName: 'Doe',
-      role: 'MEMBER',
-      status: 'ACTIVE',
-    };
-    const mockPlanActive = {
-      id: 'plan-1',
-      name: 'Monthly',
-      billingInterval: 'MONTHLY',
-      price: 5000,
-      maxMembers: 1,
-      maxFreezeDays: 0,
-      isActive: true,
-    };
 
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('should create admin subscription with discount code', async () => {
-      const discountResult = {
-        discountCode: {
-          id: 'dc-1',
-          discountType: 'PERCENTAGE',
-          discountValue: 20,
-          maxUses: null,
-        },
-        finalPrice: 4000,
-        originalPrice: 5000,
-      };
-      mockDiscountCodesService.validateCode.mockResolvedValueOnce(
-        discountResult,
-      );
-      mockDiscountCodesService.redeemCode.mockResolvedValueOnce({});
-
-      prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
-      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
-        mockPlanActive as any,
-      );
-      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
-      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
-      prisma.memberSubscription.create.mockResolvedValueOnce({
-        id: 'sub-1',
-        primaryMemberId: 'member-1',
-        planId: 'plan-1',
+    it('should create complimentary subscription with zero amount', async () => {
+      const mockMember = {
+        id: 'member-1',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        role: 'MEMBER',
         status: 'ACTIVE',
-        paymentMethod: 'OFFLINE',
-        plan: mockPlanActive,
-        members: [{ memberId: 'member-1' }],
-        discountCodeId: 'dc-1',
-        discountAmount: 1000,
-      } as any);
-      prisma.payment.create.mockResolvedValueOnce({ id: 'pay-1' } as any);
+      };
+      const mockPlanActive = {
+        id: 'plan-1',
+        name: 'Monthly',
+        billingInterval: 'MONTHLY',
+        price: 5000,
+        maxMembers: 1,
+        maxFreezeDays: 0,
+        isActive: true,
+      };
 
-      const result = await service.adminCreate(adminId, {
-        memberId: 'member-1',
-        planId: 'plan-1',
-        paymentMethod: AdminPaymentMethod.OFFLINE,
-        paymentReference: 'REF-123',
-        discountCode: 'SAVE20',
-      });
-
-      expect(mockDiscountCodesService.validateCode).toHaveBeenCalledWith(
-        'SAVE20',
-        'plan-1',
-        'member-1',
-      );
-      expect(result.discountCodeId).toBe('dc-1');
-      expect(prisma.payment.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            amount: 4000, // discounted price
-          }),
-        }),
-      );
-      expect(mockDiscountCodesService.redeemCode).toHaveBeenCalled();
-    });
-
-    it('should skip discount for COMPLIMENTARY admin subscriptions', async () => {
       prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
         mockPlanActive as any,
@@ -831,11 +807,9 @@ describe('SubscriptionsService', () => {
       await service.adminCreate(adminId, {
         memberId: 'member-1',
         planId: 'plan-1',
-        paymentMethod: AdminPaymentMethod.COMPLIMENTARY,
-        discountCode: 'SAVE20',
+        paymentMethod: PaymentMethod.COMPLIMENTARY,
       });
 
-      expect(mockDiscountCodesService.validateCode).not.toHaveBeenCalled();
       expect(prisma.payment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -843,6 +817,79 @@ describe('SubscriptionsService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('updatePaymentReference', () => {
+    const subscriptionId = 'sub-1';
+    const paymentReference = 'MPESA-TXN-NEW123';
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should update payment reference on the latest payment', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        id: subscriptionId,
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
+      } as any);
+      prisma.payment.findFirst.mockResolvedValueOnce({
+        id: 'pay-1',
+        subscriptionId,
+        paystackReference: null,
+      } as any);
+      prisma.payment.update.mockResolvedValueOnce({
+        id: 'pay-1',
+        paystackReference: paymentReference,
+      } as any);
+
+      const result = await service.updatePaymentReference(
+        subscriptionId,
+        paymentReference,
+      );
+
+      expect(result.paystackReference).toBe(paymentReference);
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-1' },
+        data: { paystackReference: paymentReference },
+        select: expect.objectContaining({
+          id: true,
+          paystackReference: true,
+        }),
+      });
+    });
+
+    it('should throw NotFoundException if subscription not found', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updatePaymentReference(subscriptionId, paymentReference),
+      ).rejects.toThrow('Subscription with id sub-1 not found');
+    });
+
+    it('should throw BadRequestException for non-offline payment method', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        id: subscriptionId,
+        paymentMethod: 'CARD',
+      } as any);
+
+      await expect(
+        service.updatePaymentReference(subscriptionId, paymentReference),
+      ).rejects.toThrow(
+        'Payment reference can only be updated for offline/in-person subscriptions',
+      );
+    });
+
+    it('should throw NotFoundException if no payment found for subscription', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        id: subscriptionId,
+        paymentMethod: 'BANK_TRANSFER_IN_PERSON',
+      } as any);
+      prisma.payment.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updatePaymentReference(subscriptionId, paymentReference),
+      ).rejects.toThrow('No payment found for subscription sub-1');
     });
   });
 

@@ -4,6 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export enum MemberPaymentMethod {
   CARD = 'CARD',
   MOBILE_MONEY = 'MOBILE_MONEY',
+  BANK_TRANSFER = 'BANK_TRANSFER',
 }
 
 export class CreateSubscriptionDto {

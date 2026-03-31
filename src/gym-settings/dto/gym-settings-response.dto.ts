@@ -43,6 +43,24 @@ export class GymSettingsResponseDto {
   @ApiProperty({ type: [OffPeakWindowResponseDto] })
   offPeakWindows: OffPeakWindowResponseDto[];
 
+  @ApiProperty({ example: 14, description: 'Days to tag as new member' })
+  newMemberDays: number;
+
+  @ApiProperty({ example: 7, description: 'Days to tag as active' })
+  activeDays: number;
+
+  @ApiProperty({ example: 14, description: 'Days to tag as inactive' })
+  inactiveDays: number;
+
+  @ApiProperty({ example: 30, description: 'Days to tag as dormant' })
+  dormantDays: number;
+
+  @ApiProperty({ example: 14, description: 'Days to tag as at-risk' })
+  atRiskDays: number;
+
+  @ApiProperty({ example: 4, description: 'Streak weeks to tag as loyal' })
+  loyalStreakWeeks: number;
+
   @ApiProperty()
   createdAt: Date;
 

@@ -11,6 +11,7 @@ import {
   ConflictException,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
@@ -116,6 +117,7 @@ describe('AuthService', () => {
         email: 'test@test.com',
         password: hashedPassword,
         role: 'MEMBER',
+        status: 'ACTIVE',
         mustChangePassword: false,
       } as any);
 
@@ -135,6 +137,7 @@ describe('AuthService', () => {
         email: 'admin@gym.co.ke',
         password: hashedPassword,
         role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
         mustChangePassword: true,
       } as any);
 
@@ -155,6 +158,36 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'test@test.com', password: 'wrong' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is suspended', async () => {
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        password: hashedPassword,
+        role: 'MEMBER',
+        status: 'SUSPENDED',
+      } as any);
+
+      await expect(
+        service.login({ email: 'test@test.com', password: 'password123' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is inactive', async () => {
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        password: hashedPassword,
+        role: 'MEMBER',
+        status: 'INACTIVE',
+      } as any);
+
+      await expect(
+        service.login({ email: 'test@test.com', password: 'password123' }),
       ).rejects.toThrow(UnauthorizedException);
     });
   });
@@ -506,6 +539,87 @@ describe('AuthService', () => {
           expiresAt: expect.any(Date) as Date,
         },
       });
+    });
+  });
+
+  describe('requestDeletion', () => {
+    it('should create a deletion request', async () => {
+      prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
+      prisma.accountDeletionRequest.create.mockResolvedValue({
+        id: 'dr-1',
+        userId: '1',
+        reason: 'Moving away',
+        status: 'PENDING',
+        reviewedById: null,
+        reviewedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      const result = await service.requestDeletion('1', {
+        reason: 'Moving away',
+      });
+      expect(result.id).toBe('dr-1');
+      expect(result.status).toBe('PENDING');
+    });
+
+    it('should throw ConflictException if pending request exists', async () => {
+      prisma.accountDeletionRequest.findFirst.mockResolvedValue({
+        id: 'dr-1',
+        status: 'PENDING',
+      } as any);
+
+      await expect(service.requestDeletion('1', {})).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('getDeletionRequest', () => {
+    it('should return the latest deletion request for user', async () => {
+      prisma.accountDeletionRequest.findFirst.mockResolvedValue({
+        id: 'dr-1',
+        userId: '1',
+        status: 'PENDING',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      const result = await service.getDeletionRequest('1');
+      expect(result).toBeDefined();
+      expect(result!.id).toBe('dr-1');
+    });
+
+    it('should return null if no deletion request exists', async () => {
+      prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
+
+      const result = await service.getDeletionRequest('1');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('cancelDeletionRequest', () => {
+    it('should cancel a pending deletion request', async () => {
+      prisma.accountDeletionRequest.findFirst.mockResolvedValue({
+        id: 'dr-1',
+        userId: '1',
+        status: 'PENDING',
+      } as any);
+      prisma.accountDeletionRequest.update.mockResolvedValue({
+        id: 'dr-1',
+        status: 'CANCELLED',
+      } as any);
+
+      const result = await service.cancelDeletionRequest('1');
+      expect(result.message).toContain('cancelled');
+    });
+
+    it('should throw NotFoundException if no pending request', async () => {
+      prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
+
+      await expect(service.cancelDeletionRequest('1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

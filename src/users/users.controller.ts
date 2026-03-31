@@ -18,6 +18,7 @@ import {
   ApiNotFoundResponse,
   ApiUnauthorizedResponse,
   ApiForbiddenResponse,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -30,6 +31,10 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
+import { DeletionRequestsQueryDto } from './dto/deletion-requests-query.dto';
+import { RejectDeletionRequestDto } from './dto/reject-deletion-request.dto';
+import { PaginatedDeletionRequestsResponseDto } from '../auth/dto/deletion-request-response.dto';
+import { MessageResponseDto } from '../common/dto/message-response.dto';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -59,6 +64,7 @@ export class UsersController {
       query.limit,
       query.role,
       query.search,
+      query.tags,
     );
   }
 
@@ -69,6 +75,45 @@ export class UsersController {
   })
   findBirthdays() {
     return this.usersService.findBirthdays();
+  }
+
+  @Get('deletion-requests')
+  @ApiOkResponse({ type: PaginatedDeletionRequestsResponseDto })
+  findAllDeletionRequests(@Query() query: DeletionRequestsQueryDto) {
+    return this.usersService.findAllDeletionRequests(
+      query.page,
+      query.limit,
+      query.status,
+    );
+  }
+
+  @Patch('deletion-requests/:id/approve')
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Request approved, user soft-deleted',
+  })
+  @ApiNotFoundResponse({ description: 'Request not found' })
+  @ApiBadRequestResponse({ description: 'Request is not pending' })
+  approveDeletionRequest(
+    @Param('id') id: string,
+    @CurrentUser('id') reviewerId: string,
+  ) {
+    return this.usersService.approveDeletionRequest(id, reviewerId);
+  }
+
+  @Patch('deletion-requests/:id/reject')
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Request rejected',
+  })
+  @ApiNotFoundResponse({ description: 'Request not found' })
+  @ApiBadRequestResponse({ description: 'Request is not pending' })
+  rejectDeletionRequest(
+    @Param('id') id: string,
+    @CurrentUser('id') reviewerId: string,
+    @Body() dto: RejectDeletionRequestDto,
+  ) {
+    return this.usersService.rejectDeletionRequest(id, reviewerId, dto.reason);
   }
 
   @Get(':id/profile')

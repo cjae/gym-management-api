@@ -94,6 +94,97 @@ describe('EventsService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should notify all members when notifyMembers is true', async () => {
+      prisma.event.create.mockResolvedValue(mockEvent as any);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'member-1' },
+        { id: 'member-2' },
+      ] as any);
+
+      await service.create({
+        title: 'Outdoor Bootcamp',
+        date: '2026-05-01',
+        startTime: '09:00',
+        endTime: '11:00',
+        location: 'Uhuru Park',
+        notifyMembers: true,
+      });
+
+      // Allow fire-and-forget async to flush
+      await new Promise((resolve) => process.nextTick(resolve));
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: {
+          role: 'MEMBER',
+          deletedAt: null,
+          status: { not: 'SUSPENDED' },
+        },
+        select: { id: true },
+      });
+      expect(notificationsService.create).toHaveBeenCalledTimes(2);
+      expect(notificationsService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'member-1',
+          title: 'New Event: Outdoor Bootcamp',
+          type: 'EVENT_UPDATE',
+        }),
+      );
+    });
+
+    it('should not notify members when notifyMembers is false', async () => {
+      prisma.event.create.mockResolvedValue(mockEvent as any);
+
+      await service.create({
+        title: 'Outdoor Bootcamp',
+        date: '2026-05-01',
+        startTime: '09:00',
+        endTime: '11:00',
+        notifyMembers: false,
+      });
+
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      expect(notificationsService.create).not.toHaveBeenCalled();
+    });
+
+    it('should not block event creation if notification fails', async () => {
+      prisma.event.create.mockResolvedValue(mockEvent as any);
+      prisma.user.findMany.mockRejectedValue(new Error('DB connection lost'));
+
+      const result = await service.create({
+        title: 'Outdoor Bootcamp',
+        date: '2026-05-01',
+        startTime: '09:00',
+        endTime: '11:00',
+        location: 'Uhuru Park',
+        notifyMembers: true,
+      });
+
+      // Allow fire-and-forget async to flush
+      await new Promise((resolve) => process.nextTick(resolve));
+
+      expect(result).toEqual(mockEvent);
+    });
+
+    it('should handle individual notification failure gracefully', async () => {
+      prisma.event.create.mockResolvedValue(mockEvent as any);
+      prisma.user.findMany.mockResolvedValue([{ id: 'member-1' }] as any);
+      notificationsService.create.mockRejectedValue(new Error('Push failed'));
+
+      const result = await service.create({
+        title: 'Outdoor Bootcamp',
+        date: '2026-05-01',
+        startTime: '09:00',
+        endTime: '11:00',
+        location: 'Uhuru Park',
+        notifyMembers: true,
+      });
+
+      await new Promise((resolve) => process.nextTick(resolve));
+
+      expect(result).toEqual(mockEvent);
+      expect(notificationsService.create).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('findAll', () => {

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { MemberTagResponseDto } from '../../member-tags/dto/tag-response.dto';
 
 export class UserSubscriptionPlanDto {
   @ApiProperty({ format: 'uuid' })
@@ -97,6 +98,9 @@ export class UserResponseDto {
     description: 'Date of most recent gym check-in, or null if never attended',
   })
   lastAttendance: Date | null;
+
+  @ApiPropertyOptional({ type: [MemberTagResponseDto] })
+  tags?: MemberTagResponseDto[];
 
   @ApiProperty()
   createdAt: Date;

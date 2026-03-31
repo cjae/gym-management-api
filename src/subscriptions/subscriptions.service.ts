@@ -9,6 +9,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   NotificationType,
+  PaymentMethod,
   Role,
   SubscriptionStatus,
   UserStatus,
@@ -17,11 +18,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import {
-  AdminCreateSubscriptionDto,
-  AdminPaymentMethod,
-} from './dto/admin-create-subscription.dto';
+import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
+import { ADMIN_PAYMENT_METHODS } from '../common/constants/payment-methods';
 
 @Injectable()
 export class SubscriptionsService {
@@ -243,6 +242,9 @@ export class SubscriptionsService {
 
     const txInclude = { plan: true, members: true } as const;
 
+    const amount =
+      dto.paymentMethod === PaymentMethod.COMPLIMENTARY ? 0 : plan.price;
+
     const subscription = await this.prisma.$transaction(async (tx) => {
       // Reverse any prior discount redemption on existing PENDING subscription
       if (existingPending) {
@@ -251,41 +253,6 @@ export class SubscriptionsService {
           existingPending.id,
         );
       }
-
-      // Validate discount code inside transaction to prevent TOCTOU race
-      let discountResult: {
-        discountCode: {
-          id: string;
-          discountType: string;
-          discountValue: number;
-          maxUses: number | null;
-          maxUsesPerMember: number | null;
-        };
-        finalPrice: number;
-        originalPrice: number;
-      } | null = null;
-      if (
-        dto.discountCode &&
-        dto.paymentMethod !== AdminPaymentMethod.COMPLIMENTARY
-      ) {
-        discountResult = await this.discountCodesService.validateCode(
-          dto.discountCode,
-          dto.planId,
-          dto.memberId,
-        );
-      }
-
-      const discountCodeId = discountResult?.discountCode.id ?? null;
-      const discountAmountValue = discountResult
-        ? discountResult.originalPrice - discountResult.finalPrice
-        : null;
-
-      const amount =
-        dto.paymentMethod === AdminPaymentMethod.COMPLIMENTARY
-          ? 0
-          : discountResult
-            ? discountResult.finalPrice
-            : plan.price;
 
       const txData = {
         planId: dto.planId,
@@ -297,9 +264,6 @@ export class SubscriptionsService {
         autoRenew: false,
         createdBy: adminId,
         paymentNote: dto.paymentNote,
-        discountCodeId,
-        discountAmount: discountAmountValue,
-        originalPlanPrice: plan.price,
       };
 
       const sub = existingPending
@@ -332,19 +296,6 @@ export class SubscriptionsService {
         },
       });
 
-      if (discountResult) {
-        await this.discountCodesService.redeemCode(
-          tx,
-          discountResult.discountCode.id,
-          dto.memberId,
-          sub.id,
-          discountResult.originalPrice,
-          discountResult.finalPrice,
-          discountResult.discountCode.maxUses,
-          discountResult.discountCode.maxUsesPerMember,
-        );
-      }
-
       return sub;
     });
 
@@ -364,6 +315,56 @@ export class SubscriptionsService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = subscription;
     return safe;
+  }
+
+  async updatePaymentReference(
+    subscriptionId: string,
+    paymentReference: string,
+  ) {
+    const subscription = await this.prisma.memberSubscription.findUnique({
+      where: { id: subscriptionId },
+      select: { id: true, paymentMethod: true },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException(
+        `Subscription with id ${subscriptionId} not found`,
+      );
+    }
+
+    if (!ADMIN_PAYMENT_METHODS.includes(subscription.paymentMethod as any)) {
+      throw new BadRequestException(
+        'Payment reference can only be updated for offline/in-person subscriptions',
+      );
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { subscriptionId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!payment) {
+      throw new NotFoundException(
+        `No payment found for subscription ${subscriptionId}`,
+      );
+    }
+
+    return this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { paystackReference: paymentReference },
+      select: {
+        id: true,
+        subscriptionId: true,
+        amount: true,
+        currency: true,
+        status: true,
+        paymentMethod: true,
+        paystackReference: true,
+        paymentNote: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   }
 
   async addDuoMember(

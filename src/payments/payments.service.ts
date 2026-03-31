@@ -60,6 +60,8 @@ export class PaymentsService {
   private paystackBaseUrl = 'https://api.paystack.co';
   private readonly paystackSecretKey: string;
   private readonly encryptionKey: string;
+  private readonly paystackCallbackUrl: string;
+  private readonly paystackCancelUrl: string;
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
@@ -75,6 +77,8 @@ export class PaymentsService {
     )!;
     this.paystackSecretKey = paymentConfig.paystackSecretKey;
     this.encryptionKey = paymentConfig.encryptionKey;
+    this.paystackCallbackUrl = paymentConfig.paystackCallbackUrl;
+    this.paystackCancelUrl = paymentConfig.paystackCancelUrl;
   }
 
   async initializePayment(
@@ -82,11 +86,25 @@ export class PaymentsService {
     email: string,
     userId: string,
   ) {
+    this.logger.debug('initializePayment called', {
+      subscriptionId,
+      userId,
+    });
+
     const subscription = await this.prisma.memberSubscription.findUnique({
       where: { id: subscriptionId },
       include: { plan: true },
     });
-    if (!subscription) throw new BadRequestException('Subscription not found');
+    if (!subscription) {
+      this.logger.warn('Subscription not found', { subscriptionId });
+      throw new BadRequestException('Subscription not found');
+    }
+
+    this.logger.debug('Subscription found', {
+      id: subscription.id,
+      paymentMethod: subscription.paymentMethod,
+      status: subscription.status,
+    });
 
     if (subscription.primaryMemberId !== userId) {
       throw new ForbiddenException(
@@ -119,41 +137,79 @@ export class PaymentsService {
       },
     });
 
-    if (
-      subscription.paymentMethod !== 'CARD' &&
-      subscription.paymentMethod !== 'MOBILE_MONEY'
-    ) {
+    const channelMap: Record<string, string> = {
+      CARD: 'card',
+      MOBILE_MONEY: 'mobile_money',
+      BANK_TRANSFER: 'bank_transfer',
+    };
+
+    const channel = channelMap[subscription.paymentMethod];
+    if (!channel) {
       throw new BadRequestException(
         `Unsupported online payment method: ${subscription.paymentMethod}`,
       );
     }
 
-    const chargeAmount = addPaystackCommission(
-      effectiveAmount,
-      subscription.paymentMethod,
-    );
+    const onlineMethod = subscription.paymentMethod as
+      | 'CARD'
+      | 'MOBILE_MONEY'
+      | 'BANK_TRANSFER';
+    const chargeAmount = addPaystackCommission(effectiveAmount, onlineMethod);
 
-    const channels =
-      subscription.paymentMethod === 'CARD' ? ['card'] : ['mobile_money'];
+    const channels = [channel];
 
-    const response = await axios.post<PaystackInitializeResponse>(
-      `${this.paystackBaseUrl}/transaction/initialize`,
-      {
-        email,
-        amount: chargeAmount * 100,
-        currency: 'KES',
-        channels,
-        reference: `gym_${payment.id}_${Date.now()}`,
-        metadata: { subscriptionId, paymentId: payment.id },
+    const payload = {
+      email,
+      amount: chargeAmount * 100,
+      currency: 'KES',
+      channels,
+      reference: `gym_${payment.id}_${Date.now()}`,
+      ...(this.paystackCallbackUrl && {
+        callback_url: this.paystackCallbackUrl,
+      }),
+      metadata: {
+        subscriptionId,
+        paymentId: payment.id,
+        ...(this.paystackCancelUrl && {
+          cancel_action: this.paystackCancelUrl,
+        }),
       },
-      {
-        headers: {
-          Authorization: `Bearer ${this.paystackSecretKey}`,
-          'Content-Type': 'application/json',
+    };
+
+    this.logger.debug('Initializing Paystack payment', {
+      method: subscription.paymentMethod,
+      channel,
+      amount: chargeAmount * 100,
+      baseAmount: effectiveAmount,
+    });
+
+    try {
+      const response = await axios.post<PaystackInitializeResponse>(
+        `${this.paystackBaseUrl}/transaction/initialize`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${this.paystackSecretKey}`,
+            'Content-Type': 'application/json',
+          },
         },
-      },
-    );
-    return response.data.data;
+      );
+      return response.data.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.logger.error('Paystack initialization failed', {
+          status: error.response?.status,
+          body: error.response?.data,
+          payload: { ...payload, email: '***' },
+        });
+      } else {
+        this.logger.error(
+          'Paystack initialization failed',
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+      throw new BadRequestException('Payment initialization failed');
+    }
   }
 
   async handleWebhook(rawBody: Buffer, signature: string) {
@@ -229,8 +285,15 @@ export class PaymentsService {
         });
 
         if (subscription) {
+          // If subscription is still active with remaining time, extend from
+          // current endDate so early renewals don't lose leftover days.
+          const now = new Date();
+          const baseDate =
+            subscription.status === 'ACTIVE' && subscription.endDate > now
+              ? subscription.endDate
+              : now;
           const nextBillingDate = getNextBillingDate(
-            new Date(),
+            baseDate,
             subscription.plan.billingInterval,
           );
 
