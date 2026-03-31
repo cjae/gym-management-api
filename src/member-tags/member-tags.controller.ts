@@ -87,7 +87,9 @@ export class MemberTagsController {
   @Post(':tagId/members')
   @ApiCreatedResponse({ description: 'Tag assigned to members' })
   @ApiNotFoundResponse({ description: 'Tag not found' })
-  @ApiBadRequestResponse({ description: 'Cannot assign SYSTEM tags or no valid member IDs' })
+  @ApiBadRequestResponse({
+    description: 'Cannot assign SYSTEM tags or no valid member IDs',
+  })
   assignTag(
     @Param('tagId', ParseUUIDPipe) tagId: string,
     @Body() dto: AssignTagDto,

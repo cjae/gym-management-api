@@ -115,7 +115,11 @@ describe('EventsService', () => {
       await new Promise((resolve) => process.nextTick(resolve));
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: { role: 'MEMBER', deletedAt: null },
+        where: {
+          role: 'MEMBER',
+          deletedAt: null,
+          status: { not: 'SUSPENDED' },
+        },
         select: { id: true },
       });
       expect(notificationsService.create).toHaveBeenCalledTimes(2);

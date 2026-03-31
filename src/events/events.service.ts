@@ -54,7 +54,11 @@ export class EventsService {
     });
 
     if (dto.notifyMembers) {
-      this.notifyNewEvent(event);
+      this.notifyNewEvent(event).catch((err) =>
+        this.logger.error(
+          `Failed to notify members of new event: ${err.message}`,
+        ),
+      );
     }
 
     return event;
@@ -395,7 +399,11 @@ export class EventsService {
   }) {
     try {
       const members = await this.prisma.user.findMany({
-        where: { role: 'MEMBER', deletedAt: null },
+        where: {
+          role: 'MEMBER',
+          deletedAt: null,
+          status: { not: 'SUSPENDED' },
+        },
         select: { id: true },
       });
 
