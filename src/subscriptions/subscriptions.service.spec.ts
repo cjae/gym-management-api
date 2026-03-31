@@ -781,6 +781,75 @@ describe('SubscriptionsService', () => {
     });
   });
 
+  describe('updatePaymentReference', () => {
+    const subscriptionId = 'sub-1';
+    const paymentReference = 'MPESA-TXN-NEW123';
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should update payment reference on the latest payment', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        id: subscriptionId,
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON',
+      } as any);
+      prisma.payment.findFirst.mockResolvedValueOnce({
+        id: 'pay-1',
+        subscriptionId,
+        paystackReference: null,
+      } as any);
+      prisma.payment.update.mockResolvedValueOnce({
+        id: 'pay-1',
+        paystackReference: paymentReference,
+      } as any);
+
+      const result = await service.updatePaymentReference(
+        subscriptionId,
+        paymentReference,
+      );
+
+      expect(result.paystackReference).toBe(paymentReference);
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-1' },
+        data: { paystackReference: paymentReference },
+      });
+    });
+
+    it('should throw NotFoundException if subscription not found', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updatePaymentReference(subscriptionId, paymentReference),
+      ).rejects.toThrow('Subscription with id sub-1 not found');
+    });
+
+    it('should throw BadRequestException for non-offline payment method', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        id: subscriptionId,
+        paymentMethod: 'CARD',
+      } as any);
+
+      await expect(
+        service.updatePaymentReference(subscriptionId, paymentReference),
+      ).rejects.toThrow(
+        'Payment reference can only be updated for offline/in-person subscriptions',
+      );
+    });
+
+    it('should throw NotFoundException if no payment found for subscription', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        id: subscriptionId,
+        paymentMethod: 'BANK_TRANSFER_IN_PERSON',
+      } as any);
+      prisma.payment.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updatePaymentReference(subscriptionId, paymentReference),
+      ).rejects.toThrow('No payment found for subscription sub-1');
+    });
+  });
+
   describe('cleanupPendingSubscriptions', () => {
     beforeEach(() => {
       jest.clearAllMocks();

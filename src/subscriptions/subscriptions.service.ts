@@ -20,6 +20,7 @@ import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
 import { getNextBillingDate } from '../common/utils/billing.util';
+import { ADMIN_PAYMENT_METHODS } from '../common/constants/payment-methods';
 
 @Injectable()
 export class SubscriptionsService {
@@ -314,6 +315,46 @@ export class SubscriptionsService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = subscription;
     return safe;
+  }
+
+  async updatePaymentReference(
+    subscriptionId: string,
+    paymentReference: string,
+  ) {
+    const subscription = await this.prisma.memberSubscription.findUnique({
+      where: { id: subscriptionId },
+      select: { id: true, paymentMethod: true },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException(
+        `Subscription with id ${subscriptionId} not found`,
+      );
+    }
+
+    if (
+      !ADMIN_PAYMENT_METHODS.includes(subscription.paymentMethod as any)
+    ) {
+      throw new BadRequestException(
+        'Payment reference can only be updated for offline/in-person subscriptions',
+      );
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { subscriptionId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!payment) {
+      throw new NotFoundException(
+        `No payment found for subscription ${subscriptionId}`,
+      );
+    }
+
+    return this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { paystackReference: paymentReference },
+    });
   }
 
   async addDuoMember(
