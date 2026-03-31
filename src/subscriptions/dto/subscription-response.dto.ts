@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SubscriptionStatus, PaymentMethod } from '@prisma/client';
 import { SubscriptionPlanResponseDto } from '../../subscription-plans/dto/subscription-plan-response.dto';
 import { SubscriptionMemberResponseDto } from './subscription-member-response.dto';
+import { UserSummaryResponseDto } from '../../common/dto/user-summary-response.dto';
 
 export class SubscriptionResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -63,6 +64,9 @@ export class SubscriptionResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+
+  @ApiPropertyOptional({ type: UserSummaryResponseDto })
+  primaryMember?: UserSummaryResponseDto;
 
   @ApiPropertyOptional({ type: SubscriptionPlanResponseDto })
   plan?: SubscriptionPlanResponseDto;
