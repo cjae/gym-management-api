@@ -148,7 +148,7 @@ export class MemberTagsService {
   async findMembersByTag(tagId: string, page: number = 1, limit: number = 20) {
     await this.findOneOrFail(tagId);
 
-    const where = { tagId };
+    const where = { tagId, member: { deletedAt: null } };
     const [memberTags, total] = await Promise.all([
       this.prisma.memberTag.findMany({
         where,

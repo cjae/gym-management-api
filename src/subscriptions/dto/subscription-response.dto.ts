@@ -56,7 +56,7 @@ export class SubscriptionResponseDto {
   @ApiPropertyOptional({
     example: 'MPESA-TXN-ABC123',
     description:
-      'Payment reference from the latest payment. Null means no reference has been recorded yet.',
+      'Payment reference from the latest payment. Omitted when no reference has been recorded yet.',
   })
   paymentReference?: string;
 

@@ -28,7 +28,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { MemberTagsService } from './member-tags.service';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { UserSummaryResponseDto } from '../common/dto/user-summary-response.dto';
+import { PaginatedMembersResponseDto } from './dto/paginated-members-response.dto';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { AssignTagDto } from './dto/assign-tag.dto';
@@ -87,7 +87,7 @@ export class MemberTagsController {
   }
 
   @Get(':tagId/members')
-  @ApiOkResponse({ type: [UserSummaryResponseDto] })
+  @ApiOkResponse({ type: PaginatedMembersResponseDto })
   @ApiNotFoundResponse({ description: 'Tag not found' })
   findMembersByTag(
     @Param('tagId', ParseUUIDPipe) tagId: string,
