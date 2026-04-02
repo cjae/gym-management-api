@@ -366,6 +366,13 @@ describe('MemberTagsService', () => {
           subscriptionMembers: [{ subscription: { status: 'ACTIVE' } }],
           streak: null,
         },
+        {
+          id: 'member-inactive-loyal',
+          createdAt: new Date('2025-01-01'),
+          attendances: [{ checkInDate: twentyDaysAgo }],
+          subscriptionMembers: [{ subscription: { status: 'ACTIVE' } }],
+          streak: { weeklyStreak: 5 },
+        },
       ];
 
       // First call returns members, second call returns empty to end the loop
@@ -389,9 +396,23 @@ describe('MemberTagsService', () => {
           // At-risk member: inactive (20 >= 14) + at-risk (active sub + 20 >= 14)
           { memberId: 'member-atrisk', tagId: 'tag-inactive' },
           { memberId: 'member-atrisk', tagId: 'tag-atrisk' },
+          // Inactive member with streak: inactive + at-risk, but NOT loyal (inactive overrides loyal)
+          { memberId: 'member-inactive-loyal', tagId: 'tag-inactive' },
+          { memberId: 'member-inactive-loyal', tagId: 'tag-atrisk' },
         ]),
         skipDuplicates: true,
       });
+
+      // Loyal tag should NOT be assigned to inactive members despite high streak
+      const createCall = txPrisma.memberTag.createMany.mock.calls[0]?.[0];
+      const assignments = Array.isArray(createCall?.data)
+        ? createCall.data
+        : [createCall?.data];
+      const inactiveLoyalTags = assignments.filter(
+        (a: any) =>
+          a.memberId === 'member-inactive-loyal' && a.tagId === 'tag-loyal',
+      );
+      expect(inactiveLoyalTags).toHaveLength(0);
     });
   });
 

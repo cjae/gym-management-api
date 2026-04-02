@@ -667,6 +667,15 @@ export class SubscriptionsService {
       );
     }
 
+    const daysUntilExpiry = Math.ceil(
+      (subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    );
+    if (days > daysUntilExpiry) {
+      throw new BadRequestException(
+        `Freeze duration cannot exceed ${daysUntilExpiry} days (subscription expires on ${subscription.endDate.toISOString().split('T')[0]})`,
+      );
+    }
+
     const freezeStartDate = new Date();
     const freezeEndDate = new Date();
     freezeEndDate.setDate(freezeEndDate.getDate() + days);
