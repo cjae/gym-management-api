@@ -221,35 +221,48 @@ describe('AnalyticsService', () => {
 
   describe('getSubscriptionTrends', () => {
     it('should return subscription series with churn rate', async () => {
-      prisma.memberSubscription.findMany.mockResolvedValue([
-        {
-          status: 'ACTIVE',
-          createdAt: new Date('2026-03-01T10:00:00Z'),
-          plan: { name: 'Basic' },
-          paymentMethod: 'CARD',
-        },
-        {
-          status: 'ACTIVE',
-          createdAt: new Date('2026-03-02T10:00:00Z'),
-          plan: { name: 'Premium' },
-          paymentMethod: 'MOBILE_MONEY',
-        },
-        {
-          status: 'CANCELLED',
-          createdAt: new Date('2026-03-03T10:00:00Z'),
-          plan: { name: 'Basic' },
-          paymentMethod: 'CARD',
-        },
-        {
-          status: 'EXPIRED',
-          createdAt: new Date('2026-03-04T10:00:00Z'),
-          plan: { name: 'Basic' },
-          paymentMethod: 'MOBILE_MONEY',
-        },
-      ] as any);
+      // First findMany: subscriptions created in period
+      // Second findMany: churned subscriptions (by updatedAt)
+      prisma.memberSubscription.findMany
+        .mockResolvedValueOnce([
+          {
+            status: 'ACTIVE',
+            createdAt: new Date('2026-03-01T10:00:00Z'),
+            plan: { name: 'Basic' },
+            paymentMethod: 'CARD',
+          },
+          {
+            status: 'ACTIVE',
+            createdAt: new Date('2026-03-02T10:00:00Z'),
+            plan: { name: 'Premium' },
+            paymentMethod: 'MOBILE_MONEY',
+          },
+          {
+            status: 'CANCELLED',
+            createdAt: new Date('2026-03-03T10:00:00Z'),
+            plan: { name: 'Basic' },
+            paymentMethod: 'CARD',
+          },
+          {
+            status: 'EXPIRED',
+            createdAt: new Date('2026-03-04T10:00:00Z'),
+            plan: { name: 'Basic' },
+            paymentMethod: 'MOBILE_MONEY',
+          },
+        ] as any)
+        .mockResolvedValueOnce([
+          {
+            status: 'CANCELLED',
+            updatedAt: new Date('2026-03-15T10:00:00Z'),
+          },
+          {
+            status: 'EXPIRED',
+            updatedAt: new Date('2026-03-20T10:00:00Z'),
+          },
+        ] as any);
 
-      // subscribersAtStart = 48 (existing subs before period)
-      prisma.memberSubscription.count.mockResolvedValue(48);
+      // Only count call: subscribersAtStart = 48
+      prisma.memberSubscription.count.mockResolvedValueOnce(48);
 
       const result = await service.getSubscriptionTrends({
         from: '2026-03-01',
@@ -257,14 +270,49 @@ describe('AnalyticsService', () => {
         granularity: Granularity.MONTHLY,
       });
 
+      // Verify churn query uses updatedAt, not createdAt
+      expect(prisma.memberSubscription.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { in: ['CANCELLED', 'EXPIRED'] },
+            updatedAt: {
+              gte: expect.any(Date),
+              lte: expect.any(Date),
+            },
+          }),
+        }),
+      );
+
+      // Verify subscribersAtStart excludes pre-period churned subs via OR condition
+      expect(prisma.memberSubscription.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: { lt: expect.any(Date) },
+            endDate: { gte: expect.any(Date) },
+            OR: [
+              {
+                status: { in: ['ACTIVE', 'FROZEN'] },
+              },
+              {
+                status: { in: ['CANCELLED', 'EXPIRED'] },
+                updatedAt: { gte: expect.any(Date) },
+              },
+            ],
+          }),
+        }),
+      );
+
       expect(result.series).toHaveLength(1);
-      expect(result.series[0].newSubscriptions).toBe(2);
+      // All 4 non-PENDING subscriptions count as new in the period
+      expect(result.series[0].newSubscriptions).toBe(4);
+      // Churn bucketed by updatedAt from the second findMany
       expect(result.series[0].cancellations).toBe(1);
       expect(result.series[0].expirations).toBe(1);
       expect(result.byPlan).toEqual({ Basic: 1, Premium: 1 });
       expect(result.byPaymentMethod).toEqual({ CARD: 1, MOBILE_MONEY: 1 });
-      // churnRate = (1 + 1) / (48 + 2) * 100 = 4
-      expect(result.churnRate).toBe(4);
+      // churnRate = 2 / (48 + 4) * 100 = 3.85
+      expect(result.churnRate).toBe(3.85);
     });
   });
 

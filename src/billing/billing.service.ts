@@ -154,7 +154,7 @@ export class BillingService {
           sub.primaryMember.firstName,
           sub.plan.name,
           sub.plan.price,
-          `${this.memberAppUrl}`,
+          this.memberAppUrl,
         );
         this.logger.warn(
           `Expired subscription ${sub.id} after 2 card failures`,

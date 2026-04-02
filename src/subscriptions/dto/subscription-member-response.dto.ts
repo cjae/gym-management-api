@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { UserSummaryResponseDto } from '../../common/dto/user-summary-response.dto';
 
 export class SubscriptionMemberResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -9,4 +10,7 @@ export class SubscriptionMemberResponseDto {
 
   @ApiProperty({ format: 'uuid' })
   memberId: string;
+
+  @ApiPropertyOptional({ type: UserSummaryResponseDto })
+  member?: UserSummaryResponseDto;
 }
