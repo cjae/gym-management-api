@@ -28,7 +28,9 @@ export const safeUserWithSubscriptionSelect =
     },
     subscriptionMembers: {
       where: {
-        subscription: { status: SubscriptionStatus.ACTIVE },
+        subscription: {
+          status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN] },
+        },
       },
       take: 1,
       select: {
@@ -38,6 +40,8 @@ export const safeUserWithSubscriptionSelect =
             status: true,
             startDate: true,
             endDate: true,
+            freezeStartDate: true,
+            freezeEndDate: true,
             plan: {
               select: {
                 id: true,

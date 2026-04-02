@@ -31,7 +31,7 @@ export class UserSubscriptionDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiProperty({ enum: ['ACTIVE', 'EXPIRED', 'CANCELLED'] })
+  @ApiProperty({ enum: ['ACTIVE', 'EXPIRED', 'CANCELLED', 'FROZEN'] })
   status: string;
 
   @ApiProperty()
@@ -39,6 +39,12 @@ export class UserSubscriptionDto {
 
   @ApiProperty()
   endDate: Date;
+
+  @ApiProperty({ type: Date, nullable: true, required: false })
+  freezeStartDate: Date | null;
+
+  @ApiProperty({ type: Date, nullable: true, required: false })
+  freezeEndDate: Date | null;
 
   @ApiProperty({ type: UserSubscriptionPlanDto })
   plan: UserSubscriptionPlanDto;

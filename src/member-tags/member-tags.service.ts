@@ -319,6 +319,7 @@ export class MemberTagsService {
           if (
             member.streak?.weeklyStreak &&
             member.streak.weeklyStreak >= loyalStreakWeeks &&
+            inactivityDays < inactiveDays &&
             tagMap.has('loyal')
           ) {
             assignments.push({

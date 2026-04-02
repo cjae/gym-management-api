@@ -232,12 +232,14 @@ describe('SubscriptionsService', () => {
   });
 
   describe('freeze', () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 30);
     const mockSubscription = {
       id: 'sub-1',
       primaryMemberId: 'user-1',
       status: 'ACTIVE',
-      endDate: new Date('2026-04-01'),
-      nextBillingDate: new Date('2026-04-01'),
+      endDate: futureDate,
+      nextBillingDate: futureDate,
       frozenDaysUsed: 0,
       freezeCount: 0,
       freezeStartDate: null,
@@ -351,6 +353,19 @@ describe('SubscriptionsService', () => {
 
       const result = await service.freeze('sub-1', 'admin-1', 'ADMIN', 10);
       expect(result.status).toBe('FROZEN');
+    });
+
+    it('should reject freeze when duration exceeds days until expiry', async () => {
+      const nearExpiry = new Date();
+      nearExpiry.setDate(nearExpiry.getDate() + 3);
+      prisma.memberSubscription.findUnique.mockResolvedValueOnce({
+        ...mockSubscription,
+        endDate: nearExpiry,
+      } as any);
+
+      await expect(
+        service.freeze('sub-1', 'user-1', 'MEMBER', 10),
+      ).rejects.toThrow('Freeze duration cannot exceed 3 days');
     });
 
     it('should reject freeze from non-owner non-admin', async () => {
