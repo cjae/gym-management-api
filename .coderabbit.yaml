@@ -1,0 +1,10 @@
+reviews:
+  path_instructions:
+    - path: "src/**/*.dto.ts"
+      instructions: |
+        Files ending in `*-response.dto.ts` are response DTOs — they describe
+        the shape of API responses for Swagger documentation and are never
+        validated by NestJS ValidationPipe. Do NOT flag missing class-validator
+        decorators (@MaxLength, @IsString, @IsEmail, etc.) on response DTOs.
+        Only flag missing class-validator decorators on request/input DTOs
+        (files that do NOT end in `-response.dto.ts`).
