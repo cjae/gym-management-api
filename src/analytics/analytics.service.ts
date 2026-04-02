@@ -519,12 +519,21 @@ export class AnalyticsService {
     }
 
     // Subscribers at the start of the period: created before the period,
-    // with endDate still in the future (were not yet naturally expired)
+    // still valid (endDate >= from), and either currently active/frozen
+    // OR churned during the period (were active at period start)
     const subscribersAtStart = await this.prisma.memberSubscription.count({
       where: {
         createdAt: { lt: from },
         endDate: { gte: from },
-        status: { not: 'PENDING' as SubscriptionStatus },
+        OR: [
+          { status: { in: ['ACTIVE', 'FROZEN'] as SubscriptionStatus[] } },
+          {
+            status: {
+              in: ['CANCELLED', 'EXPIRED'] as SubscriptionStatus[],
+            },
+            updatedAt: { gte: from },
+          },
+        ],
       },
     });
 

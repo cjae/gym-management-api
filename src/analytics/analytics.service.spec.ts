@@ -284,6 +284,25 @@ describe('AnalyticsService', () => {
         }),
       );
 
+      // Verify subscribersAtStart excludes pre-period churned subs via OR condition
+      expect(prisma.memberSubscription.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: { lt: expect.any(Date) },
+            endDate: { gte: expect.any(Date) },
+            OR: [
+              {
+                status: { in: ['ACTIVE', 'FROZEN'] },
+              },
+              {
+                status: { in: ['CANCELLED', 'EXPIRED'] },
+                updatedAt: { gte: expect.any(Date) },
+              },
+            ],
+          }),
+        }),
+      );
+
       expect(result.series).toHaveLength(1);
       // All 4 non-PENDING subscriptions count as new in the period
       expect(result.series[0].newSubscriptions).toBe(4);
