@@ -404,10 +404,12 @@ describe('MemberTagsService', () => {
       });
 
       // Loyal tag should NOT be assigned to inactive members despite high streak
-      const assignments =
-        txPrisma.memberTag.createMany.mock.calls[0][0].data;
+      const createCall = txPrisma.memberTag.createMany.mock.calls[0]?.[0];
+      const assignments = Array.isArray(createCall?.data)
+        ? createCall.data
+        : [createCall?.data];
       const inactiveLoyalTags = assignments.filter(
-        (a) =>
+        (a: any) =>
           a.memberId === 'member-inactive-loyal' && a.tagId === 'tag-loyal',
       );
       expect(inactiveLoyalTags).toHaveLength(0);
