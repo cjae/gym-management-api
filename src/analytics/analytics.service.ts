@@ -460,14 +460,19 @@ export class AnalyticsService {
       },
     });
 
-    // Subscriptions that churned during the period (for churn rate)
+    // Subscriptions that churned during the period (for churn rate + per-period buckets)
     // Uses updatedAt to capture when the status actually changed
-    const churnedInPeriod = await this.prisma.memberSubscription.count({
+    const churnedSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         status: { in: ['CANCELLED', 'EXPIRED'] },
         updatedAt: { gte: from, lte: to },
       },
+      select: {
+        status: true,
+        updatedAt: true,
+      },
     });
+    const churnedInPeriod = churnedSubscriptions.length;
 
     const buckets = new Map<
       string,
@@ -490,18 +495,27 @@ export class AnalyticsService {
       // Every non-PENDING subscription created in the period is a new subscription
       bucket.newSubscriptions++;
 
-      if (sub.status === 'CANCELLED') {
-        bucket.cancellations++;
-      } else if (sub.status === 'EXPIRED') {
-        bucket.expirations++;
-      }
-
       // Active breakdown by plan and payment method
       if (sub.status === 'ACTIVE' || sub.status === 'FROZEN') {
         byPlan[sub.plan.name] = (byPlan[sub.plan.name] || 0) + 1;
         byPaymentMethod[sub.paymentMethod] =
           (byPaymentMethod[sub.paymentMethod] || 0) + 1;
       }
+    }
+
+    // Bucket churn events by when they actually happened (updatedAt)
+    for (const sub of churnedSubscriptions) {
+      const period = this.getPeriodKey(sub.updatedAt, granularity);
+      if (!buckets.has(period)) {
+        buckets.set(period, {
+          newSubscriptions: 0,
+          cancellations: 0,
+          expirations: 0,
+        });
+      }
+      const bucket = buckets.get(period)!;
+      if (sub.status === 'CANCELLED') bucket.cancellations++;
+      else bucket.expirations++;
     }
 
     // Subscribers at the start of the period: created before the period,
