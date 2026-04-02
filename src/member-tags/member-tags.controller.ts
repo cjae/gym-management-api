@@ -27,6 +27,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequiresFeature } from '../licensing/decorators/requires-feature.decorator';
 import { MemberTagsService } from './member-tags.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { UserSummaryResponseDto } from '../common/dto/user-summary-response.dto';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { AssignTagDto } from './dto/assign-tag.dto';
@@ -82,6 +84,20 @@ export class MemberTagsController {
   @ApiBadRequestResponse({ description: 'Cannot delete SYSTEM tags' })
   delete(@Param('id', ParseUUIDPipe) id: string) {
     return this.memberTagsService.delete(id);
+  }
+
+  @Get(':tagId/members')
+  @ApiOkResponse({ type: [UserSummaryResponseDto] })
+  @ApiNotFoundResponse({ description: 'Tag not found' })
+  findMembersByTag(
+    @Param('tagId', ParseUUIDPipe) tagId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.memberTagsService.findMembersByTag(
+      tagId,
+      query.page,
+      query.limit,
+    );
   }
 
   @Post(':tagId/members')
