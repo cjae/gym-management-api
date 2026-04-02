@@ -29,7 +29,9 @@ export const safeUserWithSubscriptionSelect =
     subscriptionMembers: {
       where: {
         subscription: {
-          status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN] },
+          status: {
+            in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN],
+          },
         },
       },
       take: 1,
