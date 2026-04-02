@@ -145,6 +145,40 @@ export class MemberTagsService {
     });
   }
 
+  async findMembersByTag(tagId: string, page: number = 1, limit: number = 20) {
+    await this.findOneOrFail(tagId);
+
+    const where = { tagId, member: { deletedAt: null } };
+    const [memberTags, total] = await Promise.all([
+      this.prisma.memberTag.findMany({
+        where,
+        include: {
+          member: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              status: true,
+              displayPicture: true,
+            },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { assignedAt: 'desc' },
+      }),
+      this.prisma.memberTag.count({ where }),
+    ]);
+
+    return {
+      data: memberTags.map((mt) => mt.member),
+      total,
+      page,
+      limit,
+    };
+  }
+
   async removeTag(tagId: string, memberId: string) {
     const tag = await this.findOneOrFail(tagId);
 

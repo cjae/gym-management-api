@@ -54,6 +54,13 @@ export class SubscriptionResponseDto {
   paymentNote?: string;
 
   @ApiPropertyOptional({
+    example: 'MPESA-TXN-ABC123',
+    description:
+      'Payment reference from the latest payment. Omitted when no reference has been recorded yet.',
+  })
+  paymentReference?: string;
+
+  @ApiPropertyOptional({
     format: 'uuid',
     description: 'Admin who created this subscription',
   })

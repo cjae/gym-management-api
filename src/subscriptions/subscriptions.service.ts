@@ -9,6 +9,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   NotificationType,
+  Prisma,
   PaymentMethod,
   Role,
   SubscriptionStatus,
@@ -448,10 +449,20 @@ export class SubscriptionsService {
             },
           },
         },
+        payments: {
+          select: { paystackReference: true },
+          orderBy: { createdAt: Prisma.SortOrder.desc },
+          take: 1,
+        },
       },
     });
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    return subscriptions.map(({ paystackAuthorizationCode, ...sub }) => sub);
+    return subscriptions.map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ paystackAuthorizationCode, payments, ...sub }) => ({
+        ...sub,
+        paymentReference: payments[0]?.paystackReference ?? undefined,
+      }),
+    );
   }
 
   async findAll(page: number = 1, limit: number = 20) {
@@ -482,7 +493,12 @@ export class SubscriptionsService {
           },
         },
       },
-    };
+      payments: {
+        select: { paystackReference: true },
+        orderBy: { createdAt: Prisma.SortOrder.desc },
+        take: 1,
+      },
+    } as const;
 
     const [subscriptions, total] = await Promise.all([
       this.prisma.memberSubscription.findMany({
@@ -497,7 +513,10 @@ export class SubscriptionsService {
 
     const data = subscriptions.map(
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      ({ paystackAuthorizationCode, ...sub }) => sub,
+      ({ paystackAuthorizationCode, payments, ...sub }) => ({
+        ...sub,
+        paymentReference: payments[0]?.paystackReference ?? undefined,
+      }),
     );
     return { data, total, page, limit };
   }
@@ -531,6 +550,11 @@ export class SubscriptionsService {
             },
           },
         },
+        payments: {
+          select: { paystackReference: true },
+          orderBy: { createdAt: Prisma.SortOrder.desc },
+          take: 1,
+        },
       },
     });
 
@@ -541,8 +565,11 @@ export class SubscriptionsService {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { paystackAuthorizationCode, ...result } = subscription;
-    return result;
+    const { paystackAuthorizationCode, payments, ...result } = subscription;
+    return {
+      ...result,
+      paymentReference: payments[0]?.paystackReference ?? undefined,
+    };
   }
 
   async cancel(
