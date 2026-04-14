@@ -230,8 +230,39 @@ export class SubscriptionsService {
       );
     }
 
-    const startDate = new Date();
+    const now = new Date();
+    let startDate: Date;
+    if (dto.startDate) {
+      startDate = new Date(dto.startDate);
+      if (startDate > now) {
+        throw new BadRequestException('Start date cannot be in the future');
+      }
+      const normalizedNow = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+      );
+      const normalizedStart = new Date(
+        Date.UTC(
+          startDate.getUTCFullYear(),
+          startDate.getUTCMonth(),
+          startDate.getUTCDate(),
+        ),
+      );
+      const ninetyDaysAgo = new Date(normalizedNow);
+      ninetyDaysAgo.setUTCDate(ninetyDaysAgo.getUTCDate() - 90);
+      if (normalizedStart < ninetyDaysAgo) {
+        throw new BadRequestException(
+          'Start date cannot be more than 90 days in the past',
+        );
+      }
+    } else {
+      startDate = now;
+    }
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
+    if (endDate <= now) {
+      throw new BadRequestException(
+        'Start date results in an already expired billing window for this plan',
+      );
+    }
 
     // Check for existing PENDING subscription — update it instead of creating a new one
     const existingPending = await this.prisma.memberSubscription.findFirst({
