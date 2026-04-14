@@ -50,10 +50,12 @@ export class AdminCreateSubscriptionDto {
 
   @ApiPropertyOptional({
     example: '2026-04-01',
+    maxLength: 10,
     description:
       'Backdated start date for the subscription (ISO 8601 date string). Must be in the past and within 90 days. Defaults to today when omitted.',
   })
   @IsOptional()
   @IsISO8601()
+  @MaxLength(10)
   startDate?: string;
 }
