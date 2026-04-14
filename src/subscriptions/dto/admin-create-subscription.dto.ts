@@ -1,4 +1,11 @@
-import { IsString, IsIn, IsOptional, MaxLength, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsIn,
+  IsOptional,
+  MaxLength,
+  IsUUID,
+  IsISO8601,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '@prisma/client';
 import { ADMIN_PAYMENT_METHODS } from '../../common/constants/payment-methods';
@@ -40,4 +47,13 @@ export class AdminCreateSubscriptionDto {
   @IsString()
   @MaxLength(500)
   paymentNote?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-04-01',
+    description:
+      'Backdated start date for the subscription (ISO 8601 date string). Must be in the past and within 90 days. Defaults to today when omitted.',
+  })
+  @IsOptional()
+  @IsISO8601()
+  startDate?: string;
 }

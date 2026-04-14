@@ -230,7 +230,23 @@ export class SubscriptionsService {
       );
     }
 
-    const startDate = new Date();
+    let startDate: Date;
+    if (dto.startDate) {
+      startDate = new Date(dto.startDate);
+      const now = new Date();
+      if (startDate > now) {
+        throw new BadRequestException('Start date cannot be in the future');
+      }
+      const ninetyDaysAgo = new Date(now);
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      if (startDate < ninetyDaysAgo) {
+        throw new BadRequestException(
+          'Start date cannot be more than 90 days in the past',
+        );
+      }
+    } else {
+      startDate = new Date();
+    }
     const endDate = getNextBillingDate(startDate, plan.billingInterval);
 
     // Check for existing PENDING subscription — update it instead of creating a new one
