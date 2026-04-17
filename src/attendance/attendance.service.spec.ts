@@ -649,7 +649,7 @@ describe('AttendanceService', () => {
           { checkInDate: new Date('2026-03-31') },
           { checkInDate: new Date('2026-03-26') },
           { checkInDate: new Date('2026-03-24') },
-        ] as unknown as { checkInDate: Date }[],
+        ] as never,
       );
 
       const avg = await service.getAvgDaysPerWeek('m1', 4);
