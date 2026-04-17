@@ -29,6 +29,9 @@ import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { ListGoalsQueryDto } from './dto/list-goals-query.dto';
 import {
+  GoalMilestoneResponseDto,
+  GoalPlanItemResponseDto,
+  GoalProgressLogResponseDto,
   GoalResponseDto,
   PaginatedGoalsResponseDto,
 } from './dto/goal-response.dto';
@@ -84,6 +87,7 @@ export class GoalsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
   remove(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.goals.remove(user.id, id);
   }
@@ -91,7 +95,7 @@ export class GoalsController {
   @Post(':id/retry-generation')
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
-  @ApiOkResponse({ type: GoalResponseDto })
+  @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalResponseDto })
   retry(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.goals.retryGeneration(user.id, id);
   }
@@ -99,7 +103,7 @@ export class GoalsController {
   // ——— Progress logs ———
   @Post(':id/progress')
   @HttpCode(HttpStatus.CREATED)
-  @ApiResponse({ status: HttpStatus.CREATED })
+  @ApiResponse({ status: HttpStatus.CREATED, type: GoalProgressLogResponseDto })
   addProgress(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -110,6 +114,7 @@ export class GoalsController {
 
   @Delete(':id/progress/:logId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
   removeProgress(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -121,7 +126,7 @@ export class GoalsController {
   // ——— Plan items ———
   @Post(':id/plan-items')
   @HttpCode(HttpStatus.CREATED)
-  @ApiResponse({ status: HttpStatus.CREATED })
+  @ApiResponse({ status: HttpStatus.CREATED, type: GoalPlanItemResponseDto })
   addPlanItem(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -131,7 +136,7 @@ export class GoalsController {
   }
 
   @Patch(':id/plan-items/:itemId')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: GoalPlanItemResponseDto })
   updatePlanItem(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -143,6 +148,7 @@ export class GoalsController {
 
   @Delete(':id/plan-items/:itemId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
   removePlanItem(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -154,7 +160,7 @@ export class GoalsController {
   // ——— Milestones ———
   @Post(':id/milestones')
   @HttpCode(HttpStatus.CREATED)
-  @ApiResponse({ status: HttpStatus.CREATED })
+  @ApiResponse({ status: HttpStatus.CREATED, type: GoalMilestoneResponseDto })
   addMilestone(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -164,7 +170,7 @@ export class GoalsController {
   }
 
   @Patch(':id/milestones/:milestoneId')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: GoalMilestoneResponseDto })
   updateMilestone(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -176,6 +182,7 @@ export class GoalsController {
 
   @Delete(':id/milestones/:milestoneId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
   removeMilestone(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
