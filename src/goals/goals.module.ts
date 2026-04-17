@@ -3,6 +3,7 @@ import { GoalsService } from './goals.service';
 import { GoalsController } from './goals.controller';
 import { GoalGenerationListener } from './listeners/goal-generation.listener';
 import { GoalNotificationsListener } from './listeners/goal-notifications.listener';
+import { GoalsCron } from './goals.cron';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { GymSettingsModule } from '../gym-settings/gym-settings.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -18,7 +19,12 @@ import { LlmModule } from '../llm/llm.module';
     LlmModule,
   ],
   controllers: [GoalsController],
-  providers: [GoalsService, GoalGenerationListener, GoalNotificationsListener],
+  providers: [
+    GoalsService,
+    GoalGenerationListener,
+    GoalNotificationsListener,
+    GoalsCron,
+  ],
   exports: [GoalsService],
 })
 export class GoalsModule {}
