@@ -34,7 +34,7 @@ export class GoalsService {
 
   async create(memberId: string, dto: CreateGoalDto) {
     const settings = await this.settings.getCachedSettings();
-    const cap = settings.maxActiveGoalsPerMember ?? 3;
+    const cap = settings?.maxActiveGoalsPerMember ?? 3;
 
     const active = await this.prisma.goal.count({
       where: { memberId, status: { in: NON_TERMINAL } },
@@ -101,7 +101,7 @@ export class GoalsService {
       page,
       limit,
       activeCount,
-      cap: settings.maxActiveGoalsPerMember ?? 3,
+      cap: settings?.maxActiveGoalsPerMember ?? 3,
     };
   }
 

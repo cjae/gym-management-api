@@ -39,6 +39,7 @@ import { ExportsModule } from './exports/exports.module';
 import { DiscountCodesModule } from './discount-codes/discount-codes.module';
 import { MilestonesModule } from './milestones/milestones.module';
 import { MemberTagsModule } from './member-tags/member-tags.module';
+import { GoalsModule } from './goals/goals.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { MemberTagsModule } from './member-tags/member-tags.module';
     DiscountCodesModule,
     MilestonesModule,
     MemberTagsModule,
+    GoalsModule,
   ],
   controllers: [AppController],
   providers: [
