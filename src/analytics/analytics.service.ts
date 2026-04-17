@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { Granularity } from './dto/analytics-query.dto';
 
@@ -38,7 +39,17 @@ export interface DashboardResult {
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private static readonly DEFAULT_TIMEZONE = 'Africa/Nairobi';
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gymSettingsService: GymSettingsService,
+  ) {}
+
+  private async getTimezone(): Promise<string> {
+    const settings = await this.gymSettingsService.getCachedSettings();
+    return settings?.timezone ?? AnalyticsService.DEFAULT_TIMEZONE;
+  }
 
   async getDashboard(role: string): Promise<DashboardResult> {
     const now = new Date();
@@ -381,6 +392,7 @@ export class AnalyticsService {
   async getAttendanceTrends(query: AnalyticsQueryDto) {
     const { from, to } = this.getDateRange(query);
     const granularity = query.granularity || Granularity.MONTHLY;
+    const timezone = await this.getTimezone();
 
     const attendances = await this.prisma.attendance.findMany({
       where: {
@@ -410,7 +422,15 @@ export class AnalyticsService {
       bucket.members.add(attendance.memberId);
 
       dayOfWeekCounts[attendance.checkInDate.getDay()]++;
-      hourCounts[attendance.checkInTime.getHours()]++;
+      const localHour = parseInt(
+        attendance.checkInTime.toLocaleString('en-US', {
+          timeZone: timezone,
+          hour: 'numeric',
+          hour12: false,
+        }),
+        10,
+      );
+      hourCounts[localHour % 24]++;
     }
 
     const days = [

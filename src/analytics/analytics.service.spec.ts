@@ -3,6 +3,7 @@ import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
 import { AnalyticsService } from './analytics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { Granularity } from './dto/analytics-query.dto';
 
 describe('AnalyticsService', () => {
@@ -16,6 +17,10 @@ describe('AnalyticsService', () => {
       providers: [
         AnalyticsService,
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
+        {
+          provide: GymSettingsService,
+          useValue: { getCachedSettings: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 
