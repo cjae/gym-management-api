@@ -38,7 +38,7 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `qr/` — GymQrCode generation and validation. Daily QR code rotation cron.
 - `trainers/` — Profiles, 1:1 member assignments
 - `entrances/` — Multi-entrance support. CRUD for gym entrances (ADMIN+). QR payloads include entrance ID, attendance records track which entrance was used.
-- `gym-settings/` — Global gym configuration (singleton). Off-peak windows, referral settings (reward days, per-cycle cap), member tag thresholds (active/inactive/dormant/at-risk days, loyal streak weeks). Cached in-memory. ADMIN+ CRUD.
+- `gym-settings/` — Global gym configuration (singleton). Off-peak windows, referral settings (reward days, per-cycle cap), member tag thresholds (active/inactive/dormant/at-risk days, loyal streak weeks), `maxActiveGoalsPerMember` (how many concurrent active/paused goals a member can have, default 3). Cached in-memory. ADMIN+ CRUD.
 - `gym-classes/` — Independent class scheduling with member enrollment. Classes exist as standalone weekly time slots, optionally assigned a trainer. Members self-enroll. Email notifications on time changes and cancellations. Time overlap validation prevents scheduling conflicts.
 - `events/` — One-off gym events (special classes, community events, workshops). Members enroll with capacity limits. Email notifications on changes/cancellations. No trainer assignment, no time overlap validation. `GET /events` returns upcoming events (date >= today). Free for all members.
 - `salary/` — Staff payroll, SUPER_ADMIN only
@@ -49,11 +49,12 @@ npx prisma db seed      # Seed dev data (all users use password: password123)
 - `imports/` — CSV member import with background processing. Validates emails, generates temp passwords, sends welcome emails. Import job tracking with status/progress. Admin-only with import report email on completion.
 - `member-tags/` — Member tagging and segmentation. Auto-computed system tags (daily cron: new-member, active, inactive, dormant, at-risk, expired, loyal, frozen) with configurable thresholds via GymSettings. Manual admin tags with CRUD. Tag filtering on `GET /users` via `?tags=` query param. Feature-gated (`member-tags`).
 - `exports/` — Data export for members, payments, and subscriptions. Supports CSV, Excel (.xlsx), and PDF formats. Synchronous file downloads with denormalized data (human-readable names, no raw IDs). ADMIN+ only, feature-gated (`exports`). Filterable by status, date range, and resource-specific params.
+- `goals/` — Member fitness goals with AI-generated week-by-week plans. Members create goals; an LLM (Claude via Anthropic SDK) generates a structured plan asynchronously. `POST /goals` creates in `GENERATING` status and emits a background event. Listener validates LLM JSON, persists `GoalPlanItem` + `GoalMilestone` records transactionally, updates to `READY`, and sends push notification. Progress tracked via `GoalProgressLog`. Weekly motivation cron (Monday 9am Nairobi) sends `GOAL_WEEKLY_PULSE` push. Stale-generation sweeper (every 5 min). Feature-gated (`goals`), requires active subscription.
 - `analytics/` — Dashboard stats (members, revenue, subscriptions, attendance). Trend endpoints (member, revenue, subscription, attendance). Expiring memberships report. WebSocket `ActivityGateway` for real-time activity feed (check-ins, registrations, payments, cancellations).
 - `common/config/` — Typed config factories (app, auth, mail, payment, sentry, cloudinary)
 - `common/loaders/` — `ConfigLoaderModule` that loads all configs globally
 - `uploads/` — Image upload to Cloudinary (avatars), returns URL
-- `licensing/` — SaaS license validation and feature gating. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset (all features enabled). `FeatureGuard` enforces feature access via `@RequiresFeature()` decorator — returns 403 when feature not in license. Gated modules: referrals, discount-codes, gym-classes, events, analytics (except dashboard), notifications, banners, multi-entrance, attendance-streaks, subscription-freeze, trainer-management, salary, audit-logs, exports, member-tags.
+- `licensing/` — SaaS license validation and feature gating. Daily phone-home to control plane. Global `LicenseGuard` returns 503 when license invalid (7-day grace period). Dev mode when `LICENSE_KEY` unset (all features enabled). `FeatureGuard` enforces feature access via `@RequiresFeature()` decorator — returns 403 when feature not in license. Gated modules: referrals, discount-codes, gym-classes, events, analytics (except dashboard), notifications, banners, multi-entrance, attendance-streaks, subscription-freeze, trainer-management, salary, audit-logs, exports, member-tags, goals.
 - `audit-logs/` — Audit logging for admin actions and auth events. Global interceptor auto-logs POST/PUT/PATCH/DELETE by ADMIN/SUPER_ADMIN with before/after JSON diffs. Auth events (login, logout, password reset/change) logged explicitly. `@NoAudit()` decorator to opt out. SUPER_ADMIN-only `GET /audit-logs` endpoint with filters.
 - `sentry/` — Sentry integration module (filter, interceptor)
 
@@ -105,6 +106,10 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `PAYSTACK_CALLBACK_URL` — URL to redirect customer after successful payment (optional)
 - `PAYSTACK_CANCEL_URL` — URL to redirect customer when they cancel checkout (optional)
 - `LICENSE_SERVER_URL` — Control plane base URL for license validation (optional in dev)
+- `ANTHROPIC_API_KEY` — Anthropic API key for Claude (required when `goals` feature is licensed)
+- `LLM_MODEL` — Model id (defaults to `claude-sonnet-4-6`)
+- `LLM_MAX_TOKENS` — Max tokens for plan generation (defaults to 4096)
+- `LLM_TIMEOUT_MS` — LLM request timeout in ms (defaults to 60000)
 
 ## Security
 

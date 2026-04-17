@@ -76,6 +76,9 @@ enum NotificationType {
   CLASS_UPDATE
   EVENT_UPDATE
   MILESTONE
+  GOAL_PLAN_READY
+  GOAL_PLAN_FAILED
+  GOAL_WEEKLY_PULSE
 }
 
 enum AuditAction {
@@ -122,6 +125,39 @@ enum TagSource {
   MANUAL
 }
 
+enum GoalCategory {
+  STRENGTH
+  WEIGHT_LOSS
+  MUSCLE_GAIN
+  CONSISTENCY
+  ENDURANCE
+  BODY_COMPOSITION
+  OTHER
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  ABANDONED
+}
+
+enum GoalGenerationStatus {
+  GENERATING
+  READY
+  FAILED
+}
+
+enum GoalMetric {
+  KG
+  LBS
+  REPS
+  CM
+  PERCENT
+  DAYS_PER_WEEK
+  MINUTES
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -141,48 +177,49 @@ model User {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  subscriptionsOwned         MemberSubscription[]    @relation("SubscriptionOwner")
+  subscriptionsOwned         MemberSubscription[]     @relation("SubscriptionOwner")
   subscriptionMembers        SubscriptionMember[]
   attendances                Attendance[]
   streak                     Streak?
   trainerProfile             TrainerProfile?
-  trainerAssignmentsAsMember TrainerAssignment[]     @relation("MemberAssignments")
+  trainerAssignmentsAsMember TrainerAssignment[]      @relation("MemberAssignments")
   salaryRecords              StaffSalaryRecord[]
   passwordResetTokens        PasswordResetToken[]
   auditLogs                  AuditLog[]
-  createdSubscriptions       MemberSubscription[]    @relation("SubscriptionCreator")
-  notifications              Notification[]          @relation("UserNotifications")
-  pushTokens                 PushToken[]             @relation("UserPushTokens")
-  banners                    Banner[]                @relation("UserBanners")
-  bannerInteractions         BannerInteraction[]     @relation("UserBannerInteractions")
+  createdSubscriptions       MemberSubscription[]     @relation("SubscriptionCreator")
+  notifications              Notification[]           @relation("UserNotifications")
+  pushTokens                 PushToken[]              @relation("UserPushTokens")
+  banners                    Banner[]                 @relation("UserBanners")
+  bannerInteractions         BannerInteraction[]      @relation("UserBannerInteractions")
   classEnrollments           ClassEnrollment[]
   eventEnrollments           EventEnrollment[]
-  referralCode               String?                 @unique
+  referralCode               String?                  @unique
   referredById               String?
-  referredBy                 User?                   @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals                  User[]                  @relation("UserReferrals")
-  referralsMade              Referral[]              @relation("ReferrerReferrals")
-  referralReceived           Referral?               @relation("ReferredReferral")
+  referredBy                 User?                    @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals                  User[]                   @relation("UserReferrals")
+  referralsMade              Referral[]               @relation("ReferrerReferrals")
+  referralReceived           Referral?                @relation("ReferredReferral")
   importJobs                 ImportJob[]
-  discountRedemptions        DiscountRedemption[]    @relation("UserDiscountRedemptions")
+  discountRedemptions        DiscountRedemption[]     @relation("UserDiscountRedemptions")
   milestoneNotifications     MilestoneNotification[]
-  deletionRequests         AccountDeletionRequest[]
-  reviewedDeletionRequests AccountDeletionRequest[] @relation("DeletionRequestReviewer")
-  memberTags               MemberTag[]
+  deletionRequests           AccountDeletionRequest[]
+  reviewedDeletionRequests   AccountDeletionRequest[] @relation("DeletionRequestReviewer")
+  memberTags                 MemberTag[]
+  goals                      Goal[]                   @relation("UserGoals")
 }
 
 model AccountDeletionRequest {
-  id           String                @id @default(uuid())
-  userId       String
-  user         User                  @relation(fields: [userId], references: [id])
+  id              String                @id @default(uuid())
+  userId          String
+  user            User                  @relation(fields: [userId], references: [id])
   reason          String?
   status          DeletionRequestStatus @default(PENDING)
   rejectionReason String?
   reviewedById    String?
   reviewedBy      User?                 @relation("DeletionRequestReviewer", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 }
 
 model SubscriptionPlan {
@@ -483,18 +520,19 @@ model AuditLog {
 }
 
 model GymSettings {
-  id                   String   @id @default("singleton")
-  timezone             String   @default("Africa/Nairobi")
-  referralRewardDays   Int      @default(7)
-  maxReferralsPerCycle Int      @default(3)
-  newMemberDays        Int      @default(14)
-  activeDays           Int      @default(7)
-  inactiveDays         Int      @default(14)
-  dormantDays          Int      @default(30)
-  atRiskDays           Int      @default(14)
-  loyalStreakWeeks     Int      @default(4)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                      String   @id @default("singleton")
+  timezone                String   @default("Africa/Nairobi")
+  referralRewardDays      Int      @default(7)
+  maxReferralsPerCycle    Int      @default(3)
+  newMemberDays           Int      @default(14)
+  activeDays              Int      @default(7)
+  inactiveDays            Int      @default(14)
+  dormantDays             Int      @default(30)
+  atRiskDays              Int      @default(14)
+  loyalStreakWeeks        Int      @default(4)
+  maxActiveGoalsPerMember Int      @default(3)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   offPeakWindows OffPeakWindow[]
 }
@@ -757,4 +795,80 @@ model MemberTag {
   tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([memberId, tagId])
+}
+
+model Goal {
+  id                      String               @id @default(uuid())
+  memberId                String
+  member                  User                 @relation("UserGoals", fields: [memberId], references: [id], onDelete: Cascade)
+  title                   String
+  category                GoalCategory
+  metric                  GoalMetric
+  currentValue            Decimal              @db.Decimal(10, 2)
+  targetValue             Decimal              @db.Decimal(10, 2)
+  currentGymFrequency     Int
+  userRequestedFrequency  Int?
+  recommendedGymFrequency Int?
+  aiEstimatedDeadline     DateTime?
+  userDeadline            DateTime?
+  aiReasoning             String?
+  rawLlmResponse          Json?
+  generationStatus        GoalGenerationStatus @default(GENERATING)
+  generationError         String?
+  generationStartedAt     DateTime             @default(now())
+  status                  GoalStatus           @default(ACTIVE)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  planItems    GoalPlanItem[]
+  milestones   GoalMilestone[]
+  progressLogs GoalProgressLog[]
+
+  @@index([memberId, status])
+}
+
+model GoalPlanItem {
+  id          String    @id @default(uuid())
+  goalId      String
+  goal        Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  weekNumber  Int
+  dayLabel    String
+  description String
+  sets        Int?
+  reps        Int?
+  weight      Decimal?  @db.Decimal(10, 2)
+  duration    Int?
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([goalId, weekNumber])
+}
+
+model GoalMilestone {
+  id          String    @id @default(uuid())
+  goalId      String
+  goal        Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  weekNumber  Int
+  description String
+  targetValue Decimal?  @db.Decimal(10, 2)
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([goalId, weekNumber])
+}
+
+model GoalProgressLog {
+  id        String   @id @default(uuid())
+  goalId    String
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  value     Decimal  @db.Decimal(10, 2)
+  note      String?
+  loggedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([goalId, loggedAt])
 }

@@ -632,4 +632,46 @@ describe('AttendanceService', () => {
       });
     });
   });
+
+  describe('getAvgDaysPerWeek', () => {
+    it('returns average distinct check-in dates per week over the window', async () => {
+      const now = new Date('2026-04-17T10:00:00Z');
+      jest.useFakeTimers().setSystemTime(now);
+
+      prisma.attendance.findMany.mockResolvedValue(
+        // 8 distinct dates over 4 weeks → 2 days/week avg.
+        [
+          { checkInDate: new Date('2026-04-16') },
+          { checkInDate: new Date('2026-04-14') },
+          { checkInDate: new Date('2026-04-09') },
+          { checkInDate: new Date('2026-04-07') },
+          { checkInDate: new Date('2026-04-02') },
+          { checkInDate: new Date('2026-03-31') },
+          { checkInDate: new Date('2026-03-26') },
+          { checkInDate: new Date('2026-03-24') },
+        ] as never,
+      );
+
+      const avg = await service.getAvgDaysPerWeek('m1', 4);
+      expect(avg).toBe(2);
+
+      jest.useRealTimers();
+    });
+
+    it('returns 0 when there are no attendance records', async () => {
+      prisma.attendance.findMany.mockResolvedValue([]);
+      const avg = await service.getAvgDaysPerWeek('m1', 4);
+      expect(avg).toBe(0);
+    });
+
+    it('defaults to 4 weeks when no window supplied', async () => {
+      prisma.attendance.findMany.mockResolvedValue([]);
+      await service.getAvgDaysPerWeek('m1');
+      const args = prisma.attendance.findMany.mock.calls[0][0] as {
+        where: { memberId: string; checkInDate: { gte: Date } };
+      };
+      expect(args.where.memberId).toBe('m1');
+      expect(args.where.checkInDate.gte).toBeInstanceOf(Date);
+    });
+  });
 });

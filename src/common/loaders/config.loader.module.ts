@@ -7,6 +7,7 @@ import sentryConfig from '../config/sentry.config';
 import cloudinaryConfig from '../config/cloudinary.config';
 import databaseConfig from '../config/database.config';
 import licensingConfig from '../../licensing/licensing.config';
+import llmConfig from '../config/llm.config';
 
 export const ConfigLoaderModule = ConfigModule.forRoot({
   load: [
@@ -18,6 +19,7 @@ export const ConfigLoaderModule = ConfigModule.forRoot({
     sentryConfig,
     cloudinaryConfig,
     licensingConfig,
+    llmConfig,
   ],
   isGlobal: true,
   cache: true,
