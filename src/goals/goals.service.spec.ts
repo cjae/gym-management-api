@@ -12,7 +12,7 @@ import {
   GoalStatus,
   PrismaClient,
 } from '@prisma/client';
-import { Decimal } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/client';
 import { GoalsService } from './goals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceService } from '../attendance/attendance.service';
@@ -322,7 +322,7 @@ describe('GoalsService.addProgressLog', () => {
       id: 'g1',
       category: 'STRENGTH',
     } as never);
-    prisma.$transaction.mockImplementation(
+    (prisma.$transaction as jest.Mock).mockImplementation(
       (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           goalProgressLog: {
@@ -350,7 +350,7 @@ describe('GoalsService.addProgressLog', () => {
       category: 'STRENGTH',
     } as never);
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
-    prisma.$transaction.mockImplementation(
+    (prisma.$transaction as jest.Mock).mockImplementation(
       (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           goalProgressLog: {
@@ -383,7 +383,7 @@ describe('GoalsService.addProgressLog', () => {
       category: 'WEIGHT_LOSS',
     } as never);
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
-    prisma.$transaction.mockImplementation(
+    (prisma.$transaction as jest.Mock).mockImplementation(
       (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           goalProgressLog: {
