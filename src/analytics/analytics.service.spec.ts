@@ -9,6 +9,7 @@ import { Granularity } from './dto/analytics-query.dto';
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
   let prisma: DeepMockProxy<PrismaClient>;
+  let gymSettingsService: { getCachedSettings: jest.Mock };
 
   const now = new Date('2026-03-08T12:00:00Z');
 
@@ -26,6 +27,7 @@ describe('AnalyticsService', () => {
 
     service = module.get<AnalyticsService>(AnalyticsService);
     prisma = module.get(PrismaService);
+    gymSettingsService = module.get(GymSettingsService);
     jest.clearAllMocks();
     jest.useFakeTimers().setSystemTime(now);
   });
@@ -221,6 +223,34 @@ describe('AnalyticsService', () => {
       // Wednesday (day 3) has 2 check-ins, Monday (day 1) has 1
       expect(result.peakDayOfWeek).toBe('Wednesday');
       expect(typeof result.peakHour).toBe('number');
+    });
+
+    it('should bucket peak hour in the gym timezone, not UTC', async () => {
+      // 03:00 UTC = 06:00 Africa/Nairobi (UTC+3)
+      // 04:00 UTC = 07:00 Africa/Nairobi — two check-ins here, so peak hour must be 7
+      const checkInDate = new Date('2026-03-02T00:00:00Z');
+      const at0300utc = new Date('2026-03-02T03:00:00Z');
+      const at0400utc_1 = new Date('2026-03-02T04:00:00Z');
+      const at0400utc_2 = new Date('2026-03-02T04:00:00Z');
+
+      gymSettingsService.getCachedSettings.mockResolvedValue({
+        timezone: 'Africa/Nairobi',
+      });
+
+      prisma.attendance.findMany.mockResolvedValue([
+        { checkInDate, checkInTime: at0300utc, memberId: 'u1' },
+        { checkInDate, checkInTime: at0400utc_1, memberId: 'u2' },
+        { checkInDate, checkInTime: at0400utc_2, memberId: 'u3' },
+      ] as any);
+
+      const result = await service.getAttendanceTrends({
+        from: '2026-03-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      // Peak is 07:00 Nairobi (04:00 UTC), not 03:00 or 04:00 UTC
+      expect(result.peakHour).toBe(7);
     });
   });
 
