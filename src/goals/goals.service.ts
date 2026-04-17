@@ -308,6 +308,30 @@ export class GoalsService {
     });
   }
 
+  async retryGeneration(memberId: string, goalId: string) {
+    const goal = await this.prisma.goal.findFirst({
+      where: { id: goalId, memberId },
+    });
+    if (!goal) throw new NotFoundException('Goal not found');
+    if (goal.generationStatus !== 'FAILED') {
+      throw new BadRequestException('Only FAILED goals can be retried');
+    }
+    const updated = await this.prisma.goal.update({
+      where: { id: goal.id },
+      data: {
+        generationStatus: 'GENERATING',
+        generationError: null,
+        generationStartedAt: new Date(),
+      },
+    });
+    this.eventEmitter.emit('goal.generation.requested', {
+      goalId: goal.id,
+      memberId,
+      requestedFrequency: goal.recommendedGymFrequency ?? null,
+    });
+    return sanitizeGoal(updated, { includeError: true });
+  }
+
   async removeMilestone(memberId: string, goalId: string, milestoneId: string) {
     await this.assertOwnership(memberId, goalId);
     const { count } = await this.prisma.goalMilestone.deleteMany({

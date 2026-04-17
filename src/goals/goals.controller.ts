@@ -88,6 +88,14 @@ export class GoalsController {
     return this.goals.remove(user.id, id);
   }
 
+  @Post(':id/retry-generation')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @ApiOkResponse({ type: GoalResponseDto })
+  retry(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.goals.retryGeneration(user.id, id);
+  }
+
   // ——— Progress logs ———
   @Post(':id/progress')
   @HttpCode(HttpStatus.CREATED)

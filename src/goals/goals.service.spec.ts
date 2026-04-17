@@ -514,6 +514,59 @@ describe('GoalsService planItem CRUD', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('GoalsService.retryGeneration', () => {
+  let service: GoalsService;
+  let prisma: DeepMockProxy<PrismaClient>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    ({ service, prisma } = await buildModule());
+  });
+
+  it('resets FAILED goal to GENERATING and re-emits event', async () => {
+    prisma.goal.findFirst.mockResolvedValue({
+      id: 'g1',
+      memberId: 'm1',
+      generationStatus: 'FAILED',
+      recommendedGymFrequency: 4,
+    } as never);
+    prisma.goal.update.mockResolvedValue({
+      id: 'g1',
+      generationStatus: 'GENERATING',
+    } as never);
+
+    const result = await service.retryGeneration('m1', 'g1');
+
+    expect(prisma.goal.update).toHaveBeenCalledWith({
+      where: { id: 'g1' },
+      data: expect.objectContaining({
+        generationStatus: 'GENERATING',
+        generationError: null,
+        generationStartedAt: expect.any(Date),
+      }),
+    });
+    expect(result).toMatchObject({ id: 'g1' });
+  });
+
+  it('throws BadRequestException when goal is not FAILED', async () => {
+    prisma.goal.findFirst.mockResolvedValue({
+      id: 'g1',
+      generationStatus: 'READY',
+    } as never);
+    await expect(service.retryGeneration('m1', 'g1')).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('throws NotFoundException when goal is not owned', async () => {
+    prisma.goal.findFirst.mockResolvedValue(null);
+    await expect(service.retryGeneration('m1', 'g1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('GoalsService milestone CRUD', () => {
   let service: GoalsService;
   let prisma: DeepMockProxy<PrismaClient>;
