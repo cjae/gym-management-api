@@ -471,6 +471,23 @@ export class AttendanceService {
     return { data, total, page, limit };
   }
 
+  async getAvgDaysPerWeek(memberId: string, weeks = 4): Promise<number> {
+    const cutoff = new Date();
+    cutoff.setUTCDate(cutoff.getUTCDate() - weeks * 7);
+    cutoff.setUTCHours(0, 0, 0, 0);
+
+    const rows = await this.prisma.attendance.findMany({
+      where: { memberId, checkInDate: { gte: cutoff } },
+      select: { checkInDate: true },
+    });
+    if (rows.length === 0) return 0;
+
+    const distinctDays = new Set(
+      rows.map((r) => r.checkInDate.toISOString().slice(0, 10)),
+    );
+    return Math.round(distinctDays.size / weeks);
+  }
+
   async getTodayAttendance(page = 1, limit = 20, search?: string) {
     const timezone = await this.getTimezone();
     const today = this.getToday(timezone);
