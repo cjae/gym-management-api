@@ -1,13 +1,18 @@
 import { Test } from '@nestjs/testing';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   GoalCategory,
   GoalMetric,
   GoalStatus,
   PrismaClient,
 } from '@prisma/client';
+import { Decimal } from '@prisma/client';
 import { GoalsService } from './goals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceService } from '../attendance/attendance.service';
@@ -299,5 +304,255 @@ describe('GoalsService.remove', () => {
     await expect(service.remove('m1', 'g99')).rejects.toThrow(
       NotFoundException,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('GoalsService.addProgressLog', () => {
+  let service: GoalsService;
+  let prisma: DeepMockProxy<PrismaClient>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    ({ service, prisma } = await buildModule());
+  });
+
+  it('creates a progress log for an owned goal', async () => {
+    prisma.goal.findFirst.mockResolvedValue({
+      id: 'g1',
+      category: 'STRENGTH',
+    } as never);
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          goalProgressLog: {
+            create: jest.fn().mockResolvedValue({
+              id: 'l1',
+              value: new Decimal(85),
+              note: null,
+              loggedAt: new Date(),
+            }),
+          },
+          goalMilestone: {
+            findMany: jest.fn().mockResolvedValue([]),
+            updateMany: jest.fn(),
+          },
+        }),
+    );
+
+    const result = await service.addProgressLog('m1', 'g1', { value: 85 });
+    expect(result).toMatchObject({ id: 'l1', value: 85 });
+  });
+
+  it('auto-completes milestones when value >= targetValue (non-WEIGHT_LOSS goal)', async () => {
+    prisma.goal.findFirst.mockResolvedValue({
+      id: 'g1',
+      category: 'STRENGTH',
+    } as never);
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          goalProgressLog: {
+            create: jest.fn().mockResolvedValue({
+              id: 'l1',
+              value: new Decimal(100),
+              note: null,
+              loggedAt: new Date(),
+            }),
+          },
+          goalMilestone: {
+            findMany: jest
+              .fn()
+              .mockResolvedValue([{ id: 'ms1', targetValue: new Decimal(90) }]),
+            updateMany,
+          },
+        }),
+    );
+
+    await service.addProgressLog('m1', 'g1', { value: 100 });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['ms1'] } },
+      data: { completed: true, completedAt: expect.any(Date) },
+    });
+  });
+
+  it('auto-completes milestones for WEIGHT_LOSS when value <= targetValue', async () => {
+    prisma.goal.findFirst.mockResolvedValue({
+      id: 'g1',
+      category: 'WEIGHT_LOSS',
+    } as never);
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          goalProgressLog: {
+            create: jest.fn().mockResolvedValue({
+              id: 'l1',
+              value: new Decimal(75),
+              note: null,
+              loggedAt: new Date(),
+            }),
+          },
+          goalMilestone: {
+            findMany: jest
+              .fn()
+              .mockResolvedValue([{ id: 'ms1', targetValue: new Decimal(80) }]),
+            updateMany,
+          },
+        }),
+    );
+
+    await service.addProgressLog('m1', 'g1', { value: 75 });
+    expect(updateMany).toHaveBeenCalled();
+  });
+
+  it('throws NotFoundException for an unowned goal', async () => {
+    prisma.goal.findFirst.mockResolvedValue(null);
+    await expect(
+      service.addProgressLog('m1', 'g1', { value: 85 }),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('GoalsService.removeProgressLog', () => {
+  let service: GoalsService;
+  let prisma: DeepMockProxy<PrismaClient>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    ({ service, prisma } = await buildModule());
+  });
+
+  it('deletes a progress log scoped by goalId', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalProgressLog.deleteMany.mockResolvedValue({ count: 1 });
+    const result = await service.removeProgressLog('m1', 'g1', 'l1');
+    expect(result).toEqual({ deleted: true });
+  });
+
+  it('throws NotFoundException when log does not exist', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalProgressLog.deleteMany.mockResolvedValue({ count: 0 });
+    await expect(service.removeProgressLog('m1', 'g1', 'l1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('GoalsService planItem CRUD', () => {
+  let service: GoalsService;
+  let prisma: DeepMockProxy<PrismaClient>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    ({ service, prisma } = await buildModule());
+  });
+
+  it('addPlanItem creates row scoped to owned goal', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalPlanItem.create.mockResolvedValue({ id: 'p1' } as never);
+    const result = await service.addPlanItem('m1', 'g1', {
+      weekNumber: 1,
+      dayLabel: 'Monday',
+      description: 'Squats',
+    });
+    expect(prisma.goalPlanItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ goalId: 'g1', weekNumber: 1 }),
+    });
+    expect(result).toMatchObject({ id: 'p1' });
+  });
+
+  it('updatePlanItem sets completedAt when completed=true', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalPlanItem.update.mockResolvedValue({
+      id: 'p1',
+      completedAt: new Date(),
+    } as never);
+    await service.updatePlanItem('m1', 'g1', 'p1', { completed: true });
+    expect(prisma.goalPlanItem.update).toHaveBeenCalledWith({
+      where: { id: 'p1', goalId: 'g1' },
+      data: expect.objectContaining({
+        completed: true,
+        completedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('updatePlanItem nulls completedAt when completed=false', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalPlanItem.update.mockResolvedValue({
+      id: 'p1',
+      completedAt: null,
+    } as never);
+    await service.updatePlanItem('m1', 'g1', 'p1', { completed: false });
+    expect(prisma.goalPlanItem.update).toHaveBeenCalledWith({
+      where: { id: 'p1', goalId: 'g1' },
+      data: expect.objectContaining({ completed: false, completedAt: null }),
+    });
+  });
+
+  it('removePlanItem deletes scoped by goalId', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalPlanItem.deleteMany.mockResolvedValue({ count: 1 });
+    const result = await service.removePlanItem('m1', 'g1', 'p1');
+    expect(result).toEqual({ deleted: true });
+  });
+
+  it('addPlanItem throws NotFound when goal not owned', async () => {
+    prisma.goal.findFirst.mockResolvedValue(null);
+    await expect(
+      service.addPlanItem('m1', 'g1', {
+        weekNumber: 1,
+        dayLabel: 'Monday',
+        description: 'X',
+      }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('GoalsService milestone CRUD', () => {
+  let service: GoalsService;
+  let prisma: DeepMockProxy<PrismaClient>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    ({ service, prisma } = await buildModule());
+  });
+
+  it('addMilestone creates row scoped to owned goal', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalMilestone.create.mockResolvedValue({ id: 'ms1' } as never);
+    const result = await service.addMilestone('m1', 'g1', {
+      weekNumber: 4,
+      description: 'First milestone',
+    });
+    expect(prisma.goalMilestone.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ goalId: 'g1', weekNumber: 4 }),
+    });
+    expect(result).toMatchObject({ id: 'ms1' });
+  });
+
+  it('updateMilestone sets completedAt when completed=true', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalMilestone.update.mockResolvedValue({ id: 'ms1' } as never);
+    await service.updateMilestone('m1', 'g1', 'ms1', { completed: true });
+    expect(prisma.goalMilestone.update).toHaveBeenCalledWith({
+      where: { id: 'ms1', goalId: 'g1' },
+      data: expect.objectContaining({
+        completed: true,
+        completedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('removeMilestone deletes scoped by goalId', async () => {
+    prisma.goal.findFirst.mockResolvedValue({ id: 'g1' } as never);
+    prisma.goalMilestone.deleteMany.mockResolvedValue({ count: 1 });
+    const result = await service.removeMilestone('m1', 'g1', 'ms1');
+    expect(result).toEqual({ deleted: true });
   });
 });
