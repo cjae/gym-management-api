@@ -10,10 +10,12 @@ export type GoalPromptInput = {
   requestedFrequency: number | null;
 };
 
+const sanitizeText = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
+
 export const buildGoalPrompt = (input: GoalPromptInput): string =>
   `
 A gym member wants to achieve the following goal:
-- Goal: ${input.title}
+- Goal: ${sanitizeText(input.title)}
 - Category: ${input.category}
 - Metric: ${input.metric}
 - Current value: ${input.currentValue} ${input.metric}

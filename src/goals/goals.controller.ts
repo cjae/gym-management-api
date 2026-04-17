@@ -13,8 +13,8 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiCreatedResponse,
   ApiOkResponse,
+  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -53,7 +53,7 @@ export class GoalsController {
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
-  @ApiCreatedResponse({ type: GoalResponseDto })
+  @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalResponseDto })
   create(@CurrentUser() user: { id: string }, @Body() dto: CreateGoalDto) {
     return this.goals.create(user.id, dto);
   }
@@ -99,7 +99,7 @@ export class GoalsController {
   // ——— Progress logs ———
   @Post(':id/progress')
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse()
+  @ApiResponse({ status: HttpStatus.CREATED })
   addProgress(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -121,7 +121,7 @@ export class GoalsController {
   // ——— Plan items ———
   @Post(':id/plan-items')
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse()
+  @ApiResponse({ status: HttpStatus.CREATED })
   addPlanItem(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -154,7 +154,7 @@ export class GoalsController {
   // ——— Milestones ———
   @Post(':id/milestones')
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse()
+  @ApiResponse({ status: HttpStatus.CREATED })
   addMilestone(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,

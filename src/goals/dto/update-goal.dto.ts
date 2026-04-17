@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsEnum, IsOptional } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional } from 'class-validator';
 import { GoalStatus } from '@prisma/client';
 
 export class UpdateGoalDto {
@@ -9,8 +8,8 @@ export class UpdateGoalDto {
   @IsEnum(GoalStatus)
   status?: GoalStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'ISO 8601 date string (must be future)' })
   @IsOptional()
-  @Type(() => Date)
-  userDeadline?: Date;
+  @IsDateString()
+  userDeadline?: string;
 }

@@ -4,7 +4,11 @@ import {
   GoalPlanItem,
   GoalProgressLog,
 } from '@prisma/client';
-import { GoalResponseDto } from './dto/goal-response.dto';
+import {
+  GoalMilestoneResponseDto,
+  GoalPlanItemResponseDto,
+  GoalResponseDto,
+} from './dto/goal-response.dto';
 
 type FullGoal = Goal & {
   planItems?: GoalPlanItem[];
@@ -38,4 +42,14 @@ export function sanitizeGoal(
       value: Number(l.value),
     })) as GoalResponseDto['progressLogs'],
   } as GoalResponseDto;
+}
+
+export function sanitizePlanItem(item: GoalPlanItem): GoalPlanItemResponseDto {
+  return { ...item, weight: toNumber(item.weight) };
+}
+
+export function sanitizeMilestone(
+  milestone: GoalMilestone,
+): GoalMilestoneResponseDto {
+  return { ...milestone, targetValue: toNumber(milestone.targetValue) };
 }

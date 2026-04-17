@@ -11,7 +11,11 @@ import { AttendanceService } from '../attendance/attendance.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { ListGoalsQueryDto } from './dto/list-goals-query.dto';
-import { sanitizeGoal } from './goals.sanitizer';
+import {
+  sanitizeGoal,
+  sanitizeMilestone,
+  sanitizePlanItem,
+} from './goals.sanitizer';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { CreateProgressLogDto } from './dto/create-progress-log.dto';
 import {
@@ -27,7 +31,7 @@ const NON_TERMINAL = [GoalStatus.ACTIVE, GoalStatus.PAUSED];
 
 const ALLOWED_TRANSITIONS: Record<GoalStatus, GoalStatus[]> = {
   ACTIVE: [GoalStatus.PAUSED, GoalStatus.ABANDONED, GoalStatus.COMPLETED],
-  PAUSED: [GoalStatus.ACTIVE],
+  PAUSED: [GoalStatus.ACTIVE, GoalStatus.ABANDONED, GoalStatus.COMPLETED],
   COMPLETED: [],
   ABANDONED: [],
 };
@@ -54,6 +58,10 @@ export class GoalsService {
       );
     }
 
+    if (dto.userDeadline && new Date(dto.userDeadline) <= new Date()) {
+      throw new BadRequestException('userDeadline must be a future date');
+    }
+
     const currentGymFrequency = await this.attendance.getAvgDaysPerWeek(
       memberId,
       4,
@@ -68,7 +76,7 @@ export class GoalsService {
         currentValue: new Prisma.Decimal(dto.currentValue),
         targetValue: new Prisma.Decimal(dto.targetValue),
         currentGymFrequency,
-        userDeadline: dto.userDeadline ?? null,
+        userDeadline: dto.userDeadline ? new Date(dto.userDeadline) : null,
         recommendedGymFrequency: dto.requestedFrequency ?? null,
         status: GoalStatus.ACTIVE,
         generationStatus: 'GENERATING',
@@ -142,9 +150,18 @@ export class GoalsService {
       }
     }
 
+    if (dto.userDeadline && new Date(dto.userDeadline) <= new Date()) {
+      throw new BadRequestException('userDeadline must be a future date');
+    }
+
     const updated = await this.prisma.goal.update({
       where: { id: goalId },
-      data: { ...dto },
+      data: {
+        ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.userDeadline !== undefined && {
+          userDeadline: dto.userDeadline ? new Date(dto.userDeadline) : null,
+        }),
+      },
     });
     return sanitizeGoal(updated);
   }
@@ -223,7 +240,7 @@ export class GoalsService {
 
   async addPlanItem(memberId: string, goalId: string, dto: CreatePlanItemDto) {
     await this.assertOwnership(memberId, goalId);
-    return this.prisma.goalPlanItem.create({
+    const item = await this.prisma.goalPlanItem.create({
       data: {
         goalId,
         weekNumber: dto.weekNumber,
@@ -235,6 +252,7 @@ export class GoalsService {
         duration: dto.duration ?? null,
       },
     });
+    return sanitizePlanItem(item);
   }
 
   async updatePlanItem(
@@ -253,10 +271,11 @@ export class GoalsService {
     if (dto.weight !== undefined) {
       data.weight = dto.weight != null ? new Prisma.Decimal(dto.weight) : null;
     }
-    return this.prisma.goalPlanItem.update({
+    const item = await this.prisma.goalPlanItem.update({
       where: { id: itemId, goalId },
       data,
     });
+    return sanitizePlanItem(item);
   }
 
   async removePlanItem(memberId: string, goalId: string, itemId: string) {
@@ -274,7 +293,7 @@ export class GoalsService {
     dto: CreateMilestoneDto,
   ) {
     await this.assertOwnership(memberId, goalId);
-    return this.prisma.goalMilestone.create({
+    const milestone = await this.prisma.goalMilestone.create({
       data: {
         goalId,
         weekNumber: dto.weekNumber,
@@ -283,6 +302,7 @@ export class GoalsService {
           dto.targetValue != null ? new Prisma.Decimal(dto.targetValue) : null,
       },
     });
+    return sanitizeMilestone(milestone);
   }
 
   async updateMilestone(
@@ -302,32 +322,40 @@ export class GoalsService {
       data.targetValue =
         targetValue != null ? new Prisma.Decimal(targetValue) : null;
     }
-    return this.prisma.goalMilestone.update({
+    const milestone = await this.prisma.goalMilestone.update({
       where: { id: milestoneId, goalId },
       data,
     });
+    return sanitizeMilestone(milestone);
   }
 
   async retryGeneration(memberId: string, goalId: string) {
-    const goal = await this.prisma.goal.findFirst({
-      where: { id: goalId, memberId },
-    });
-    if (!goal) throw new NotFoundException('Goal not found');
-    if (goal.generationStatus !== 'FAILED') {
-      throw new BadRequestException('Only FAILED goals can be retried');
-    }
-    const updated = await this.prisma.goal.update({
-      where: { id: goal.id },
+    const { count } = await this.prisma.goal.updateMany({
+      where: { id: goalId, memberId, generationStatus: 'FAILED' },
       data: {
         generationStatus: 'GENERATING',
         generationError: null,
         generationStartedAt: new Date(),
       },
     });
+
+    if (count === 0) {
+      const goal = await this.prisma.goal.findFirst({
+        where: { id: goalId, memberId },
+        select: { id: true, generationStatus: true },
+      });
+      if (!goal) throw new NotFoundException('Goal not found');
+      throw new BadRequestException('Only FAILED goals can be retried');
+    }
+
+    const updated = await this.prisma.goal.findFirstOrThrow({
+      where: { id: goalId, memberId },
+    });
+
     this.eventEmitter.emit('goal.generation.requested', {
-      goalId: goal.id,
+      goalId,
       memberId,
-      requestedFrequency: goal.recommendedGymFrequency ?? null,
+      requestedFrequency: updated.recommendedGymFrequency ?? null,
     });
     return sanitizeGoal(updated, { includeError: true });
   }

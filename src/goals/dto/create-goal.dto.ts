@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsEnum,
   IsInt,
   IsNumber,
@@ -26,16 +27,18 @@ export class CreateGoalDto {
   @IsEnum(GoalMetric)
   metric: GoalMetric;
 
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ minimum: 0, maximum: 9999 })
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @Max(9999)
   currentValue: number;
 
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ minimum: 0, maximum: 9999 })
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @Max(9999)
   targetValue: number;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 7 })
@@ -46,8 +49,8 @@ export class CreateGoalDto {
   @Max(7)
   requestedFrequency?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'ISO 8601 date string (must be future)' })
   @IsOptional()
-  @Type(() => Date)
-  userDeadline?: Date;
+  @IsDateString()
+  userDeadline?: string;
 }

@@ -48,14 +48,7 @@ export class GoalsCron {
   async sendWeeklyMotivation() {
     const activeGoals = await this.prisma.goal.findMany({
       where: { status: 'ACTIVE', generationStatus: 'READY' },
-      include: {
-        milestones: {
-          where: { completed: false },
-          orderBy: { weekNumber: 'asc' },
-          take: 1,
-        },
-        progressLogs: { orderBy: { loggedAt: 'desc' }, take: 1 },
-      },
+      select: { id: true, title: true, memberId: true },
     });
     if (activeGoals.length === 0) return;
 
@@ -78,14 +71,7 @@ export class GoalsCron {
     this.logger.log(`Sent weekly pulse to ${byMember.size} members`);
   }
 
-  private buildWeeklySummary(
-    goals: Array<{
-      id: string;
-      title: string;
-      milestones: { weekNumber: number }[];
-      progressLogs: { loggedAt: Date }[];
-    }>,
-  ) {
+  private buildWeeklySummary(goals: Array<{ id: string; title: string }>) {
     const leadGoal = goals[0];
     const others = goals.length - 1;
     const title = 'Weekly fitness check-in';
@@ -98,8 +84,7 @@ export class GoalsCron {
 
   @Cron('0 3 * * 0', { timeZone: 'Africa/Nairobi' })
   async cleanupAbandoned() {
-    const cutoff = new Date();
-    cutoff.setUTCDate(cutoff.getUTCDate() - 90);
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const { count } = await this.prisma.goal.deleteMany({
       where: { status: 'ABANDONED', updatedAt: { lt: cutoff } },
     });

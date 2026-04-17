@@ -23,7 +23,7 @@ export class ActiveSubscriptionGuard implements CanActivate {
     }>();
     const user = request.user;
 
-    if (!user) return true;
+    if (!user) return false;
 
     const allowInactive = this.reflector.getAllAndOverride<boolean>(
       ALLOW_INACTIVE_SUBSCRIPTION_KEY,

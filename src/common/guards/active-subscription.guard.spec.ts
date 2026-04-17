@@ -31,9 +31,9 @@ describe('ActiveSubscriptionGuard', () => {
     jest.clearAllMocks();
   });
 
-  it('passes when no user is attached (JwtAuthGuard will block)', async () => {
+  it('blocks when no user is attached (JwtAuthGuard should have run first)', async () => {
     await expect(guard.canActivate(buildContext(undefined))).resolves.toBe(
-      true,
+      false,
     );
   });
 

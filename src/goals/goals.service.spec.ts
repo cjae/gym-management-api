@@ -524,21 +524,17 @@ describe('GoalsService.retryGeneration', () => {
   });
 
   it('resets FAILED goal to GENERATING and re-emits event', async () => {
-    prisma.goal.findFirst.mockResolvedValue({
-      id: 'g1',
-      memberId: 'm1',
-      generationStatus: 'FAILED',
-      recommendedGymFrequency: 4,
-    } as never);
-    prisma.goal.update.mockResolvedValue({
+    prisma.goal.updateMany.mockResolvedValue({ count: 1 } as never);
+    prisma.goal.findFirstOrThrow.mockResolvedValue({
       id: 'g1',
       generationStatus: 'GENERATING',
+      recommendedGymFrequency: 4,
     } as never);
 
     const result = await service.retryGeneration('m1', 'g1');
 
-    expect(prisma.goal.update).toHaveBeenCalledWith({
-      where: { id: 'g1' },
+    expect(prisma.goal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'g1', memberId: 'm1', generationStatus: 'FAILED' },
       data: expect.objectContaining({
         generationStatus: 'GENERATING',
         generationError: null,
@@ -549,6 +545,7 @@ describe('GoalsService.retryGeneration', () => {
   });
 
   it('throws BadRequestException when goal is not FAILED', async () => {
+    prisma.goal.updateMany.mockResolvedValue({ count: 0 } as never);
     prisma.goal.findFirst.mockResolvedValue({
       id: 'g1',
       generationStatus: 'READY',
@@ -559,6 +556,7 @@ describe('GoalsService.retryGeneration', () => {
   });
 
   it('throws NotFoundException when goal is not owned', async () => {
+    prisma.goal.updateMany.mockResolvedValue({ count: 0 } as never);
     prisma.goal.findFirst.mockResolvedValue(null);
     await expect(service.retryGeneration('m1', 'g1')).rejects.toThrow(
       NotFoundException,
