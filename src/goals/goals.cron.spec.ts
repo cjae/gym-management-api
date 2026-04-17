@@ -44,7 +44,11 @@ describe('GoalsCron', () => {
         select: { id: true, memberId: true },
       });
       expect(prisma.goal.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['g1'] } },
+        where: {
+          id: 'g1',
+          generationStatus: 'GENERATING',
+          generationStartedAt: { lt: expect.any(Date) },
+        },
         data: {
           generationStatus: 'FAILED',
           generationError: 'Generation timed out',

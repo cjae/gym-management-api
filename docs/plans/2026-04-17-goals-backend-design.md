@@ -405,7 +405,7 @@ Logic:
 4. Delegate to `SubscriptionsService.hasActiveSubscription(userId)` (already exists at `src/subscriptions/subscriptions.service.ts:445`).
 5. Throw `ForbiddenException('Active subscription required')` (HTTP 403) when false.
 
-`@AllowInactiveSubscription()` is a no-arg metadata decorator for endpoints that the member still needs to access without a subscription (e.g., their own `GET /auth/me`). It is NOT used on `GoalsController` — the whole module requires an active sub.
+`@AllowInactiveSubscription()` is a no-arg metadata decorator for endpoints that the member still needs to access without a subscription (e.g., their own `GET /auth/me`). It is intentionally applied to `list()` and `findOne()` on `GoalsController` so members can still read their goals after a subscription lapses. It is NOT applied to any write endpoints (create, update, delete, progress logs, plan items, milestones).
 
 ### `FeatureGuard('goals')`
 

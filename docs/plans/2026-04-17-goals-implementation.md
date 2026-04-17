@@ -684,7 +684,7 @@ enum GoalMetric {
 
 Find the existing `enum NotificationType` in `prisma/schema.prisma` and append:
 
-```
+```prisma
 GOAL_PLAN_READY
 GOAL_PLAN_FAILED
 GOAL_WEEKLY_PULSE
@@ -694,7 +694,7 @@ GOAL_WEEKLY_PULSE
 
 Inside the `model GymSettings` block, after `loyalStreakWeeks`:
 
-```
+```prisma
 maxActiveGoalsPerMember Int @default(3)
 ```
 
@@ -702,7 +702,7 @@ maxActiveGoalsPerMember Int @default(3)
 
 Inside `model User`, after the last `@relation` line (next to `memberTags`):
 
-```
+```prisma
 goals Goal[] @relation("UserGoals")
 ```
 
@@ -2485,7 +2485,7 @@ git commit -m "feat(goals): add abandoned-goal cleanup cron"
 
 **Step 3: Add env vars to the Environment Variables list:**
 
-```
+```text
 - `ANTHROPIC_API_KEY` — Anthropic API key for Claude (required when `goals` feature is licensed)
 - `LLM_MODEL` — Model id (defaults to `claude-sonnet-4-6`)
 - `LLM_MAX_TOKENS` — Max tokens (defaults to 4096)

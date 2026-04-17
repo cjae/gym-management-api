@@ -44,6 +44,7 @@ export class GoalResponseDto {
   @ApiProperty() currentValue: number;
   @ApiProperty() targetValue: number;
   @ApiProperty() currentGymFrequency: number;
+  @ApiPropertyOptional() userRequestedFrequency: number | null;
   @ApiPropertyOptional() recommendedGymFrequency: number | null;
   @ApiPropertyOptional() aiEstimatedDeadline: Date | null;
   @ApiPropertyOptional() userDeadline: Date | null;

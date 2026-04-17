@@ -49,15 +49,6 @@ export class GoalsService {
     const settings = await this.settings.getCachedSettings();
     const cap = settings?.maxActiveGoalsPerMember ?? 3;
 
-    const active = await this.prisma.goal.count({
-      where: { memberId, status: { in: NON_TERMINAL } },
-    });
-    if (active >= cap) {
-      throw new BadRequestException(
-        `You have ${active} active goals. Complete or abandon one to create another.`,
-      );
-    }
-
     if (dto.userDeadline && new Date(dto.userDeadline) <= new Date()) {
       throw new BadRequestException('userDeadline must be a future date');
     }
@@ -67,21 +58,34 @@ export class GoalsService {
       4,
     );
 
-    const goal = await this.prisma.goal.create({
-      data: {
-        memberId,
-        title: dto.title,
-        category: dto.category,
-        metric: dto.metric,
-        currentValue: new Prisma.Decimal(dto.currentValue),
-        targetValue: new Prisma.Decimal(dto.targetValue),
-        currentGymFrequency,
-        userDeadline: dto.userDeadline ? new Date(dto.userDeadline) : null,
-        recommendedGymFrequency: dto.requestedFrequency ?? null,
-        status: GoalStatus.ACTIVE,
-        generationStatus: 'GENERATING',
+    const goal = await this.prisma.$transaction(
+      async (tx) => {
+        const active = await tx.goal.count({
+          where: { memberId, status: { in: NON_TERMINAL } },
+        });
+        if (active >= cap) {
+          throw new BadRequestException(
+            `You have ${active} active goals. Complete or abandon one to create another.`,
+          );
+        }
+        return tx.goal.create({
+          data: {
+            memberId,
+            title: dto.title,
+            category: dto.category,
+            metric: dto.metric,
+            currentValue: new Prisma.Decimal(dto.currentValue),
+            targetValue: new Prisma.Decimal(dto.targetValue),
+            currentGymFrequency,
+            userDeadline: dto.userDeadline ? new Date(dto.userDeadline) : null,
+            userRequestedFrequency: dto.requestedFrequency ?? null,
+            status: GoalStatus.ACTIVE,
+            generationStatus: 'GENERATING',
+          },
+        });
       },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     this.eventEmitter.emit('goal.generation.requested', {
       goalId: goal.id,
@@ -355,7 +359,7 @@ export class GoalsService {
     this.eventEmitter.emit('goal.generation.requested', {
       goalId,
       memberId,
-      requestedFrequency: updated.recommendedGymFrequency ?? null,
+      requestedFrequency: updated.userRequestedFrequency ?? null,
     });
     return sanitizeGoal(updated, { includeError: true });
   }

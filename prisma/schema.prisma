@@ -807,6 +807,7 @@ model Goal {
   currentValue            Decimal              @db.Decimal(10, 2)
   targetValue             Decimal              @db.Decimal(10, 2)
   currentGymFrequency     Int
+  userRequestedFrequency  Int?
   recommendedGymFrequency Int?
   aiEstimatedDeadline     DateTime?
   userDeadline            DateTime?

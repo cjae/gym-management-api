@@ -43,6 +43,10 @@ describe('GoalsService.create', () => {
     service = moduleRef.get(GoalsService);
     prisma = moduleRef.get(PrismaService);
     attendance.getAvgDaysPerWeek.mockResolvedValue(3);
+    // Pass prisma itself as the tx so existing goal.count/create mocks work
+    (prisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+      fn(prisma),
+    );
   });
 
   const dto = {
@@ -92,6 +96,20 @@ describe('GoalsService.create', () => {
       },
     });
   });
+
+  it('stores requestedFrequency as userRequestedFrequency (not recommendedGymFrequency)', async () => {
+    prisma.goal.count.mockResolvedValue(0);
+    prisma.goal.create.mockResolvedValue({ id: 'g1' } as never);
+    await service.create('m1', { ...dto, requestedFrequency: 4 });
+    expect(prisma.goal.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userRequestedFrequency: 4,
+      }),
+    });
+    expect(prisma.goal.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({ recommendedGymFrequency: 4 }),
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -132,6 +150,7 @@ function makeGoal(overrides: Record<string, unknown> = {}) {
     currentValue: 80,
     targetValue: 120,
     currentGymFrequency: 3,
+    userRequestedFrequency: null,
     status: GoalStatus.ACTIVE,
     generationStatus: 'DONE',
     generationError: null,
@@ -528,7 +547,7 @@ describe('GoalsService.retryGeneration', () => {
     prisma.goal.findFirstOrThrow.mockResolvedValue({
       id: 'g1',
       generationStatus: 'GENERATING',
-      recommendedGymFrequency: 4,
+      userRequestedFrequency: 4,
     } as never);
 
     const result = await service.retryGeneration('m1', 'g1');

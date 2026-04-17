@@ -120,10 +120,8 @@ async function main() {
   for (let week = 0; week < 4; week++) {
     for (let day = 0; day < 4; day++) {
       const d = new Date();
-      // Go back (3 - week) full weeks, then pick Mon/Tue/Wed/Thu of that week
-      d.setDate(d.getDate() - week * 7 - (day + 1));
-      // Zero out time so it's just a date
-      d.setHours(0, 0, 0, 0);
+      d.setUTCDate(d.getUTCDate() - week * 7 - (day + 1));
+      d.setUTCHours(0, 0, 0, 0);
       attendanceDates.push(d);
     }
   }

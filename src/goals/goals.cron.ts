@@ -27,21 +27,29 @@ export class GoalsCron {
     });
     if (stale.length === 0) return;
 
-    await this.prisma.goal.updateMany({
-      where: { id: { in: stale.map((g) => g.id) } },
-      data: {
-        generationStatus: 'FAILED',
-        generationError: 'Generation timed out',
-      },
-    });
-
+    const swept: typeof stale = [];
     for (const g of stale) {
+      const { count } = await this.prisma.goal.updateMany({
+        where: {
+          id: g.id,
+          generationStatus: 'GENERATING',
+          generationStartedAt: { lt: cutoff },
+        },
+        data: {
+          generationStatus: 'FAILED',
+          generationError: 'Generation timed out',
+        },
+      });
+      if (count === 1) swept.push(g);
+    }
+
+    for (const g of swept) {
       this.eventEmitter.emit('goal.plan.failed', {
         goalId: g.id,
         memberId: g.memberId,
       });
     }
-    this.logger.log(`Swept ${stale.length} stale goal generations`);
+    this.logger.log(`Swept ${swept.length} stale goal generations`);
   }
 
   @Cron('0 9 * * 1', { timeZone: 'Africa/Nairobi' })
