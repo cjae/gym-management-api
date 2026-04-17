@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { GoalsService } from './goals.service';
 import { GoalsController } from './goals.controller';
+import { GoalGenerationListener } from './listeners/goal-generation.listener';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { GymSettingsModule } from '../gym-settings/gym-settings.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -16,7 +17,7 @@ import { LlmModule } from '../llm/llm.module';
     LlmModule,
   ],
   controllers: [GoalsController],
-  providers: [GoalsService],
+  providers: [GoalsService, GoalGenerationListener],
   exports: [GoalsService],
 })
 export class GoalsModule {}
