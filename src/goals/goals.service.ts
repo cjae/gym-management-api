@@ -109,6 +109,9 @@ export class GoalsService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
+        include: {
+          progressLogs: { orderBy: { loggedAt: 'desc' }, take: 1 },
+        },
       }),
       this.prisma.goal.count({ where }),
       this.prisma.goal.count({
