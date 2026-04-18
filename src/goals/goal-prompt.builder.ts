@@ -58,7 +58,7 @@ Rules:
 - Each week must have exactly recommendedGymFrequency training days (max 6 days/week).
 - exerciseOrder starts at 1 for each new day and increments per exercise within that day.
 - For STRENGTH, MUSCLE_GAIN, BODY_COMPOSITION, WEIGHT_LOSS, and OTHER categories:
-    - Each training day has 4-8 plan items (one per exercise).
+    - Each training day has 4-6 plan items (one per exercise).
     - Include a warmup item (exerciseOrder 1, workoutType "warmup") and cooldown (last, workoutType "cooldown") every session.
     - Apply progressive overload — increase weight or reps each week.
 - For ENDURANCE category:

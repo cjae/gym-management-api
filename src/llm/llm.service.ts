@@ -31,6 +31,13 @@ export class LlmService {
     });
     const response = await stream.finalMessage();
 
+    if (response.stop_reason === 'max_tokens') {
+      this.logger.error(
+        `LLM response truncated at max_tokens=${this.config.maxTokens}. Increase LLM_MAX_TOKENS.`,
+      );
+      throw new Error('LLM response truncated (max_tokens limit hit)');
+    }
+
     const text = response.content.find((block) => block.type === 'text');
     if (!text || text.type !== 'text') {
       throw new Error('LLM returned empty response');
