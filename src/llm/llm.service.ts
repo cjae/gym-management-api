@@ -22,13 +22,14 @@ export class LlmService {
       throw new Error('LLM is not configured (ANTHROPIC_API_KEY missing)');
     }
 
-    const response = await this.client.messages.create({
+    const stream = this.client.messages.stream({
       model: this.config.model,
       max_tokens: this.config.maxTokens,
       system:
         "You are a professional personal trainer and fitness coach. Produce realistic, safe, structured training plans based on the member's current fitness data. Return ONLY valid JSON matching the schema given — no prose, no markdown fences.",
       messages: [{ role: 'user', content: userPrompt }],
     });
+    const response = await stream.finalMessage();
 
     const text = response.content.find((block) => block.type === 'text');
     if (!text || text.type !== 'text') {

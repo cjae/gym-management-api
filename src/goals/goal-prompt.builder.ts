@@ -70,4 +70,5 @@ Rules:
 - Milestones every 2-4 weeks as checkpoints; maximum 6 milestones total.
 - Keep descriptions under 15 words — concise and actionable.
 - If requestedFrequency is specified, use it as recommendedGymFrequency.
+- Omit fields that are null — do not include null-valued keys in the JSON output.
 `.trim();

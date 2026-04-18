@@ -21,7 +21,7 @@ const parsePositiveInt = (
 export const getLlmConfig = (): LlmConfig => {
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
   const model = process.env.LLM_MODEL || 'claude-sonnet-4-6';
-  const maxTokens = parsePositiveInt(process.env.LLM_MAX_TOKENS, 8192);
+  const maxTokens = parsePositiveInt(process.env.LLM_MAX_TOKENS, 16000);
   const timeoutMs = parsePositiveInt(process.env.LLM_TIMEOUT_MS, 60000);
   return { apiKey, model, maxTokens, timeoutMs, enabled: !!apiKey };
 };

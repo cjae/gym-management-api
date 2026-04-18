@@ -4,7 +4,13 @@ import { LlmService } from './llm.service';
 
 describe('LlmService', () => {
   let service: LlmService;
-  const mockCreate = jest.fn();
+  const mockFinalMessage = jest.fn();
+
+  const makeClient = () => ({
+    messages: {
+      stream: jest.fn().mockReturnValue({ finalMessage: mockFinalMessage }),
+    },
+  });
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -26,16 +32,12 @@ describe('LlmService', () => {
       ],
     }).compile();
     service = moduleRef.get(LlmService);
-    // Swap the SDK client for a mock.
-    (
-      service as unknown as { client: { messages: { create: jest.Mock } } }
-    ).client = {
-      messages: { create: mockCreate },
-    };
+    (service as unknown as { client: ReturnType<typeof makeClient> }).client =
+      makeClient();
   });
 
   it('returns parsed JSON from the assistant message', async () => {
-    mockCreate.mockResolvedValue({
+    mockFinalMessage.mockResolvedValue({
       content: [
         {
           type: 'text',
@@ -54,14 +56,14 @@ describe('LlmService', () => {
   });
 
   it('throws when response has no text content', async () => {
-    mockCreate.mockResolvedValue({ content: [] });
+    mockFinalMessage.mockResolvedValue({ content: [] });
     await expect(service.generatePlan('prompt')).rejects.toThrow(
       /empty response/i,
     );
   });
 
   it('throws when response text is not valid JSON', async () => {
-    mockCreate.mockResolvedValue({
+    mockFinalMessage.mockResolvedValue({
       content: [{ type: 'text', text: 'not json' }],
     });
     await expect(service.generatePlan('prompt')).rejects.toThrow(
