@@ -48,6 +48,7 @@ export class GoalResponseDto {
   @ApiProperty() title: string;
   @ApiProperty({ enum: GoalCategory }) category: GoalCategory;
   @ApiProperty({ enum: GoalMetric }) metric: GoalMetric;
+  @ApiProperty() startingValue: number;
   @ApiProperty() currentValue: number;
   @ApiProperty() targetValue: number;
   @ApiProperty() currentGymFrequency: number;

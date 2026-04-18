@@ -804,7 +804,7 @@ model Goal {
   title                   String
   category                GoalCategory
   metric                  GoalMetric
-  currentValue            Decimal              @db.Decimal(10, 2)
+  startingValue           Decimal              @db.Decimal(10, 2)
   targetValue             Decimal              @db.Decimal(10, 2)
   currentGymFrequency     Int
   userRequestedFrequency  Int?

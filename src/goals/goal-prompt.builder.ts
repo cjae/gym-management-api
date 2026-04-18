@@ -2,7 +2,7 @@ export type GoalPromptInput = {
   title: string;
   category: string;
   metric: string;
-  currentValue: number;
+  startingValue: number;
   targetValue: number;
   currentGymFrequency: number;
   weeklyStreak: number;
@@ -18,7 +18,7 @@ A gym member wants to achieve the following goal:
 - Goal: ${sanitizeText(input.title)}
 - Category: ${input.category}
 - Metric: ${input.metric}
-- Current value: ${input.currentValue} ${input.metric}
+- Starting value: ${input.startingValue} ${input.metric}
 - Target value: ${input.targetValue} ${input.metric}
 - Current gym attendance: ${input.currentGymFrequency} days/week
 - Current weekly streak: ${input.weeklyStreak} weeks

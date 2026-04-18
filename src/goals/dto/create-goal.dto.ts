@@ -32,7 +32,7 @@ export class CreateGoalDto {
   @IsNumber()
   @Min(0)
   @Max(9999)
-  currentValue: number;
+  startingValue: number;
 
   @ApiProperty({ minimum: 0, maximum: 9999 })
   @Type(() => Number)

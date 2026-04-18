@@ -53,7 +53,7 @@ export class GoalGenerationListener {
       title: goal.title,
       category: goal.category,
       metric: goal.metric,
-      currentValue: Number(goal.currentValue),
+      startingValue: Number(goal.startingValue),
       targetValue: Number(goal.targetValue),
       currentGymFrequency: goal.currentGymFrequency,
       weeklyStreak:

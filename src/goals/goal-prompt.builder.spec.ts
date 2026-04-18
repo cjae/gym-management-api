@@ -5,7 +5,7 @@ describe('buildGoalPrompt', () => {
     title: 'Bench 120kg',
     category: 'STRENGTH' as const,
     metric: 'KG' as const,
-    currentValue: 80,
+    startingValue: 80,
     targetValue: 120,
     currentGymFrequency: 3,
     weeklyStreak: 2,

@@ -38,7 +38,7 @@ describe('GoalGenerationListener', () => {
     title: 'Bench 120kg',
     category: 'STRENGTH',
     metric: 'KG',
-    currentValue: { valueOf: () => 80 },
+    startingValue: { valueOf: () => 80 },
     targetValue: { valueOf: () => 120 },
     currentGymFrequency: 3,
     generationStatus: 'GENERATING',

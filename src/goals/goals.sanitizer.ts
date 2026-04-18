@@ -24,9 +24,12 @@ export function sanitizeGoal(
 ): GoalResponseDto {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { rawLlmResponse: _raw, generationError, ...rest } = goal;
+  const startingValue = Number(goal.startingValue);
+  const latestLog = goal.progressLogs?.[0];
   return {
     ...rest,
-    currentValue: Number(goal.currentValue),
+    startingValue,
+    currentValue: latestLog ? Number(latestLog.value) : startingValue,
     targetValue: Number(goal.targetValue),
     generationError: options.includeError ? generationError : null,
     planItems: goal.planItems?.map((p) => ({

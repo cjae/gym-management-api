@@ -74,7 +74,7 @@ export class GoalsService {
             title: dto.title,
             category: dto.category,
             metric: dto.metric,
-            currentValue: new Prisma.Decimal(dto.currentValue),
+            startingValue: new Prisma.Decimal(dto.startingValue),
             targetValue: new Prisma.Decimal(dto.targetValue),
             currentGymFrequency,
             userDeadline: dto.userDeadline ? new Date(dto.userDeadline) : null,
