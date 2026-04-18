@@ -36,7 +36,11 @@ export class LlmService {
     }
 
     try {
-      return JSON.parse(text.text);
+      const raw = text.text
+        .replace(/^\s*```(?:json)?\s*/i, '')
+        .replace(/\s*```\s*$/, '')
+        .trim();
+      return JSON.parse(raw);
     } catch (err) {
       this.logger.error('LLM returned invalid JSON', err);
       throw new Error('LLM returned invalid JSON');

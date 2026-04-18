@@ -32,6 +32,8 @@ export function sanitizeGoal(
     planItems: goal.planItems?.map((p) => ({
       ...p,
       weight: toNumber(p.weight),
+      distanceKm: toNumber(p.distanceKm),
+      paceMinPerKm: toNumber(p.paceMinPerKm),
     })) as GoalResponseDto['planItems'],
     milestones: goal.milestones?.map((m) => ({
       ...m,
@@ -45,7 +47,12 @@ export function sanitizeGoal(
 }
 
 export function sanitizePlanItem(item: GoalPlanItem): GoalPlanItemResponseDto {
-  return { ...item, weight: toNumber(item.weight) };
+  return {
+    ...item,
+    weight: toNumber(item.weight),
+    distanceKm: toNumber(item.distanceKm),
+    paceMinPerKm: toNumber(item.paceMinPerKm),
+  };
 }
 
 export function sanitizeMilestone(

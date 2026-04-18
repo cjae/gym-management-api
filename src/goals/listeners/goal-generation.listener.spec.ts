@@ -23,6 +23,7 @@ describe('GoalGenerationListener', () => {
       {
         weekNumber: 1,
         dayLabel: 'Monday',
+        exerciseOrder: 1,
         description: 'Squats',
         sets: 4,
         reps: 8,

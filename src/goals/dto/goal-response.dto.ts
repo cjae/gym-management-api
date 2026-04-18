@@ -10,11 +10,18 @@ export class GoalPlanItemResponseDto {
   @ApiProperty() id: string;
   @ApiProperty() weekNumber: number;
   @ApiProperty() dayLabel: string;
+  @ApiProperty() exerciseOrder: number;
   @ApiProperty() description: string;
+  @ApiPropertyOptional() workoutType: string | null;
+  @ApiPropertyOptional() muscleGroup: string | null;
   @ApiPropertyOptional() sets: number | null;
   @ApiPropertyOptional() reps: number | null;
   @ApiPropertyOptional() weight: number | null;
   @ApiPropertyOptional() duration: number | null;
+  @ApiPropertyOptional() restSeconds: number | null;
+  @ApiPropertyOptional() distanceKm: number | null;
+  @ApiPropertyOptional() paceMinPerKm: number | null;
+  @ApiPropertyOptional() notes: string | null;
   @ApiProperty() completed: boolean;
   @ApiPropertyOptional() completedAt: Date | null;
 }

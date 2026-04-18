@@ -130,7 +130,13 @@ export class GoalsService {
     const goal = await this.prisma.goal.findFirst({
       where: { id: goalId, memberId },
       include: {
-        planItems: { orderBy: [{ weekNumber: 'asc' }, { dayLabel: 'asc' }] },
+        planItems: {
+          orderBy: [
+            { weekNumber: 'asc' },
+            { dayLabel: 'asc' },
+            { exerciseOrder: 'asc' },
+          ],
+        },
         milestones: { orderBy: { weekNumber: 'asc' } },
         progressLogs: { orderBy: { loggedAt: 'desc' }, take: 50 },
       },
@@ -249,11 +255,22 @@ export class GoalsService {
         goalId,
         weekNumber: dto.weekNumber,
         dayLabel: dto.dayLabel,
+        exerciseOrder: dto.exerciseOrder,
         description: dto.description,
+        workoutType: dto.workoutType ?? null,
+        muscleGroup: dto.muscleGroup ?? null,
         sets: dto.sets ?? null,
         reps: dto.reps ?? null,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : null,
         duration: dto.duration ?? null,
+        restSeconds: dto.restSeconds ?? null,
+        distanceKm:
+          dto.distanceKm != null ? new Prisma.Decimal(dto.distanceKm) : null,
+        paceMinPerKm:
+          dto.paceMinPerKm != null
+            ? new Prisma.Decimal(dto.paceMinPerKm)
+            : null,
+        notes: dto.notes ?? null,
       },
     });
     return sanitizePlanItem(item);
@@ -274,6 +291,14 @@ export class GoalsService {
     }
     if (dto.weight !== undefined) {
       data.weight = dto.weight != null ? new Prisma.Decimal(dto.weight) : null;
+    }
+    if (dto.distanceKm !== undefined) {
+      data.distanceKm =
+        dto.distanceKm != null ? new Prisma.Decimal(dto.distanceKm) : null;
+    }
+    if (dto.paceMinPerKm !== undefined) {
+      data.paceMinPerKm =
+        dto.paceMinPerKm != null ? new Prisma.Decimal(dto.paceMinPerKm) : null;
     }
     const item = await this.prisma.goalPlanItem.update({
       where: { id: itemId, goalId },

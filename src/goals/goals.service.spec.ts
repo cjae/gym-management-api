@@ -476,6 +476,7 @@ describe('GoalsService planItem CRUD', () => {
     const result = await service.addPlanItem('m1', 'g1', {
       weekNumber: 1,
       dayLabel: 'Monday',
+      exerciseOrder: 1,
       description: 'Squats',
     });
     expect(prisma.goalPlanItem.create).toHaveBeenCalledWith({
@@ -526,6 +527,7 @@ describe('GoalsService planItem CRUD', () => {
       service.addPlanItem('m1', 'g1', {
         weekNumber: 1,
         dayLabel: 'Monday',
+        exerciseOrder: 1,
         description: 'X',
       }),
     ).rejects.toThrow(ForbiddenException);

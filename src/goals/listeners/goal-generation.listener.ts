@@ -87,11 +87,22 @@ export class GoalGenerationListener {
             goalId: goal.id,
             weekNumber: p.weekNumber,
             dayLabel: p.dayLabel,
+            exerciseOrder: p.exerciseOrder,
             description: p.description,
+            workoutType: p.workoutType ?? null,
+            muscleGroup: p.muscleGroup ?? null,
             sets: p.sets ?? null,
             reps: p.reps ?? null,
             weight: p.weight != null ? new Prisma.Decimal(p.weight) : null,
             duration: p.duration ?? null,
+            restSeconds: p.restSeconds ?? null,
+            distanceKm:
+              p.distanceKm != null ? new Prisma.Decimal(p.distanceKm) : null,
+            paceMinPerKm:
+              p.paceMinPerKm != null
+                ? new Prisma.Decimal(p.paceMinPerKm)
+                : null,
+            notes: p.notes ?? null,
           })),
         });
       }
