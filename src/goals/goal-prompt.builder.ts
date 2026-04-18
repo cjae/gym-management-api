@@ -55,6 +55,7 @@ Return ONLY valid JSON in this shape:
 
 Rules:
 - estimatedWeeks must be between 1 and 16 (cap at 16 even for ambitious goals).
+- CRITICAL: The plan array MUST include items for EVERY week from 1 through estimatedWeeks. Do NOT generate only week 1 as a sample — output all weeks.
 - Each week must have exactly recommendedGymFrequency training days (max 6 days/week).
 - exerciseOrder starts at 1 for each new day and increments per exercise within that day.
 - For STRENGTH, MUSCLE_GAIN, BODY_COMPOSITION, WEIGHT_LOSS, and OTHER categories:

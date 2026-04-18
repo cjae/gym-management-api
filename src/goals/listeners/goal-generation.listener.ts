@@ -77,6 +77,15 @@ export class GoalGenerationListener {
       );
     }
 
+    const weeksInPlan = new Set(dto.plan.map((p) => p.weekNumber));
+    for (let w = 1; w <= dto.estimatedWeeks; w++) {
+      if (!weeksInPlan.has(w)) {
+        throw new Error(
+          `LLM plan is incomplete: missing week ${w} (estimatedWeeks=${dto.estimatedWeeks})`,
+        );
+      }
+    }
+
     const deadline = new Date(goal.createdAt);
     deadline.setUTCDate(deadline.getUTCDate() + dto.estimatedWeeks * 7);
 

@@ -24,7 +24,7 @@ export class OpenAiProvider implements LlmProvider {
 
     const stream = await this.client.chat.completions.create({
       model: this.config.openAiModel,
-      max_tokens: this.config.maxTokens,
+      max_tokens: Math.min(this.config.maxTokens, 16384),
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
