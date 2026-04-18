@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -24,7 +24,10 @@ export class LlmPlanItemDto {
   @IsInt() @Min(1) @Max(20) exerciseOrder: number;
   @IsString() @MaxLength(300) description: string;
   @IsOptional()
-  @IsIn(['strength', 'cardio', 'HIIT', 'flexibility', 'warmup', 'cooldown'])
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsIn(['strength', 'cardio', 'hiit', 'flexibility', 'warmup', 'cooldown'])
   workoutType?: string | null;
   @IsOptional() @IsString() @MaxLength(50) muscleGroup?: string | null;
   @IsOptional() @IsInt() @Min(0) @Max(99) sets?: number | null;

@@ -22,9 +22,11 @@ export class OpenAiProvider implements LlmProvider {
       throw new Error('LLM is not configured (OPENAI_API_KEY missing)');
     }
 
+    const maxTokens = Math.min(this.config.maxTokens, 16384);
+
     const stream = await this.client.chat.completions.create({
       model: this.config.openAiModel,
-      max_tokens: Math.min(this.config.maxTokens, 16384),
+      max_tokens: maxTokens,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -44,7 +46,7 @@ export class OpenAiProvider implements LlmProvider {
 
     if (finishReason === 'length') {
       this.logger.error(
-        `OpenAI response truncated at max_tokens=${this.config.maxTokens}. Increase LLM_MAX_TOKENS.`,
+        `OpenAI response truncated at max_tokens=${maxTokens}. Increase LLM_MAX_TOKENS.`,
       );
       throw new Error('LLM response truncated (max_tokens limit hit)');
     }

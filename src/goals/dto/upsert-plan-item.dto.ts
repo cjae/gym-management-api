@@ -37,7 +37,7 @@ export class CreatePlanItemDto {
 
   @ApiPropertyOptional({
     maxLength: 50,
-    description: 'strength | cardio | HIIT | flexibility | warmup | cooldown',
+    description: 'strength | cardio | hiit | flexibility | warmup | cooldown',
   })
   @IsOptional()
   @IsString()

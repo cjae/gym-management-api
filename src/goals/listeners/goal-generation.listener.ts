@@ -85,6 +85,12 @@ export class GoalGenerationListener {
         );
       }
     }
+    const stray = dto.plan.find((p) => p.weekNumber > dto.estimatedWeeks);
+    if (stray) {
+      throw new Error(
+        `LLM plan contains out-of-range week ${stray.weekNumber} (estimatedWeeks=${dto.estimatedWeeks})`,
+      );
+    }
 
     const deadline = new Date(goal.createdAt);
     deadline.setUTCDate(deadline.getUTCDate() + dto.estimatedWeeks * 7);

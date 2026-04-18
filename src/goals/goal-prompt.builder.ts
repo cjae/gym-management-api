@@ -12,8 +12,12 @@ export type GoalPromptInput = {
 
 const sanitizeText = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
 
-export const buildGoalPrompt = (input: GoalPromptInput): string =>
-  `
+const clampFrequency = (v: number | null): number | null =>
+  v == null ? null : Math.max(1, Math.min(6, v));
+
+export const buildGoalPrompt = (input: GoalPromptInput): string => {
+  const requestedFrequency = clampFrequency(input.requestedFrequency);
+  return `
 A gym member wants to achieve the following goal:
 - Goal: ${sanitizeText(input.title)}
 - Category: ${input.category}
@@ -23,7 +27,7 @@ A gym member wants to achieve the following goal:
 - Current gym attendance: ${input.currentGymFrequency} days/week
 - Current weekly streak: ${input.weeklyStreak} weeks
 - Longest streak ever: ${input.longestStreak} weeks
-- Desired frequency: ${input.requestedFrequency ?? 'not specified — recommend one'}
+- Desired frequency: ${requestedFrequency ?? 'not specified — recommend one'}
 
 Return ONLY valid JSON in this shape:
 {
@@ -39,7 +43,7 @@ Return ONLY valid JSON in this shape:
       "dayLabel": "<e.g. Monday>",
       "exerciseOrder": <integer starting at 1 within each day>,
       "description": "<exercise name and key execution note — under 15 words>",
-      "workoutType": "<strength | cardio | HIIT | flexibility | warmup | cooldown>",
+      "workoutType": "<strength | cardio | hiit | flexibility | warmup | cooldown>",
       "muscleGroup": "<e.g. chest, legs, full body, core — or null>",
       "sets": <integer or null>,
       "reps": <integer or null>,
@@ -66,10 +70,11 @@ Rules:
     - Each training day has 2-4 plan items (e.g. warmup, main run/ride/row, cooldown).
     - Populate distanceKm and paceMinPerKm for running/cycling exercises; increase distance progressively each week.
 - For CONSISTENCY category (metric DAYS_PER_WEEK):
-    - Each training day has exactly 1-2 plan items: a general session note and an optional focus area.
+    - Each training day has 1 or 2 plan items: a general session note and an optional focus area.
     - Do NOT generate detailed exercise prescriptions — the goal is attendance, not periodisation.
 - Milestones every 2-4 weeks as checkpoints; maximum 6 milestones total.
 - Keep descriptions under 15 words — concise and actionable.
-- If requestedFrequency is specified, use it as recommendedGymFrequency.
+- If requestedFrequency is specified, use it as recommendedGymFrequency (clamped to the 1-6 range).
 - Omit fields that are null — do not include null-valued keys in the JSON output.
 `.trim();
+};

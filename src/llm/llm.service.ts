@@ -11,10 +11,18 @@ export class LlmService {
 
   constructor(configService: ConfigService) {
     const config = configService.get<LlmConfig>(getLlmConfigName())!;
-    this.provider =
-      config.provider === 'openai'
-        ? new OpenAiProvider(config)
-        : new AnthropicProvider(config);
+    switch (config.provider) {
+      case 'openai':
+        this.provider = new OpenAiProvider(config);
+        break;
+      case 'anthropic':
+        this.provider = new AnthropicProvider(config);
+        break;
+      default:
+        throw new Error(
+          `Unsupported LLM provider: ${String((config as { provider: unknown }).provider)}`,
+        );
+    }
   }
 
   async generatePlan(userPrompt: string): Promise<unknown> {
