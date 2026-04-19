@@ -28,7 +28,7 @@ export const getLlmConfig = (): LlmConfig => {
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
   const model = process.env.LLM_MODEL || 'claude-sonnet-4-6';
   const openAiApiKey = process.env.OPENAI_API_KEY ?? '';
-  const openAiModel = process.env.LLM_OPENAI_MODEL || 'gpt-4o';
+  const openAiModel = process.env.LLM_OPENAI_MODEL || 'gpt-5.1';
   const maxTokens = parsePositiveInt(process.env.LLM_MAX_TOKENS, 32000);
   const timeoutMs = parsePositiveInt(process.env.LLM_TIMEOUT_MS, 60000);
   const enabled = provider === 'openai' ? !!openAiApiKey : !!apiKey;

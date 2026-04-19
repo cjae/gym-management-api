@@ -156,6 +156,7 @@ enum GoalMetric {
   PERCENT
   DAYS_PER_WEEK
   MINUTES
+  KM
 }
 
 model User {

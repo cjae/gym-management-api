@@ -32,7 +32,7 @@ A gym member wants to achieve the following goal:
 Return ONLY valid JSON in this shape:
 {
   "recommendedGymFrequency": <integer 1-6>,
-  "estimatedWeeks": <integer 1-16>,
+  "estimatedWeeks": <integer 1-8>,
   "reasoning": "<2-3 sentences explaining timeline and frequency>",
   "milestones": [
     { "weekNumber": <integer>, "description": "<string>", "targetValue": <number or null> }

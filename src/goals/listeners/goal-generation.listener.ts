@@ -3,6 +3,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LlmService } from '../../llm/llm.service';
 import { buildGoalPrompt } from '../goal-prompt.builder';
@@ -29,6 +30,9 @@ export class GoalGenerationListener {
     try {
       await this.generate(payload);
     } catch (err) {
+      Sentry.captureException(err, {
+        extra: { goalId: payload.goalId, memberId: payload.memberId },
+      });
       this.logger.error(
         `Goal generation failed for ${payload.goalId}`,
         err as Error,
