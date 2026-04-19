@@ -53,7 +53,7 @@ describe('GoalsService.create', () => {
     title: 'Bench 120kg',
     category: GoalCategory.STRENGTH,
     metric: GoalMetric.KG,
-    currentValue: 80,
+    startingValue: 80,
     targetValue: 120,
   };
 
@@ -147,7 +147,7 @@ function makeGoal(overrides: Record<string, unknown> = {}) {
     title: 'Test goal',
     category: GoalCategory.STRENGTH,
     metric: GoalMetric.KG,
-    currentValue: 80,
+    startingValue: 80,
     targetValue: 120,
     currentGymFrequency: 3,
     userRequestedFrequency: null,
@@ -476,6 +476,7 @@ describe('GoalsService planItem CRUD', () => {
     const result = await service.addPlanItem('m1', 'g1', {
       weekNumber: 1,
       dayLabel: 'Monday',
+      exerciseOrder: 1,
       description: 'Squats',
     });
     expect(prisma.goalPlanItem.create).toHaveBeenCalledWith({
@@ -526,6 +527,7 @@ describe('GoalsService planItem CRUD', () => {
       service.addPlanItem('m1', 'g1', {
         weekNumber: 1,
         dayLabel: 'Monday',
+        exerciseOrder: 1,
         description: 'X',
       }),
     ).rejects.toThrow(ForbiddenException);

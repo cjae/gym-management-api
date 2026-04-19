@@ -3,6 +3,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LlmService } from '../../llm/llm.service';
 import { buildGoalPrompt } from '../goal-prompt.builder';
@@ -29,6 +30,9 @@ export class GoalGenerationListener {
     try {
       await this.generate(payload);
     } catch (err) {
+      Sentry.captureException(err, {
+        extra: { goalId: payload.goalId, memberId: payload.memberId },
+      });
       this.logger.error(
         `Goal generation failed for ${payload.goalId}`,
         err as Error,
@@ -53,7 +57,7 @@ export class GoalGenerationListener {
       title: goal.title,
       category: goal.category,
       metric: goal.metric,
-      currentValue: Number(goal.currentValue),
+      startingValue: Number(goal.startingValue),
       targetValue: Number(goal.targetValue),
       currentGymFrequency: goal.currentGymFrequency,
       weeklyStreak:
@@ -77,6 +81,21 @@ export class GoalGenerationListener {
       );
     }
 
+    const weeksInPlan = new Set(dto.plan.map((p) => p.weekNumber));
+    for (let w = 1; w <= dto.estimatedWeeks; w++) {
+      if (!weeksInPlan.has(w)) {
+        throw new Error(
+          `LLM plan is incomplete: missing week ${w} (estimatedWeeks=${dto.estimatedWeeks})`,
+        );
+      }
+    }
+    const stray = dto.plan.find((p) => p.weekNumber > dto.estimatedWeeks);
+    if (stray) {
+      throw new Error(
+        `LLM plan contains out-of-range week ${stray.weekNumber} (estimatedWeeks=${dto.estimatedWeeks})`,
+      );
+    }
+
     const deadline = new Date(goal.createdAt);
     deadline.setUTCDate(deadline.getUTCDate() + dto.estimatedWeeks * 7);
 
@@ -87,11 +106,22 @@ export class GoalGenerationListener {
             goalId: goal.id,
             weekNumber: p.weekNumber,
             dayLabel: p.dayLabel,
+            exerciseOrder: p.exerciseOrder,
             description: p.description,
+            workoutType: p.workoutType ?? null,
+            muscleGroup: p.muscleGroup ?? null,
             sets: p.sets ?? null,
             reps: p.reps ?? null,
             weight: p.weight != null ? new Prisma.Decimal(p.weight) : null,
             duration: p.duration ?? null,
+            restSeconds: p.restSeconds ?? null,
+            distanceKm:
+              p.distanceKm != null ? new Prisma.Decimal(p.distanceKm) : null,
+            paceMinPerKm:
+              p.paceMinPerKm != null
+                ? new Prisma.Decimal(p.paceMinPerKm)
+                : null,
+            notes: p.notes ?? null,
           })),
         });
       }

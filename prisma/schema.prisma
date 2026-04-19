@@ -156,6 +156,7 @@ enum GoalMetric {
   PERCENT
   DAYS_PER_WEEK
   MINUTES
+  KM
 }
 
 model User {
@@ -804,7 +805,7 @@ model Goal {
   title                   String
   category                GoalCategory
   metric                  GoalMetric
-  currentValue            Decimal              @db.Decimal(10, 2)
+  startingValue           Decimal              @db.Decimal(10, 2)
   targetValue             Decimal              @db.Decimal(10, 2)
   currentGymFrequency     Int
   userRequestedFrequency  Int?
@@ -828,21 +829,29 @@ model Goal {
 }
 
 model GoalPlanItem {
-  id          String    @id @default(uuid())
-  goalId      String
-  goal        Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  weekNumber  Int
-  dayLabel    String
-  description String
-  sets        Int?
-  reps        Int?
-  weight      Decimal?  @db.Decimal(10, 2)
-  duration    Int?
-  completed   Boolean   @default(false)
-  completedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  goalId        String
+  goal          Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  weekNumber    Int
+  dayLabel      String
+  exerciseOrder Int       @default(1)
+  description   String
+  workoutType   String?
+  muscleGroup   String?
+  sets          Int?
+  reps          Int?
+  weight        Decimal?  @db.Decimal(10, 2)
+  duration      Int?
+  restSeconds   Int?
+  distanceKm    Decimal?  @db.Decimal(6, 2)
+  paceMinPerKm  Decimal?  @db.Decimal(5, 2)
+  notes         String?
+  completed     Boolean   @default(false)
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
+  @@unique([goalId, weekNumber, dayLabel, exerciseOrder])
   @@index([goalId, weekNumber])
 }
 

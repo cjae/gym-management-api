@@ -33,6 +33,7 @@ import {
   GoalPlanItemResponseDto,
   GoalProgressLogResponseDto,
   GoalResponseDto,
+  GoalSummaryResponseDto,
   PaginatedGoalsResponseDto,
 } from './dto/goal-response.dto';
 import { CreateProgressLogDto } from './dto/create-progress-log.dto';
@@ -56,7 +57,7 @@ export class GoalsController {
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
-  @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalResponseDto })
+  @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalSummaryResponseDto })
   create(@CurrentUser() user: { id: string }, @Body() dto: CreateGoalDto) {
     return this.goals.create(user.id, dto);
   }
@@ -76,7 +77,7 @@ export class GoalsController {
   }
 
   @Patch(':id')
-  @ApiOkResponse({ type: GoalResponseDto })
+  @ApiOkResponse({ type: GoalSummaryResponseDto })
   update(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,
@@ -95,7 +96,7 @@ export class GoalsController {
   @Post(':id/retry-generation')
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
-  @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalResponseDto })
+  @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalSummaryResponseDto })
   retry(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.goals.retryGeneration(user.id, id);
   }

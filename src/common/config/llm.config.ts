@@ -1,8 +1,13 @@
 import { registerAs } from '@nestjs/config';
 
+export type LlmProvider = 'anthropic' | 'openai';
+
 export type LlmConfig = {
+  provider: LlmProvider;
   apiKey: string;
   model: string;
+  openAiApiKey: string;
+  openAiModel: string;
   maxTokens: number;
   timeoutMs: number;
   enabled: boolean;
@@ -19,11 +24,24 @@ const parsePositiveInt = (
 };
 
 export const getLlmConfig = (): LlmConfig => {
+  const provider = (process.env.LLM_PROVIDER || 'anthropic') as LlmProvider;
   const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
   const model = process.env.LLM_MODEL || 'claude-sonnet-4-6';
-  const maxTokens = parsePositiveInt(process.env.LLM_MAX_TOKENS, 4096);
+  const openAiApiKey = process.env.OPENAI_API_KEY ?? '';
+  const openAiModel = process.env.LLM_OPENAI_MODEL || 'gpt-5.1';
+  const maxTokens = parsePositiveInt(process.env.LLM_MAX_TOKENS, 32000);
   const timeoutMs = parsePositiveInt(process.env.LLM_TIMEOUT_MS, 60000);
-  return { apiKey, model, maxTokens, timeoutMs, enabled: !!apiKey };
+  const enabled = provider === 'openai' ? !!openAiApiKey : !!apiKey;
+  return {
+    provider,
+    apiKey,
+    model,
+    openAiApiKey,
+    openAiModel,
+    maxTokens,
+    timeoutMs,
+    enabled,
+  };
 };
 
 export default registerAs(getLlmConfigName(), getLlmConfig);

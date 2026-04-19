@@ -13,21 +13,21 @@ describe('GoalGenerationListener', () => {
   const emitter = { emit: jest.fn() };
 
   const validLlmResponse = {
-    recommendedGymFrequency: 4,
-    estimatedWeeks: 12,
+    recommendedGymFrequency: 1,
+    estimatedWeeks: 1,
     reasoning: 'Good plan',
     milestones: [
-      { weekNumber: 4, description: 'First milestone', targetValue: 90 },
+      { weekNumber: 1, description: 'First milestone', targetValue: 90 },
     ],
     plan: [
       {
         weekNumber: 1,
         dayLabel: 'Monday',
+        exerciseOrder: 1,
         description: 'Squats',
         sets: 4,
         reps: 8,
         weight: 100,
-        duration: null,
       },
     ],
   };
@@ -38,7 +38,7 @@ describe('GoalGenerationListener', () => {
     title: 'Bench 120kg',
     category: 'STRENGTH',
     metric: 'KG',
-    currentValue: { valueOf: () => 80 },
+    startingValue: { valueOf: () => 80 },
     targetValue: { valueOf: () => 120 },
     currentGymFrequency: 3,
     generationStatus: 'GENERATING',
@@ -109,6 +109,27 @@ describe('GoalGenerationListener', () => {
       goalId: 'g1',
       memberId: 'm1',
       requestedFrequency: null,
+    });
+  });
+
+  it('marks goal FAILED when plan is missing weeks', async () => {
+    prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
+    llm.generatePlan.mockResolvedValue({
+      ...validLlmResponse,
+      estimatedWeeks: 3,
+      plan: [{ ...validLlmResponse.plan[0], weekNumber: 1 }],
+    });
+    prisma.goal.update.mockResolvedValue({} as never);
+
+    await listener.handle({
+      goalId: 'g1',
+      memberId: 'm1',
+      requestedFrequency: null,
+    });
+
+    expect(prisma.goal.update).toHaveBeenCalledWith({
+      where: { id: 'g1' },
+      data: expect.objectContaining({ generationStatus: 'FAILED' }),
     });
   });
 
