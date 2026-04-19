@@ -101,7 +101,7 @@ export class GoalsService {
     const limit = query.limit ?? 20;
     const where: Prisma.GoalWhereInput = {
       memberId,
-      ...(query.status ? { status: query.status } : {}),
+      ...(query.status?.length ? { status: { in: query.status } } : {}),
     };
     const [rows, total, activeCount, settings] = await Promise.all([
       this.prisma.goal.findMany({
