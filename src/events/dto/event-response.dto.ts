@@ -1,57 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class EventResponseDto {
-  @ApiProperty()
-  id: string;
-
-  @ApiProperty()
-  title: string;
-
-  @ApiPropertyOptional()
-  description?: string;
-
-  @ApiProperty()
-  date: Date;
-
-  @ApiProperty()
-  startTime: string;
-
-  @ApiProperty()
-  endTime: string;
-
-  @ApiPropertyOptional()
-  location?: string;
-
-  @ApiProperty()
-  maxCapacity: number;
-
-  @ApiProperty()
-  isActive: boolean;
-
-  @ApiProperty({ description: 'Enrollment count', example: { enrollments: 5 } })
-  _count: { enrollments: number };
-
-  @ApiProperty()
-  createdAt: Date;
-
-  @ApiProperty()
-  updatedAt: Date;
-}
-
-export class PaginatedEventsResponseDto {
-  @ApiProperty({ type: [EventResponseDto] })
-  data: EventResponseDto[];
-
-  @ApiProperty()
-  total: number;
-
-  @ApiProperty()
-  page: number;
-
-  @ApiProperty()
-  limit: number;
-}
-
 export class SafeMemberDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
@@ -90,6 +38,65 @@ export class EventEnrollmentResponseDto {
 
   @ApiProperty({ type: SafeMemberDto })
   member: SafeMemberDto;
+}
+
+export class EventResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiPropertyOptional()
+  description?: string;
+
+  @ApiProperty()
+  date: Date;
+
+  @ApiProperty()
+  startTime: string;
+
+  @ApiProperty()
+  endTime: string;
+
+  @ApiPropertyOptional()
+  location?: string;
+
+  @ApiProperty()
+  maxCapacity: number;
+
+  @ApiProperty()
+  isActive: boolean;
+
+  @ApiProperty({ description: 'Enrollment count' })
+  _count: { enrollments: number };
+
+  @ApiPropertyOptional({
+    type: [EventEnrollmentResponseDto],
+    description:
+      'Enrolled members — only present for ADMIN/SUPER_ADMIN on GET /events/:id',
+  })
+  enrollments?: EventEnrollmentResponseDto[];
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+}
+
+export class PaginatedEventsResponseDto {
+  @ApiProperty({ type: [EventResponseDto] })
+  data: EventResponseDto[];
+
+  @ApiProperty()
+  total: number;
+
+  @ApiProperty()
+  page: number;
+
+  @ApiProperty()
+  limit: number;
 }
 
 export class MyEventEnrollmentResponseDto {

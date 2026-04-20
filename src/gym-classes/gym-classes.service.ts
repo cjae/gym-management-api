@@ -56,6 +56,7 @@ export class GymClassesService {
       },
       include: {
         trainer: { include: { user: { select: safeUserSelect } } },
+        _count: { select: { enrollments: true } },
       },
     });
   }
@@ -140,6 +141,7 @@ export class GymClassesService {
       },
       include: {
         trainer: { include: { user: { select: safeUserSelect } } },
+        _count: { select: { enrollments: true } },
       },
     });
 
