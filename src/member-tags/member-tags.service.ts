@@ -226,9 +226,9 @@ export class MemberTagsService {
 
     const newMemberDays = settings?.newMemberDays ?? 14;
     const activeDays = settings?.activeDays ?? 7;
-    const inactiveDays = settings?.inactiveDays ?? 14;
-    const dormantDays = settings?.dormantDays ?? 30;
-    const atRiskDays = settings?.atRiskDays ?? 14;
+    const inactiveDays = settings?.inactiveDays ?? 20;
+    const dormantDays = settings?.dormantDays ?? 50;
+    const atRiskDays = settings?.atRiskDays ?? 20;
     const loyalStreakWeeks = settings?.loyalStreakWeeks ?? 4;
 
     let totalAssignments = 0;
@@ -318,7 +318,11 @@ export class MemberTagsService {
             });
           }
 
-          if (inactivityDays >= inactiveDays && tagMap.has('inactive')) {
+          if (
+            inactivityDays >= inactiveDays &&
+            inactivityDays < dormantDays &&
+            tagMap.has('inactive')
+          ) {
             assignments.push({
               memberId: member.id,
               tagId: tagMap.get('inactive')!,
