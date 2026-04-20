@@ -51,6 +51,7 @@ export class EventsService {
         location: dto.location,
         maxCapacity: dto.maxCapacity ?? 50,
       },
+      include: { _count: { select: { enrollments: true } } },
     });
 
     if (dto.notifyMembers) {
@@ -131,6 +132,7 @@ export class EventsService {
         location: dto.location,
         maxCapacity: dto.maxCapacity,
       },
+      include: { _count: { select: { enrollments: true } } },
     });
 
     const detailsChanged =
