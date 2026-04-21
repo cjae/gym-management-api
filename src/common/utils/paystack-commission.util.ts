@@ -1,15 +1,18 @@
 /**
  * Calculates the total amount to charge the customer,
- * including Paystack commission passed through to them.
+ * including the merchant's share of the Paystack commission (50/50 split).
  *
- * Card (local):    2.9%
- * M-Pesa:          1.5%
- * Bank transfer:   0% (flat fee absorbed by merchant)
+ * Paystack full rates: Card 2.9%, M-Pesa 1.5%, Bank transfer flat fee
+ * Customer pays half; merchant absorbs the other half.
+ *
+ * Card:          1.45%  (half of 2.9%)
+ * M-Pesa:        0.75%  (half of 1.5%)
+ * Bank transfer: 0%     (flat fee fully absorbed by merchant)
  */
 
 const COMMISSION_RATES: Record<string, number> = {
-  CARD: 0.029,
-  MOBILE_MONEY: 0.015,
+  CARD: 0.0145,
+  MOBILE_MONEY: 0.0075,
   BANK_TRANSFER: 0,
 };
 
