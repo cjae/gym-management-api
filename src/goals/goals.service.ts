@@ -53,6 +53,16 @@ export class GoalsService {
       throw new BadRequestException('userDeadline must be a future date');
     }
 
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberId },
+      select: { onboardingCompletedAt: true },
+    });
+    if (!member?.onboardingCompletedAt) {
+      throw new BadRequestException(
+        'Complete onboarding before creating a goal',
+      );
+    }
+
     const currentGymFrequency = await this.attendance.getAvgDaysPerWeek(
       memberId,
       4,

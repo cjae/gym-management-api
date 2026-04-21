@@ -14,6 +14,11 @@ import {
 import { GoalCategory, GoalMetric } from '@prisma/client';
 
 export class CreateGoalDto {
+  /**
+   * Prerequisite: the authenticated member must have completed onboarding
+   * (POST /auth/me/onboarding). Requests from un-onboarded members are
+   * rejected with 400 to ensure the AI plan generator has enough context.
+   */
   @ApiProperty({ maxLength: 120 })
   @IsString()
   @MaxLength(120)

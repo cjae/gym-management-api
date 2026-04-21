@@ -43,6 +43,9 @@ describe('GoalsService.create', () => {
     service = moduleRef.get(GoalsService);
     prisma = moduleRef.get(PrismaService);
     attendance.getAvgDaysPerWeek.mockResolvedValue(3);
+    prisma.user.findUnique.mockResolvedValue({
+      onboardingCompletedAt: new Date('2026-04-01'),
+    } as never);
     // Pass prisma itself as the tx so existing goal.count/create mocks work
     (prisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
       fn(prisma),
@@ -95,6 +98,16 @@ describe('GoalsService.create', () => {
         status: { in: [GoalStatus.ACTIVE, GoalStatus.PAUSED] },
       },
     });
+  });
+
+  it('rejects with BadRequestException when member has not completed onboarding', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      onboardingCompletedAt: null,
+    } as never);
+    await expect(service.create('m1', dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.goal.create).not.toHaveBeenCalled();
   });
 
   it('stores requestedFrequency as userRequestedFrequency (not recommendedGymFrequency)', async () => {

@@ -58,6 +58,11 @@ export class GoalsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
   @ApiResponse({ status: HttpStatus.ACCEPTED, type: GoalSummaryResponseDto })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description:
+      'Onboarding not completed. Call POST /auth/me/onboarding first.',
+  })
   create(@CurrentUser() user: { id: string }, @Body() dto: CreateGoalDto) {
     return this.goals.create(user.id, dto);
   }
