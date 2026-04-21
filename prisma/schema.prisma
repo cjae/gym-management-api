@@ -159,6 +159,21 @@ enum GoalMetric {
   KM
 }
 
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum PrimaryMotivation {
+  APPEARANCE
+  STRENGTH
+  HEALTH
+  SPORT_PERFORMANCE
+  EVENT_SPECIFIC
+  OTHER
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -172,6 +187,17 @@ model User {
   gender             Gender?
   displayPicture     String?
   birthday           DateTime?  @db.Date
+
+  experienceLevel       ExperienceLevel?
+  bodyweightKg          Decimal?           @db.Decimal(5, 2)
+  heightCm              Int?
+  sessionMinutes        Int?
+  preferredTrainingDays String[]           @default([])
+  sleepHoursAvg         Decimal?           @db.Decimal(3, 1)
+  primaryMotivation     PrimaryMotivation?
+  injuryNotes           String?            @db.VarChar(500)
+  onboardingCompletedAt DateTime?
+
   tosAcceptedAt      DateTime?
   waiverAcceptedAt   DateTime?
   deletedAt          DateTime?
