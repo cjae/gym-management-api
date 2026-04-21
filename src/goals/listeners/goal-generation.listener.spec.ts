@@ -44,7 +44,24 @@ describe('GoalGenerationListener', () => {
     generationStatus: 'GENERATING',
     createdAt: new Date('2026-04-01T00:00:00Z'),
     userDeadline: null,
-    member: { streak: { weeklyStreak: 2, longestStreak: 6 } },
+    member: {
+      streak: { weeklyStreak: 2, longestStreak: 6 },
+      experienceLevel: null,
+      bodyweightKg: null,
+      heightCm: null,
+      sessionMinutes: null,
+      preferredTrainingDays: [],
+      sleepHoursAvg: null,
+      primaryMotivation: null,
+      injuryNotes: null,
+      birthday: null,
+      gender: null,
+      createdAt: new Date('2025-04-01T00:00:00Z'),
+      subscriptionsOwned: [],
+      attendances: [],
+      trainerAssignmentsAsMember: [],
+      goals: [],
+    },
   };
 
   beforeEach(async () => {
@@ -178,5 +195,290 @@ describe('GoalGenerationListener', () => {
 
     expect(llm.generatePlan).not.toHaveBeenCalled();
     expect(emitter.emit).not.toHaveBeenCalled();
+  });
+
+  describe('Phase 6 — derived member context in prompt', () => {
+    const makeGoal = (
+      memberOverrides: Record<string, unknown>,
+      goalOverrides: Record<string, unknown> = {},
+    ) => ({
+      ...baseGoal,
+      ...goalOverrides,
+      member: {
+        ...baseGoal.member,
+        ...memberOverrides,
+      },
+    });
+
+    const stubTransaction = () => {
+      (prisma.$transaction as jest.Mock).mockImplementation(
+        (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            goalPlanItem: {
+              createMany: jest.fn().mockResolvedValue({ count: 1 }),
+            },
+            goalMilestone: {
+              createMany: jest.fn().mockResolvedValue({ count: 1 }),
+            },
+            goal: { update: jest.fn().mockResolvedValue({}) },
+          }),
+      );
+    };
+
+    it('passes onboarding fields into the prompt', async () => {
+      const goal = makeGoal({
+        experienceLevel: 'INTERMEDIATE',
+        bodyweightKg: { valueOf: () => 75 },
+        heightCm: 180,
+        sessionMinutes: 60,
+        preferredTrainingDays: ['Mon', 'Wed', 'Fri'],
+        sleepHoursAvg: { valueOf: () => 7.5 },
+        primaryMotivation: 'HEALTH',
+        injuryNotes: 'bad knee',
+      });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Experience: INTERMEDIATE');
+      expect(prompt).toContain('Bodyweight: 75 kg');
+      expect(prompt).toContain('Height: 180 cm');
+      expect(prompt).toContain('Preferred training days: MON, WED, FRI');
+      expect(prompt).toContain('Primary motivation: HEALTH');
+      expect(prompt).toContain('Injury notes: bad knee');
+    });
+
+    it('computes ageYears from birthday', async () => {
+      const goal = makeGoal(
+        {
+          birthday: new Date('1990-01-01T00:00:00Z'),
+        },
+        {
+          createdAt: new Date('2026-04-21T00:00:00Z'),
+        },
+      );
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Age: 36 years');
+    });
+
+    it('renders age as not specified when birthday is null', async () => {
+      const goal = makeGoal({ birthday: null });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Age: not specified');
+    });
+
+    it('counts attendance rows within [createdAt - 28d, createdAt]', async () => {
+      const goal = makeGoal({
+        attendances: [
+          { id: 'a1' },
+          { id: 'a2' },
+          { id: 'a3' },
+          { id: 'a4' },
+          { id: 'a5' },
+        ],
+      });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain(
+        'Recent attendance: 5 days over the last 4 weeks',
+      );
+
+      const findArgs = prisma.goal.findUniqueOrThrow.mock.calls[1][0];
+      const expectedGte = new Date(
+        baseGoal.createdAt.getTime() - 28 * 24 * 60 * 60 * 1000,
+      );
+      const expectedLte = baseGoal.createdAt;
+      expect(findArgs).toEqual(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            member: expect.objectContaining({
+              include: expect.objectContaining({
+                attendances: {
+                  where: {
+                    checkInDate: { gte: expectedGte, lte: expectedLte },
+                  },
+                  select: { id: true },
+                },
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('renders subscription plan with off-peak flag when member has an active plan', async () => {
+      const goal = makeGoal({
+        subscriptionsOwned: [{ plan: { name: 'Premium', isOffPeak: true } }],
+      });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Subscription plan: Premium (off-peak: yes)');
+      expect(prompt).toContain(
+        'The member is on an off-peak plan: training must occur during off-peak hours',
+      );
+    });
+
+    it('renders subscription plan as not specified when member has no active plan', async () => {
+      const goal = makeGoal({ subscriptionsOwned: [] });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Subscription plan: not specified');
+      expect(prompt).not.toContain(
+        'The member is on an off-peak plan: training must occur during off-peak hours',
+      );
+    });
+
+    it('counts prior goals by status and includes them in the prompt', async () => {
+      const goal = makeGoal({
+        goals: [
+          { status: 'COMPLETED' },
+          { status: 'COMPLETED' },
+          { status: 'ABANDONED' },
+        ],
+      });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Prior goal history: 2 completed, 1 abandoned');
+
+      const findArgs = prisma.goal.findUniqueOrThrow.mock.calls[1][0];
+      expect(findArgs).toEqual(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            member: expect.objectContaining({
+              include: expect.objectContaining({
+                goals: {
+                  where: {
+                    id: { not: 'g1' },
+                    status: { in: ['COMPLETED', 'ABANDONED'] },
+                  },
+                  select: { status: true },
+                },
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('renders personal-trainer line based on active trainer assignments', async () => {
+      const goalWithTrainer = makeGoal({
+        trainerAssignmentsAsMember: [{ id: 't1' }],
+      });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(goalWithTrainer as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const promptWith = llm.generatePlan.mock.calls[0][0] as string;
+      expect(promptWith).toContain(
+        'Working with a personal trainer: yes (plans should complement trainer guidance, not replace it)',
+      );
+
+      const findArgs = prisma.goal.findUniqueOrThrow.mock.calls[1][0];
+      expect(findArgs).toEqual(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            member: expect.objectContaining({
+              include: expect.objectContaining({
+                trainerAssignmentsAsMember: {
+                  where: { endDate: null },
+                  select: { id: true },
+                  take: 1,
+                },
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('renders personal-trainer line as "no" when no active trainer assignment exists', async () => {
+      const goalWithoutTrainer = makeGoal({ trainerAssignmentsAsMember: [] });
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(
+        goalWithoutTrainer as never,
+      );
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const prompt = llm.generatePlan.mock.calls[0][0] as string;
+      expect(prompt).toContain('Working with a personal trainer: no');
+      expect(prompt).not.toContain(
+        'plans should complement trainer guidance, not replace it',
+      );
+    });
   });
 });

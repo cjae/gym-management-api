@@ -43,9 +43,49 @@ export class GoalGenerationListener {
   }
 
   private async generate(payload: Payload) {
+    const baseGoal = await this.prisma.goal.findUniqueOrThrow({
+      where: { id: payload.goalId },
+      select: { createdAt: true },
+    });
+
+    const attendanceFrom = new Date(
+      baseGoal.createdAt.getTime() - 28 * 24 * 60 * 60 * 1000,
+    );
+    const attendanceTo = baseGoal.createdAt;
+
     const goal = await this.prisma.goal.findUniqueOrThrow({
       where: { id: payload.goalId },
-      include: { member: { include: { streak: true } } },
+      include: {
+        member: {
+          include: {
+            streak: true,
+            subscriptionsOwned: {
+              where: { status: 'ACTIVE' },
+              include: { plan: { select: { name: true, isOffPeak: true } } },
+              orderBy: { endDate: 'desc' },
+              take: 1,
+            },
+            attendances: {
+              where: {
+                checkInDate: { gte: attendanceFrom, lte: attendanceTo },
+              },
+              select: { id: true },
+            },
+            trainerAssignmentsAsMember: {
+              where: { endDate: null },
+              select: { id: true },
+              take: 1,
+            },
+            goals: {
+              where: {
+                id: { not: payload.goalId },
+                status: { in: ['COMPLETED', 'ABANDONED'] },
+              },
+              select: { status: true },
+            },
+          },
+        },
+      },
     });
 
     if (goal.generationStatus !== 'GENERATING') {
@@ -76,7 +116,39 @@ export class GoalGenerationListener {
       sleepHoursAvg: Prisma.Decimal | null;
       primaryMotivation: string | null;
       injuryNotes: string | null;
+      birthday: Date | null;
+      gender: string | null;
+      createdAt: Date;
+      subscriptionsOwned: {
+        plan: { name: string; isOffPeak: boolean } | null;
+      }[];
+      attendances: { id: string }[];
+      trainerAssignmentsAsMember: { id: string }[];
+      goals: { status: string }[];
     };
+
+    const ageYears = member.birthday
+      ? Math.floor(
+          (goal.createdAt.getTime() - member.birthday.getTime()) /
+            (365.25 * 24 * 60 * 60 * 1000),
+        )
+      : null;
+
+    const memberTenureMonths = Math.floor(
+      (goal.createdAt.getTime() - member.createdAt.getTime()) /
+        (30 * 24 * 60 * 60 * 1000),
+    );
+
+    const firstSubscription = member.subscriptionsOwned[0];
+    const subscriptionPlanName = firstSubscription?.plan?.name ?? null;
+    const isOffPeakPlan = firstSubscription?.plan?.isOffPeak ?? false;
+
+    const priorGoalsCompleted = member.goals.filter(
+      (g) => g.status === 'COMPLETED',
+    ).length;
+    const priorGoalsAbandoned = member.goals.filter(
+      (g) => g.status === 'ABANDONED',
+    ).length;
 
     const prompt = buildGoalPrompt({
       title: goal.title,
@@ -100,15 +172,15 @@ export class GoalGenerationListener {
         member.sleepHoursAvg != null ? Number(member.sleepHoursAvg) : null,
       primaryMotivation: member.primaryMotivation,
       injuryNotes: member.injuryNotes,
-      ageYears: null,
-      sex: null,
-      memberTenureMonths: null,
-      hasPersonalTrainer: false,
-      actualAttendanceLast4Weeks: 0,
-      subscriptionPlanName: null,
-      isOffPeakPlan: false,
-      priorGoalsCompleted: 0,
-      priorGoalsAbandoned: 0,
+      ageYears,
+      sex: member.gender,
+      memberTenureMonths,
+      hasPersonalTrainer: member.trainerAssignmentsAsMember.length > 0,
+      actualAttendanceLast4Weeks: member.attendances.length,
+      subscriptionPlanName,
+      isOffPeakPlan,
+      priorGoalsCompleted,
+      priorGoalsAbandoned,
     });
 
     const raw = await this.llm.generatePlan(prompt);
