@@ -66,6 +66,18 @@ export class GoalGenerationListener {
         )
       : null;
 
+    const member = goal.member as {
+      streak?: { weeklyStreak: number; longestStreak: number };
+      experienceLevel: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | null;
+      bodyweightKg: Prisma.Decimal | null;
+      heightCm: number | null;
+      sessionMinutes: number | null;
+      preferredTrainingDays: string[];
+      sleepHoursAvg: Prisma.Decimal | null;
+      primaryMotivation: string | null;
+      injuryNotes: string | null;
+    };
+
     const prompt = buildGoalPrompt({
       title: goal.title,
       category: goal.category,
@@ -73,15 +85,25 @@ export class GoalGenerationListener {
       startingValue: Number(goal.startingValue),
       targetValue: Number(goal.targetValue),
       currentGymFrequency: goal.currentGymFrequency,
-      weeklyStreak:
-        (goal.member as { streak?: { weeklyStreak: number } }).streak
-          ?.weeklyStreak ?? 0,
-      longestStreak:
-        (goal.member as { streak?: { longestStreak: number } }).streak
-          ?.longestStreak ?? 0,
+      weeklyStreak: member.streak?.weeklyStreak ?? 0,
+      longestStreak: member.streak?.longestStreak ?? 0,
       requestedFrequency: payload.requestedFrequency,
       userDeadline: userDeadlineIso,
       weeksUntilDeadline,
+      experienceLevel: member.experienceLevel,
+      bodyweightKg:
+        member.bodyweightKg != null ? Number(member.bodyweightKg) : null,
+      heightCm: member.heightCm,
+      sessionMinutes: member.sessionMinutes,
+      preferredTrainingDays: member.preferredTrainingDays ?? [],
+      sleepHoursAvg:
+        member.sleepHoursAvg != null ? Number(member.sleepHoursAvg) : null,
+      primaryMotivation: member.primaryMotivation,
+      injuryNotes: member.injuryNotes,
+      ageYears: null,
+      sex: null,
+      memberTenureMonths: null,
+      hasPersonalTrainer: false,
     });
 
     const raw = await this.llm.generatePlan(prompt);

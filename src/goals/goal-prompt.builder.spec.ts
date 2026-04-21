@@ -12,6 +12,18 @@ describe('buildGoalPrompt', () => {
     longestStreak: 6,
     userDeadline: null,
     weeksUntilDeadline: null,
+    experienceLevel: null,
+    bodyweightKg: null,
+    heightCm: null,
+    sessionMinutes: null,
+    preferredTrainingDays: [] as string[],
+    sleepHoursAvg: null,
+    primaryMotivation: null,
+    injuryNotes: null,
+    ageYears: null,
+    sex: null,
+    memberTenureMonths: null,
+    hasPersonalTrainer: false,
   };
 
   it('includes all member context fields', () => {
@@ -78,5 +90,104 @@ describe('buildGoalPrompt', () => {
     expect(out).toContain(
       "milestone.targetValue field uses the goal's metric (LBS)",
     );
+  });
+
+  describe('member profile block', () => {
+    it('renders a Member profile block', () => {
+      const out = buildGoalPrompt({ ...base, requestedFrequency: null });
+      expect(out).toContain('Member profile:');
+    });
+
+    it('renders age when ageYears is provided, falls back to not specified otherwise', () => {
+      const withAge = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        ageYears: 28,
+      });
+      expect(withAge).toContain('Age: 28 years');
+
+      const without = buildGoalPrompt({ ...base, requestedFrequency: null });
+      expect(without).toContain('Age: not specified');
+    });
+
+    it('renders sex, experience, bodyweight, height, session length, sleep, motivation, tenure', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        ageYears: 28,
+        sex: 'FEMALE',
+        experienceLevel: 'INTERMEDIATE',
+        bodyweightKg: 64,
+        heightCm: 168,
+        sessionMinutes: 45,
+        sleepHoursAvg: 7,
+        primaryMotivation: 'HEALTH',
+        memberTenureMonths: 14,
+      });
+      expect(out).toContain('Sex: FEMALE');
+      expect(out).toContain('Experience: INTERMEDIATE');
+      expect(out).toContain('Bodyweight: 64 kg');
+      expect(out).toContain('Height: 168 cm');
+      expect(out).toContain('Typical session length: 45 minutes');
+      expect(out).toContain('Average sleep: 7');
+      expect(out).toContain('Primary motivation: HEALTH');
+      expect(out).toContain('Member for: 14 months');
+    });
+
+    it('renders preferredTrainingDays verbatim and uppercase when provided', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        preferredTrainingDays: ['TUE', 'THU', 'SAT'],
+      });
+      expect(out).toContain('Preferred training days: TUE, THU, SAT');
+    });
+
+    it('falls back to not specified when preferredTrainingDays is empty', () => {
+      const out = buildGoalPrompt({ ...base, requestedFrequency: null });
+      expect(out).toContain('Preferred training days: not specified');
+    });
+
+    it('renders injuryNotes and sanitizes raw newlines/tabs', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        injuryNotes: 'mild lower-back pain\navoid heavy deadlifts',
+      });
+      expect(out).toContain(
+        'Injury notes: mild lower-back pain avoid heavy deadlifts',
+      );
+      expect(out).not.toContain('mild lower-back pain\navoid heavy deadlifts');
+    });
+
+    it('emits complementary-guidance note when hasPersonalTrainer=true', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        hasPersonalTrainer: true,
+      });
+      expect(out).toContain('Working with a personal trainer: yes');
+      expect(out).toContain('complement trainer guidance');
+    });
+
+    it('omits complementary-guidance note when hasPersonalTrainer=false', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        hasPersonalTrainer: false,
+      });
+      expect(out).toContain('Working with a personal trainer: no');
+      expect(out).not.toContain('complement trainer guidance');
+    });
+
+    it('triggers bodyweight-scaling language when BEGINNER + bodyweightKg set', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        experienceLevel: 'BEGINNER',
+        bodyweightKg: 70,
+      });
+      expect(out).toContain('Scale starting loads to bodyweight');
+    });
   });
 });
