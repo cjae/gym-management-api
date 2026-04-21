@@ -43,6 +43,7 @@ describe('GoalGenerationListener', () => {
     currentGymFrequency: 3,
     generationStatus: 'GENERATING',
     createdAt: new Date('2026-04-01T00:00:00Z'),
+    userDeadline: null,
     member: { streak: { weeklyStreak: 2, longestStreak: 6 } },
   };
 
@@ -131,6 +132,36 @@ describe('GoalGenerationListener', () => {
       where: { id: 'g1' },
       data: expect.objectContaining({ generationStatus: 'FAILED' }),
     });
+  });
+
+  it('passes userDeadline and weeks-until-deadline into the prompt', async () => {
+    prisma.goal.findUniqueOrThrow.mockResolvedValue({
+      ...baseGoal,
+      userDeadline: new Date('2026-07-10T00:00:00Z'),
+    } as never);
+    llm.generatePlan.mockResolvedValue(validLlmResponse);
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          goalPlanItem: {
+            createMany: jest.fn().mockResolvedValue({ count: 1 }),
+          },
+          goalMilestone: {
+            createMany: jest.fn().mockResolvedValue({ count: 1 }),
+          },
+          goal: { update: jest.fn().mockResolvedValue({}) },
+        }),
+    );
+
+    await listener.handle({
+      goalId: 'g1',
+      memberId: 'm1',
+      requestedFrequency: null,
+    });
+
+    const prompt = llm.generatePlan.mock.calls[0][0] as string;
+    expect(prompt).toContain('User deadline: 2026-07-10');
+    expect(prompt).toContain('~14 weeks away');
   });
 
   it('ignores duplicate events when goal is not in GENERATING status', async () => {

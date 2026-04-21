@@ -53,6 +53,19 @@ export class GoalGenerationListener {
       return;
     }
 
+    const userDeadlineIso = goal.userDeadline
+      ? goal.userDeadline.toISOString().slice(0, 10)
+      : null;
+    const weeksUntilDeadline = goal.userDeadline
+      ? Math.max(
+          1,
+          Math.round(
+            (goal.userDeadline.getTime() - goal.createdAt.getTime()) /
+              (7 * 24 * 60 * 60 * 1000),
+          ),
+        )
+      : null;
+
     const prompt = buildGoalPrompt({
       title: goal.title,
       category: goal.category,
@@ -67,6 +80,8 @@ export class GoalGenerationListener {
         (goal.member as { streak?: { longestStreak: number } }).streak
           ?.longestStreak ?? 0,
       requestedFrequency: payload.requestedFrequency,
+      userDeadline: userDeadlineIso,
+      weeksUntilDeadline,
     });
 
     const raw = await this.llm.generatePlan(prompt);

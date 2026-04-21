@@ -8,6 +8,8 @@ export type GoalPromptInput = {
   weeklyStreak: number;
   longestStreak: number;
   requestedFrequency: number | null;
+  userDeadline: string | null;
+  weeksUntilDeadline: number | null;
 };
 
 const sanitizeText = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
@@ -17,6 +19,7 @@ const clampFrequency = (v: number | null): number | null =>
 
 export const buildGoalPrompt = (input: GoalPromptInput): string => {
   const requestedFrequency = clampFrequency(input.requestedFrequency);
+  const weightUnit = input.metric === 'LBS' ? 'lbs' : 'kg';
   return `
 A gym member wants to achieve the following goal:
 - Goal: ${sanitizeText(input.title)}
@@ -28,11 +31,16 @@ A gym member wants to achieve the following goal:
 - Current weekly streak: ${input.weeklyStreak} weeks
 - Longest streak ever: ${input.longestStreak} weeks
 - Desired frequency: ${requestedFrequency ?? 'not specified — recommend one'}
+- User deadline: ${
+    input.userDeadline
+      ? `${input.userDeadline}${input.weeksUntilDeadline != null ? ` (~${input.weeksUntilDeadline} weeks away)` : ''}`
+      : 'not specified — choose a realistic timeline'
+  }
 
 Return ONLY valid JSON in this shape:
 {
   "recommendedGymFrequency": <integer 1-6>,
-  "estimatedWeeks": <integer 1-8>,
+  "estimatedWeeks": <integer 1-16>,
   "reasoning": "<2-3 sentences explaining timeline and frequency>",
   "milestones": [
     { "weekNumber": <integer>, "description": "<string>", "targetValue": <number or null> }
@@ -47,7 +55,7 @@ Return ONLY valid JSON in this shape:
       "muscleGroup": "<e.g. chest, legs, full body, core — or null>",
       "sets": <integer or null>,
       "reps": <integer or null>,
-      "weight": <number kg or null>,
+      "weight": <lift weight in ${weightUnit}, or null>,
       "duration": <integer minutes or null>,
       "restSeconds": <integer seconds between sets or null>,
       "distanceKm": <decimal km or null — use for running/cycling/rowing exercises>,
@@ -74,7 +82,10 @@ Rules:
     - Do NOT generate detailed exercise prescriptions — the goal is attendance, not periodisation.
 - Milestones every 2-4 weeks as checkpoints; maximum 6 milestones total.
 - Keep descriptions under 15 words — concise and actionable.
+- Units: all lift weights in the plan MUST be in ${weightUnit} (derived from the goal's metric — lbs when the member tracks their goal in pounds, kg otherwise). Do not mix units within the same plan.
+- The milestone.targetValue field uses the goal's metric (${input.metric}) so it can be compared directly against member-logged progress.
 - If requestedFrequency is specified, use it as recommendedGymFrequency (clamped to the 1-6 range).
+- If a user deadline is specified, set estimatedWeeks to match the weeks until the deadline (clamped to the 1-16 range). If the deadline is beyond 16 weeks, cap at 16 and acknowledge the extended timeline in reasoning. If the deadline is unrealistically short for the goal, still honour it but flag the aggressive pace in reasoning.
 - Omit fields that are null — do not include null-valued keys in the JSON output.
 `.trim();
 };
