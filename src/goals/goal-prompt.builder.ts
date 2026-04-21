@@ -1,3 +1,5 @@
+import { sanitizeText } from '../common/utils/sanitize-text';
+
 export type GoalPromptInput = {
   title: string;
   category: string;
@@ -11,8 +13,6 @@ export type GoalPromptInput = {
   userDeadline: string | null;
   weeksUntilDeadline: number | null;
 };
-
-const sanitizeText = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
 
 const clampFrequency = (v: number | null): number | null =>
   v == null ? null : Math.max(1, Math.min(6, v));

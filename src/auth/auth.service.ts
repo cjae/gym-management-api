@@ -25,10 +25,9 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { OnboardingDto } from './dto/onboarding.dto';
 import { safeUserSelect } from '../common/constants/safe-user-select';
 import { generateReferralCode } from '../common/utils/referral-code.util';
+import { sanitizeText } from '../common/utils/sanitize-text';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
-
-const sanitizeText = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
 
 @Injectable()
 export class AuthService {
