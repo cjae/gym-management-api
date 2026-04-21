@@ -104,6 +104,11 @@ export class GoalGenerationListener {
       sex: null,
       memberTenureMonths: null,
       hasPersonalTrainer: false,
+      actualAttendanceLast4Weeks: 0,
+      subscriptionPlanName: null,
+      isOffPeakPlan: false,
+      priorGoalsCompleted: 0,
+      priorGoalsAbandoned: 0,
     });
 
     const raw = await this.llm.generatePlan(prompt);

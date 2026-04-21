@@ -24,6 +24,11 @@ export type GoalPromptInput = {
   sex: string | null;
   memberTenureMonths: number | null;
   hasPersonalTrainer: boolean;
+  actualAttendanceLast4Weeks: number;
+  subscriptionPlanName: string | null;
+  isOffPeakPlan: boolean;
+  priorGoalsCompleted: number;
+  priorGoalsAbandoned: number;
 };
 
 const clampFrequency = (v: number | null): number | null =>
@@ -57,6 +62,15 @@ export const buildGoalPrompt = (input: GoalPromptInput): string => {
     : 'no';
   const showBodyweightScaling =
     input.experienceLevel === 'BEGINNER' && input.bodyweightKg != null;
+  const attendancePerWeek = (input.actualAttendanceLast4Weeks / 4).toFixed(1);
+  const planLine = input.subscriptionPlanName
+    ? `${input.subscriptionPlanName} (off-peak: ${input.isOffPeakPlan ? 'yes' : 'no'})`
+    : null;
+  const showConservativePace =
+    input.priorGoalsAbandoned > input.priorGoalsCompleted;
+  const showAttendanceMismatch =
+    input.requestedFrequency != null &&
+    input.actualAttendanceLast4Weeks / 4 < input.requestedFrequency;
 
   return `
 A gym member wants to achieve the following goal:
@@ -88,6 +102,11 @@ ${line('Primary motivation', input.primaryMotivation)}
 ${line('Injury notes', injuryNotes)}
 ${line('Member for', input.memberTenureMonths, ' months')}
 - Working with a personal trainer: ${trainerLine}
+
+System context:
+- Recent attendance: ${input.actualAttendanceLast4Weeks} days over the last 4 weeks (~${attendancePerWeek}/week actual)
+${line('Subscription plan', planLine)}
+- Prior goal history: ${input.priorGoalsCompleted} completed, ${input.priorGoalsAbandoned} abandoned
 
 Return ONLY valid JSON in this shape:
 {
@@ -144,6 +163,9 @@ ${showBodyweightScaling ? '- Scale starting loads to bodyweight when BEGINNER (e
 - Cap daily session duration at the member's sessionMinutes when provided. Reduce exercise count or trim rest if needed.
 - If primary motivation is APPEARANCE, bias toward hypertrophy rep ranges (8-12). If STRENGTH, bias toward 3-6. If HEALTH, mix modalities. If SPORT_PERFORMANCE, include power and conditioning. If EVENT_SPECIFIC, tighten timeline and increase specificity.
 ${input.hasPersonalTrainer ? '- The member has a personal trainer — write reasoning so the plan reads as a complement trainer guidance, e.g. "discuss with your trainer before adjusting."' : ''}
+${showAttendanceMismatch ? '- Use actual attendance as the honest baseline; currentGymFrequency is self-reported and may overstate reality. If actual is lower than requestedFrequency, flag the jump in reasoning.' : ''}
+${input.isOffPeakPlan ? '- The member is on an off-peak plan: training must occur during off-peak hours (the gym restricts check-in outside that window).' : ''}
+${showConservativePace ? '- The member has more abandoned goals than completed — acknowledge in reasoning that past plans may have been too aggressive and set a more conservative pace.' : ''}
 - Omit fields that are null — do not include null-valued keys in the JSON output.
 `.trim();
 };

@@ -24,6 +24,11 @@ describe('buildGoalPrompt', () => {
     sex: null,
     memberTenureMonths: null,
     hasPersonalTrainer: false,
+    actualAttendanceLast4Weeks: 0,
+    subscriptionPlanName: null,
+    isOffPeakPlan: false,
+    priorGoalsCompleted: 0,
+    priorGoalsAbandoned: 0,
   };
 
   it('includes all member context fields', () => {
@@ -188,6 +193,86 @@ describe('buildGoalPrompt', () => {
         bodyweightKg: 70,
       });
       expect(out).toContain('Scale starting loads to bodyweight');
+    });
+  });
+
+  describe('system context block', () => {
+    it('renders a System context block with attendance, plan, and prior goal history', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        actualAttendanceLast4Weeks: 10,
+        subscriptionPlanName: 'Premium Monthly',
+        isOffPeakPlan: false,
+        priorGoalsCompleted: 2,
+        priorGoalsAbandoned: 1,
+      });
+      expect(out).toContain('System context:');
+      expect(out).toContain('Recent attendance: 10 days over the last 4 weeks');
+      expect(out).toContain('~2.5/week actual');
+      expect(out).toContain('Subscription plan: Premium Monthly');
+      expect(out).toContain('off-peak: no');
+      expect(out).toContain('Prior goal history: 2 completed, 1 abandoned');
+    });
+
+    it('falls back when subscription plan is absent', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        subscriptionPlanName: null,
+      });
+      expect(out).toContain('Subscription plan: not specified');
+    });
+
+    it('marks off-peak plans', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        subscriptionPlanName: 'Off-Peak Monthly',
+        isOffPeakPlan: true,
+      });
+      expect(out).toContain('off-peak: yes');
+    });
+
+    it('emits off-peak rule only when plan is off-peak', () => {
+      const on = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        isOffPeakPlan: true,
+      });
+      expect(on).toContain('training must occur during off-peak hours');
+
+      const off = buildGoalPrompt({ ...base, requestedFrequency: null });
+      expect(off).not.toContain('training must occur during off-peak hours');
+    });
+
+    it('emits conservative-pace rule when abandoned > completed', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        priorGoalsCompleted: 0,
+        priorGoalsAbandoned: 2,
+      });
+      expect(out).toContain('past plans may have been too aggressive');
+    });
+
+    it('omits conservative-pace rule when abandoned <= completed', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: null,
+        priorGoalsCompleted: 3,
+        priorGoalsAbandoned: 1,
+      });
+      expect(out).not.toContain('past plans may have been too aggressive');
+    });
+
+    it('emits attendance-mismatch rule when actual is lower than requested', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: 5,
+        actualAttendanceLast4Weeks: 4,
+      });
+      expect(out).toContain('Use actual attendance as the honest baseline');
     });
   });
 });
