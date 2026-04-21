@@ -16,6 +16,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
+import { OnboardingDto } from './dto/onboarding.dto';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -522,6 +523,85 @@ describe('AuthService', () => {
           displayPicture: true,
         }) as Record<string, unknown>,
       });
+    });
+  });
+
+  describe('completeOnboarding', () => {
+    const validPayload: OnboardingDto = {
+      experienceLevel: 'INTERMEDIATE',
+      bodyweightKg: 72.5,
+      heightCm: 175,
+      sessionMinutes: 60,
+      preferredTrainingDays: ['MON', 'WED', 'FRI'],
+      sleepHoursAvg: 7.5,
+      primaryMotivation: 'STRENGTH',
+      injuryNotes: 'Mild right shoulder impingement',
+    } as OnboardingDto;
+
+    it('stamps onboardingCompletedAt and persists all fields', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        onboardingCompletedAt: null,
+      } as any);
+      prisma.user.update.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        onboardingCompletedAt: new Date(),
+      } as any);
+
+      const before = Date.now();
+      await service.completeOnboarding('1', validPayload);
+      const after = Date.now();
+
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+      const call = prisma.user.update.mock.calls[0][0];
+      const data = call.data as Record<string, unknown>;
+      expect(data).toMatchObject({
+        experienceLevel: 'INTERMEDIATE',
+        bodyweightKg: 72.5,
+        heightCm: 175,
+        sessionMinutes: 60,
+        preferredTrainingDays: ['MON', 'WED', 'FRI'],
+        sleepHoursAvg: 7.5,
+        primaryMotivation: 'STRENGTH',
+        injuryNotes: 'Mild right shoulder impingement',
+      });
+      const stamped = data.onboardingCompletedAt as Date;
+      expect(stamped).toBeInstanceOf(Date);
+      expect(stamped.getTime()).toBeGreaterThanOrEqual(before);
+      expect(stamped.getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it('throws BadRequestException when onboarding is already completed', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        onboardingCompletedAt: new Date('2026-04-20'),
+      } as any);
+
+      await expect(
+        service.completeOnboarding('1', validPayload),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('sanitizes injuryNotes by collapsing newlines and tabs', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        onboardingCompletedAt: null,
+      } as any);
+      prisma.user.update.mockResolvedValue({ id: '1' } as any);
+
+      await service.completeOnboarding('1', {
+        ...validPayload,
+        injuryNotes: 'Shoulder\n\tpain\ron left side',
+      } as OnboardingDto);
+
+      const call = prisma.user.update.mock.calls[0][0];
+      const data = call.data as { injuryNotes: string };
+      expect(data.injuryNotes).not.toMatch(/[\n\r\t]/);
+      expect(data.injuryNotes).toContain('Shoulder');
+      expect(data.injuryNotes).toContain('pain');
+      expect(data.injuryNotes).toContain('on left side');
     });
   });
 

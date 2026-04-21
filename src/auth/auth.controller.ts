@@ -34,9 +34,10 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshAuthGuard } from './guards/jwt-refresh-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { OnboardingDto } from './dto/onboarding.dto';
 import { CreateDeletionRequestDto } from './dto/create-deletion-request.dto';
 import { DeletionRequestResponseDto } from './dto/deletion-request-response.dto';
-import { UserResponseDto } from '../users/dto/user-response.dto';
+import { AuthMeResponseDto } from './dto/auth-me-response.dto';
 import { MessageResponseDto } from '../common/dto/message-response.dto';
 
 @ApiTags('Auth')
@@ -114,7 +115,10 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOkResponse({ type: UserResponseDto, description: 'Current user profile' })
+  @ApiOkResponse({
+    type: AuthMeResponseDto,
+    description: 'Current user profile with onboarding flag',
+  })
   getProfile(@CurrentUser('id') userId: string) {
     return this.authService.getProfile(userId);
   }
@@ -122,12 +126,30 @@ export class AuthController {
   @Patch('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOkResponse({ type: UserResponseDto, description: 'Updated user profile' })
+  @ApiOkResponse({
+    type: AuthMeResponseDto,
+    description: 'Updated user profile',
+  })
   updateProfile(
     @CurrentUser('id') userId: string,
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(userId, dto);
+  }
+
+  @Post('me/onboarding')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({
+    type: AuthMeResponseDto,
+    description: 'Onboarding completed; personalization stored.',
+  })
+  @ApiBadRequestResponse({ description: 'Onboarding already completed' })
+  completeOnboarding(
+    @CurrentUser('id') userId: string,
+    @Body() dto: OnboardingDto,
+  ) {
+    return this.authService.completeOnboarding(userId, dto);
   }
 
   @Patch('change-password')

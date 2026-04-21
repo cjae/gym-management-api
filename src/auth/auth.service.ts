@@ -22,10 +22,13 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { OnboardingDto } from './dto/onboarding.dto';
 import { safeUserSelect } from '../common/constants/safe-user-select';
 import { generateReferralCode } from '../common/utils/referral-code.util';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
+
+const sanitizeText = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
 
 @Injectable()
 export class AuthService {
@@ -355,19 +358,64 @@ export class AuthService {
       select: safeUserSelect,
     });
     if (!user) throw new UnauthorizedException('User not found');
-    return user;
+    return this.withOnboardingFlag(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     await this.getProfile(userId);
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         ...dto,
         birthday: dto.birthday ? new Date(dto.birthday) : undefined,
+        injuryNotes:
+          dto.injuryNotes !== undefined
+            ? sanitizeText(dto.injuryNotes)
+            : undefined,
       },
       select: safeUserSelect,
     });
+    return this.withOnboardingFlag(updated);
+  }
+
+  async completeOnboarding(userId: string, dto: OnboardingDto) {
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, onboardingCompletedAt: true },
+    });
+    if (!existing) throw new UnauthorizedException('User not found');
+    if (existing.onboardingCompletedAt) {
+      throw new BadRequestException(
+        'Onboarding already completed — use PATCH /auth/me to update personalization.',
+      );
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        experienceLevel: dto.experienceLevel,
+        bodyweightKg: dto.bodyweightKg,
+        heightCm: dto.heightCm,
+        sessionMinutes: dto.sessionMinutes,
+        preferredTrainingDays: dto.preferredTrainingDays,
+        sleepHoursAvg: dto.sleepHoursAvg,
+        primaryMotivation: dto.primaryMotivation,
+        injuryNotes:
+          dto.injuryNotes != null ? sanitizeText(dto.injuryNotes) : null,
+        onboardingCompletedAt: new Date(),
+      },
+      select: safeUserSelect,
+    });
+    return this.withOnboardingFlag(updated);
+  }
+
+  private withOnboardingFlag<T extends { onboardingCompletedAt?: Date | null }>(
+    user: T,
+  ): T & { onboardingCompleted: boolean } {
+    return {
+      ...user,
+      onboardingCompleted: Boolean(user.onboardingCompletedAt),
+    };
   }
 
   async logout(

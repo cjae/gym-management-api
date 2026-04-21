@@ -85,6 +85,75 @@ export class UserResponseDto {
   @ApiPropertyOptional({ example: '2000-03-10', description: 'Birthday' })
   birthday?: Date;
 
+  @ApiPropertyOptional({
+    enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'],
+    nullable: true,
+  })
+  experienceLevel?: string | null;
+
+  @ApiPropertyOptional({
+    example: 72.5,
+    nullable: true,
+    description: 'Bodyweight in kilograms.',
+  })
+  bodyweightKg?: number | null;
+
+  @ApiPropertyOptional({
+    example: 175,
+    nullable: true,
+    description: 'Height in centimetres.',
+  })
+  heightCm?: number | null;
+
+  @ApiPropertyOptional({
+    example: 60,
+    nullable: true,
+    description: 'Typical session length in minutes.',
+  })
+  sessionMinutes?: number | null;
+
+  @ApiPropertyOptional({
+    example: ['MON', 'WED', 'FRI'],
+    isArray: true,
+    description: 'Preferred training days (uppercase weekday codes).',
+  })
+  preferredTrainingDays?: string[];
+
+  @ApiPropertyOptional({
+    example: 7.5,
+    nullable: true,
+    description: 'Average nightly sleep in hours.',
+  })
+  sleepHoursAvg?: number | null;
+
+  @ApiPropertyOptional({
+    enum: [
+      'APPEARANCE',
+      'STRENGTH',
+      'HEALTH',
+      'SPORT_PERFORMANCE',
+      'EVENT_SPECIFIC',
+      'OTHER',
+    ],
+    nullable: true,
+  })
+  primaryMotivation?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'Mild right shoulder impingement, avoid overhead press',
+    nullable: true,
+    description: 'Free-form injury notes (max 500 chars).',
+  })
+  injuryNotes?: string | null;
+
+  @ApiPropertyOptional({
+    type: Date,
+    nullable: true,
+    description:
+      'Timestamp when the member completed onboarding. Null when not yet onboarded.',
+  })
+  onboardingCompletedAt?: Date | null;
+
   @ApiProperty()
   mustChangePassword: boolean;
 
