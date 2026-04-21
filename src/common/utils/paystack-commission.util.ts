@@ -1,6 +1,6 @@
 /**
  * Calculates the total amount to charge the customer,
- * including the merchant's share of the Paystack commission (50/50 split).
+ * including the customer's share of the Paystack commission (50/50 split).
  *
  * Paystack full rates: Card 2.9%, M-Pesa 1.5%, Bank transfer flat fee
  * Customer pays half; merchant absorbs the other half.
