@@ -140,11 +140,11 @@ describe('PaymentsService', () => {
         }),
       );
 
-      // Paystack gets amount with commission in cents: ceil(2000 * 1.015) * 100 = 2030 * 100 = 203000
+      // ceil(2000 * 1.0075) = 2016 due to floating point (2000*1.0075 = 2015.0000000000002), in cents = 201600
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          amount: 203000,
+          amount: 201600,
           channels: ['mobile_money'],
         }),
         expect.any(Object),
@@ -163,11 +163,11 @@ describe('PaymentsService', () => {
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      // ceil(2500 * 1.029) = 2573, in cents = 257300
+      // ceil(2500 * 1.0145) = 2537, in cents = 253700
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          amount: 257300,
+          amount: 253700,
           channels: ['card'],
         }),
         expect.any(Object),
@@ -179,11 +179,11 @@ describe('PaymentsService', () => {
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      // ceil(2500 * 1.015) = 2538, in cents = 253800
+      // ceil(2500 * 1.0075) = 2519, in cents = 251900
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          amount: 253800,
+          amount: 251900,
           channels: ['mobile_money'],
         }),
         expect.any(Object),
