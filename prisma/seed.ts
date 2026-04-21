@@ -61,6 +61,16 @@ async function main() {
         lastName: 'Member',
         role: 'MEMBER',
         referralCode: 'MEMBER01',
+        // Personalization profile (for goals feature)
+        experienceLevel: 'INTERMEDIATE',
+        bodyweightKg: 70.5,
+        heightCm: 175,
+        sessionMinutes: 60,
+        preferredTrainingDays: ['MON', 'TUE', 'WED', 'THU'],
+        sleepHoursAvg: 7.5,
+        primaryMotivation: 'STRENGTH',
+        injuryNotes: null,
+        onboardingCompletedAt: new Date(),
       },
     }));
 
