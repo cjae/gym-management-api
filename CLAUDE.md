@@ -130,4 +130,4 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 
 ## Testing
 
-Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using `jest-mock-extended` for typed mocks. 30 spec files, ~320 tests total.
+Unit tests live alongside source files as `*.spec.ts`. Tests mock `PrismaService` using `jest-mock-extended` for typed mocks. 49 spec files, ~570 tests total.

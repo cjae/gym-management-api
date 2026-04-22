@@ -45,34 +45,42 @@ async function main() {
     'Seed data created: Super Admin (powerbarnfitnesske@gmail.com / password123)',
   );
 
-  // Member user for goals testing
-  const existingMember = await prisma.user.findFirst({
-    where: {
-      OR: [{ email: 'member@example.com' }, { referralCode: 'MEMBER01' }],
+  // Member user for goals testing.
+  // Upsert keyed on email so re-seeds heal old rows missing personalization fields.
+  const member = await prisma.user.upsert({
+    where: { email: 'member@example.com' },
+    create: {
+      email: 'member@example.com',
+      password: hash,
+      firstName: 'Jane',
+      lastName: 'Member',
+      role: 'MEMBER',
+      referralCode: 'MEMBER01',
+      // Personalization profile (for goals feature)
+      experienceLevel: 'INTERMEDIATE',
+      bodyweightKg: 70.5,
+      heightCm: 175,
+      sessionMinutes: 60,
+      preferredTrainingDays: ['MON', 'TUE', 'WED', 'THU'],
+      sleepHoursAvg: 7.5,
+      primaryMotivation: 'STRENGTH',
+      injuryNotes: null,
+      onboardingCompletedAt: new Date(),
+    },
+    update: {
+      // Heal personalization fields on re-seed. Do NOT overwrite password,
+      // firstName, lastName, referralCode, or injuryNotes — a developer may
+      // have intentionally changed those locally.
+      experienceLevel: 'INTERMEDIATE',
+      bodyweightKg: 70.5,
+      heightCm: 175,
+      sessionMinutes: 60,
+      preferredTrainingDays: ['MON', 'TUE', 'WED', 'THU'],
+      sleepHoursAvg: 7.5,
+      primaryMotivation: 'STRENGTH',
+      onboardingCompletedAt: new Date(),
     },
   });
-  const member =
-    existingMember ??
-    (await prisma.user.create({
-      data: {
-        email: 'member@example.com',
-        password: hash,
-        firstName: 'Jane',
-        lastName: 'Member',
-        role: 'MEMBER',
-        referralCode: 'MEMBER01',
-        // Personalization profile (for goals feature)
-        experienceLevel: 'INTERMEDIATE',
-        bodyweightKg: 70.5,
-        heightCm: 175,
-        sessionMinutes: 60,
-        preferredTrainingDays: ['MON', 'TUE', 'WED', 'THU'],
-        sleepHoursAvg: 7.5,
-        primaryMotivation: 'STRENGTH',
-        injuryNotes: null,
-        onboardingCompletedAt: new Date(),
-      },
-    }));
 
   console.log('Seed data created: Member (member@example.com / password123)');
 
