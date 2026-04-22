@@ -420,6 +420,7 @@ export class ImportsService {
               data: {
                 primaryMemberId: user.id,
                 planId: plan.id,
+                priceKes: plan.price,
                 startDate,
                 endDate,
                 status: SubscriptionStatus.ACTIVE,

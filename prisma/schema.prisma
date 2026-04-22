@@ -289,6 +289,16 @@ model MemberSubscription {
   discountCodeId            String?
   discountAmount            Float?
   originalPlanPrice         Float?
+  // Plan price snapshot at subscription creation time (KES). Billing cron
+  // charges this amount on renewals so that mid-term plan price changes
+  // do not retroactively re-price existing subscribers. Always set by the
+  // creation paths; legacy rows were backfilled from the plan's current
+  // price in the `add_subscription_price_snapshot` migration.
+  priceKes                  Float
+  // Timestamp set when a billing operation flags the subscription for
+  // manual admin review (e.g., persistent card auth decrypt failure).
+  // Nullable — non-null means "needs ops attention".
+  billingFlaggedAt          DateTime?
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 

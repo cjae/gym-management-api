@@ -119,6 +119,10 @@ export class SubscriptionsService {
               discountCodeId,
               discountAmount,
               originalPlanPrice: plan.price,
+              // H7 — snapshot plan price at signup. Renewals charge this,
+              // not `plan.price`, so admin plan-price edits do not change
+              // what existing subscribers are billed.
+              priceKes: plan.price,
             },
             include,
           })
@@ -134,6 +138,8 @@ export class SubscriptionsService {
               discountCodeId,
               discountAmount,
               originalPlanPrice: plan.price,
+              // H7 — snapshot plan price at signup; see note above.
+              priceKes: plan.price,
               members: {
                 create: {
                   memberId,
@@ -296,6 +302,12 @@ export class SubscriptionsService {
         autoRenew: false,
         createdBy: adminId,
         paymentNote: dto.paymentNote,
+        // H7 — snapshot plan price at signup so this admin-created sub's
+        // future renewal amount is fixed, not subject to later plan-price
+        // edits. COMPLIMENTARY subs still get the snapshot; autoRenew=false
+        // here so billing cron won't charge them, but the field stays
+        // truthful about the plan's price-at-signup.
+        priceKes: plan.price,
       };
 
       const sub = existingPending

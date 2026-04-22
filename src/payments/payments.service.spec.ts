@@ -530,6 +530,72 @@ describe('PaymentsService', () => {
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
 
+      // M13 — internal failures after the atomic claim must propagate so
+      // Paystack retries. Returning 200 after a failed activation/referral
+      // would make Paystack stop retrying and silently drop the event.
+      it('propagates when post-claim activation throws (M13)', async () => {
+        const subscriptionId = 'sub-m13';
+        const paymentId = 'pay-m13';
+        const reference = 'ref_m13';
+        const body = {
+          event: 'charge.success',
+          data: {
+            reference,
+            metadata: { subscriptionId, paymentId },
+            channel: 'mobile_money',
+          },
+        };
+        const { raw, signature } = buildWebhookPayload(body);
+
+        // Atomic claim succeeds.
+        prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.payment.findUnique.mockResolvedValue({
+          id: paymentId,
+          amount: 2500,
+          currency: 'KES',
+          subscription: {
+            primaryMember: {
+              id: 'user-m13',
+              email: 'm13@test.com',
+              firstName: 'Retry',
+              lastName: 'Me',
+            },
+          },
+        } as any);
+        prisma.memberSubscription.findUnique.mockResolvedValue({
+          id: subscriptionId,
+          status: 'PENDING',
+          primaryMemberId: 'user-m13',
+          endDate: new Date(),
+          plan: { price: 2500, billingInterval: 'MONTHLY' },
+        } as any);
+
+        // Simulate subscription activation blowing up (e.g. DB outage
+        // mid-tx). The webhook must rethrow so Nest returns 500 and
+        // Paystack retries — NOT swallow to `{ received: true }`.
+        prisma.memberSubscription.updateMany.mockRejectedValue(
+          new Error('simulated DB failure'),
+        );
+
+        await expect(service.handleWebhook(raw, signature)).rejects.toThrow(
+          'simulated DB failure',
+        );
+      });
+
+      it('does not rethrow BadRequestException for invalid signature as 500 (M13 guard)', async () => {
+        // M13 must not accidentally convert signature failures (400) into
+        // 500s by over-broad try/catch. The signature check is outside
+        // the post-claim try/catch, so BadRequestException still surfaces
+        // as-is.
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+        const badSignature = 'a'.repeat(128);
+
+        await expect(service.handleWebhook(raw, badSignature)).rejects.toThrow(
+          BadRequestException,
+        );
+      });
+
       it('simulated concurrent invocations: only one applies side effects', async () => {
         const { subscriptionId, paymentId, body } = buildSuccessWebhook();
         const { raw, signature } = buildWebhookPayload(body);

@@ -25,6 +25,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     email: string;
     role: string;
     jti: string;
+    mustChangePassword?: boolean;
   }) {
     const invalidated = await this.prisma.invalidatedToken.findUnique({
       where: { jti: payload.jti },
@@ -39,6 +40,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       role: payload.role,
       jti: payload.jti,
+      mustChangePassword: payload.mustChangePassword === true,
     };
   }
 }

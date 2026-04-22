@@ -4,14 +4,16 @@ import pg from 'pg';
 import * as bcrypt from 'bcrypt';
 
 const dbUrl = process.env.DATABASE_URL;
-const useSSL =
-  dbUrl?.includes('sslmode=') || process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === 'production';
+const useSSL = dbUrl?.includes('sslmode=') || isProduction;
 const cleanUrl = dbUrl
   ?.replace(/[?&]sslmode=[^&]*/g, (match) => (match.startsWith('?') ? '?' : ''))
   .replace(/\?$/, '');
+// Enforce TLS cert validation in production; allow self-signed elsewhere.
+const sslOption = useSSL ? { ssl: { rejectUnauthorized: isProduction } } : {};
 const pool = new pg.Pool({
   connectionString: cleanUrl,
-  ...(useSSL && { ssl: { rejectUnauthorized: false } }),
+  ...sslOption,
 });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
@@ -111,6 +113,7 @@ async function main() {
       id: 'seed-subscription-member-001',
       primaryMemberId: member.id,
       planId: plan.id,
+      priceKes: plan.price,
       startDate: now,
       endDate,
       status: 'ACTIVE',

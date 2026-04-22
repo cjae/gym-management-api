@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { EmailService } from '../email/email.service';
@@ -13,6 +14,19 @@ import { decrypt } from '../common/utils/encryption.util';
 import { NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+
+// M16 — PostgreSQL advisory-lock IDs used to serialize billing crons across
+// API replicas. Each cron claims its own 64-bit lock via pg_try_advisory_lock;
+// a second replica whose lock attempt returns false skips that run. The IDs
+// are arbitrary but stable — changing them after deploy defeats the lock, so
+// treat these constants as part of the release artifact.
+//
+// Convention: 0xB111_xxxx (B=billing) with a 16-bit tag per cron handler.
+const ADVISORY_LOCK_CARD_RENEWALS = 0xb1110001n;
+const ADVISORY_LOCK_OVERDUE_EXPIRY = 0xb1110002n;
+const ADVISORY_LOCK_MOBILE_REMINDERS = 0xb1110003n;
+const ADVISORY_LOCK_BIRTHDAY_WISHES = 0xb1110004n;
+const ADVISORY_LOCK_AUTO_UNFREEZE = 0xb1110005n;
 
 @Injectable()
 export class BillingService {
@@ -37,37 +51,101 @@ export class BillingService {
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM, { timeZone: 'Africa/Nairobi' })
   async handleCardRenewals() {
-    this.logger.log('Starting card renewals');
-    await this.processCardRenewals();
-    this.logger.log('Card renewals complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_CARD_RENEWALS,
+      'card renewals',
+      () => this.processCardRenewals(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: 'Africa/Nairobi' })
   async handleOverdueExpiry() {
-    this.logger.log('Starting overdue subscription expiry');
-    await this.expireOverdueSubscriptions();
-    this.logger.log('Overdue subscription expiry complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_OVERDUE_EXPIRY,
+      'overdue subscription expiry',
+      () => this.expireOverdueSubscriptions(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Nairobi' })
   async handleMobileMoneyReminders() {
-    this.logger.log('Starting Mobile money reminders');
-    await this.processMobileMoneyReminders();
-    this.logger.log('Mobile money reminders complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_MOBILE_REMINDERS,
+      'mobile money reminders',
+      () => this.processMobileMoneyReminders(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Africa/Nairobi' })
   async handleBirthdayWishes() {
-    this.logger.log('Starting birthday wishes');
-    await this.sendBirthdayWishes();
-    this.logger.log('Birthday wishes complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_BIRTHDAY_WISHES,
+      'birthday wishes',
+      () => this.sendBirthdayWishes(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Africa/Nairobi' })
   async handleAutoUnfreeze() {
-    this.logger.log('Starting auto-unfreeze check');
-    await this.autoUnfreezeSubscriptions();
-    this.logger.log('Auto-unfreeze check complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_AUTO_UNFREEZE,
+      'auto-unfreeze check',
+      () => this.autoUnfreezeSubscriptions(),
+    );
+  }
+
+  /**
+   * M16 — replica-safe cron wrapper.
+   *
+   * Uses PostgreSQL session-scoped advisory locks (`pg_try_advisory_lock`) to
+   * ensure that when multiple API replicas run the same cron schedule, only
+   * one instance actually performs the work. The loser returns immediately
+   * without side effects, so we never double-charge, double-email, or
+   * double-flip-expired.
+   *
+   * `pg_try_advisory_lock` is non-blocking: if another backend holds the
+   * lock, it returns `false` rather than waiting. Session-scoped locks are
+   * automatically released when the connection closes, so a crashed replica
+   * can't deadlock the lock indefinitely — we also explicitly unlock in a
+   * `finally` to release immediately under happy-path and thrown-error
+   * conditions.
+   *
+   * The lock ID is a BIGINT. We use BigInt literals and `Prisma.sql` tagged
+   * template interpolation so the driver sends them as parameters (no
+   * string concatenation into SQL).
+   */
+  private async runWithAdvisoryLock(
+    lockId: bigint,
+    label: string,
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const acquired = await this.prisma.$queryRaw<
+      Array<{ acquired: boolean }>
+    >`SELECT pg_try_advisory_lock(${lockId}) AS acquired`;
+
+    if (!acquired[0]?.acquired) {
+      this.logger.log(
+        `Another instance holds the ${label} billing lock; skipping this run`,
+      );
+      return;
+    }
+
+    this.logger.log(`Starting ${label}`);
+    try {
+      await work();
+      this.logger.log(`${label} complete`);
+    } finally {
+      try {
+        await this.prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})`;
+      } catch (err) {
+        // Releasing the lock should never fail under normal operation, but
+        // if it does we surface it — the session-scoped lock will be
+        // released anyway when the connection closes.
+        this.logger.warn(
+          `Failed to release ${label} advisory lock: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   async autoUnfreezeSubscriptions() {
@@ -153,7 +231,10 @@ export class BillingService {
           sub.primaryMember.email,
           sub.primaryMember.firstName,
           sub.plan.name,
-          sub.plan.price,
+          // H7 — price-at-signup snapshot, not `sub.plan.price`. Users must
+          // see what they actually owe, not a price the admin has since
+          // lowered or raised on the plan.
+          sub.priceKes,
           this.memberAppUrl,
         );
         this.logger.warn(
@@ -175,12 +256,31 @@ export class BillingService {
         }
         authCode = decrypt(sub.paystackAuthorizationCode!, this.encryptionKey);
       } catch (err) {
+        // H8 — self-heal is correct, but ops needs to know this happened.
+        // Emit a Sentry captureMessage at warning severity so on-call sees
+        // the count, and stamp `billingFlaggedAt` so the admin UI can
+        // surface these subscriptions for manual follow-up.
+        const errorMessage = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Failed to decrypt paystackAuthorizationCode for subscription ${sub.id}; clearing stored code. Member will need to re-authorize. Error: ${err instanceof Error ? err.message : String(err)}`,
+          `Failed to decrypt paystackAuthorizationCode for subscription ${sub.id}; clearing stored code and flagging for manual review. Member will need to re-authorize. Error: ${errorMessage}`,
+        );
+        Sentry.captureMessage(
+          'Billing cron: paystackAuthorizationCode decrypt failed',
+          {
+            level: 'warning',
+            extra: {
+              subscriptionId: sub.id,
+              memberId: sub.primaryMember.id,
+              error: errorMessage,
+            },
+          },
         );
         await this.prisma.memberSubscription.update({
           where: { id: sub.id },
-          data: { paystackAuthorizationCode: null },
+          data: {
+            paystackAuthorizationCode: null,
+            billingFlaggedAt: new Date(),
+          },
         });
         continue;
       }
@@ -189,7 +289,10 @@ export class BillingService {
         sub.id,
         authCode,
         sub.primaryMember.email,
-        sub.plan.price,
+        // H7 — always charge the plan price captured at signup so an admin
+        // changing `SubscriptionPlan.price` mid-cycle does not retroactively
+        // re-price this subscription (either up OR down).
+        sub.priceKes,
       );
       this.logger.log(`Charged card for subscription ${sub.id}`);
     }
@@ -229,7 +332,9 @@ export class BillingService {
           sub.primaryMember.email,
           sub.primaryMember.firstName,
           sub.plan.name,
-          sub.plan.price,
+          // H7 — price-at-signup snapshot; reminders quote the amount the
+          // member actually owes on renewal, not the current plan price.
+          sub.priceKes,
           daysUntil,
           `${this.memberAppUrl}`,
         );

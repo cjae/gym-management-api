@@ -29,6 +29,15 @@ import { sanitizeText } from '../common/utils/sanitize-text';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 
+// Precomputed dummy bcrypt hash used to keep login response time constant
+// when the email does not exist. Without this, an attacker can enumerate
+// valid emails by timing: a user-not-found path skips bcrypt.compare and
+// returns ~100ms faster than a wrong-password path.
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync(
+  'dummy-password-for-timing-parity',
+  10,
+);
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -148,6 +157,10 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (!user || user.deletedAt) {
+      // Run bcrypt against a dummy hash so the unknown-email path takes
+      // roughly the same time as the wrong-password path. Defeats email
+      // enumeration via response timing. Result is discarded.
+      await bcrypt.compare(dto.password, DUMMY_BCRYPT_HASH);
       this.auditLogService
         .log({
           userId: null,
@@ -518,11 +531,11 @@ export class AuthService {
     const refreshJti = randomUUID();
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: userId, email, role, jti: accessJti },
+        { sub: userId, email, role, jti: accessJti, mustChangePassword },
         { expiresIn: '30m' },
       ),
       this.jwtService.signAsync(
-        { sub: userId, email, role, jti: refreshJti },
+        { sub: userId, email, role, jti: refreshJti, mustChangePassword },
         { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
       ),
     ]);

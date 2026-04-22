@@ -33,8 +33,23 @@ export const getAuthConfig = (): AuthConfig => ({
     'JWT_REFRESH_SECRET',
     'dev-refresh-secret',
   ),
-  basicAuthUser: process.env.BASIC_AUTH_USER ?? '',
-  basicAuthPassword: process.env.BASIC_AUTH_PASSWORD ?? '',
+  // Basic Auth credentials protect login/register endpoints.
+  // Outside dev/test, BOTH envs must be non-empty — `requireInSecureEnvs`
+  // throws at module load if either is missing so we never boot into a
+  // half-configured state where the runtime strategy could fail open.
+  // In dev/test, unset envs fall back to '' and the strategy's runtime
+  // guard rejects every request (fail-closed by default; opt-in by
+  // setting the envs locally).
+  basicAuthUser: requireInSecureEnvs(
+    process.env.BASIC_AUTH_USER,
+    'BASIC_AUTH_USER',
+    '',
+  ),
+  basicAuthPassword: requireInSecureEnvs(
+    process.env.BASIC_AUTH_PASSWORD,
+    'BASIC_AUTH_PASSWORD',
+    '',
+  ),
 });
 
 export default registerAs(getAuthConfigName(), getAuthConfig);

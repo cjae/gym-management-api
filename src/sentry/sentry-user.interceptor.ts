@@ -10,7 +10,6 @@ import * as Sentry from '@sentry/nestjs';
 
 interface JwtUser {
   sub: string;
-  email: string;
   role: string;
 }
 
@@ -24,9 +23,11 @@ export class SentryUserInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user;
     if (user) {
+      // Only id + role. Email is PII and must not be copied into Sentry's
+      // 3rd-party pipeline. Omitting `email`/`username` here prevents the
+      // Sentry JS SDK from populating those fields on the event payload.
       Sentry.setUser({
         id: user.sub,
-        email: user.email,
         role: user.role,
       });
     }

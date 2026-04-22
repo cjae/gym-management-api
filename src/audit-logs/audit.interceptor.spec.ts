@@ -284,6 +284,142 @@ describe('AuditInterceptor', () => {
     );
   });
 
+  it('should redact password fields in audit metadata', async () => {
+    const context = createMockContext({
+      method: 'POST',
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      body: { email: 'new@test.com', password: 'supersecret' },
+      url: '/api/v1/auth/change-password',
+    });
+    const handler = createMockCallHandler({ ok: true });
+
+    const result$ = await interceptor.intercept(context, handler);
+    await lastValueFrom(result$);
+
+    expect(mockAuditLogService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          requestBody: { email: 'new@test.com', password: '[REDACTED]' },
+        },
+      }),
+    );
+  });
+
+  it('should redact nested sensitive fields in audit metadata', async () => {
+    const context = createMockContext({
+      method: 'PATCH',
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      params: { id: 'user-9' },
+      body: {
+        credentials: {
+          currentPassword: 'old-pw',
+          newPassword: 'new-pw',
+        },
+        displayName: 'Alice',
+      },
+      url: '/api/v1/users/user-9',
+    });
+    const handler = createMockCallHandler({ id: 'user-9' });
+
+    const result$ = await interceptor.intercept(context, handler);
+    await lastValueFrom(result$);
+
+    expect(mockAuditLogService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          requestBody: {
+            credentials: {
+              currentPassword: '[REDACTED]',
+              newPassword: '[REDACTED]',
+            },
+            displayName: 'Alice',
+          },
+        },
+      }),
+    );
+  });
+
+  it('should redact sensitive keys inside arrays of objects', async () => {
+    const context = createMockContext({
+      method: 'POST',
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      body: {
+        users: [
+          { id: '1', token: 'abc123', name: 'One' },
+          { id: '2', token: 'def456', name: 'Two' },
+        ],
+      },
+      url: '/api/v1/users/bulk',
+    });
+    const handler = createMockCallHandler({ count: 2 });
+
+    const result$ = await interceptor.intercept(context, handler);
+    await lastValueFrom(result$);
+
+    expect(mockAuditLogService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          requestBody: {
+            users: [
+              { id: '1', token: '[REDACTED]', name: 'One' },
+              { id: '2', token: '[REDACTED]', name: 'Two' },
+            ],
+          },
+        },
+      }),
+    );
+  });
+
+  it('should match sensitive keys case-insensitively', async () => {
+    const context = createMockContext({
+      method: 'POST',
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      body: { Password: 'x', AccessToken: 'y', name: 'keep' },
+      url: '/api/v1/users',
+    });
+    const handler = createMockCallHandler({ id: 'u-1' });
+
+    const result$ = await interceptor.intercept(context, handler);
+    await lastValueFrom(result$);
+
+    expect(mockAuditLogService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          requestBody: {
+            Password: '[REDACTED]',
+            AccessToken: '[REDACTED]',
+            name: 'keep',
+          },
+        },
+      }),
+    );
+  });
+
+  it('should leave non-sensitive fields untouched in audit metadata', async () => {
+    const context = createMockContext({
+      method: 'POST',
+      user: { id: 'admin-1', email: 'admin@test.com', role: 'ADMIN' },
+      body: { firstName: 'Alice', amount: 2500, active: true },
+      url: '/api/v1/users',
+    });
+    const handler = createMockCallHandler({ id: 'u-1' });
+
+    const result$ = await interceptor.intercept(context, handler);
+    await lastValueFrom(result$);
+
+    expect(mockAuditLogService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          requestBody: {
+            firstName: 'Alice',
+            amount: 2500,
+            active: true,
+          },
+        },
+      }),
+    );
+  });
+
   it('should not fail the request if audit logging throws', async () => {
     mockAuditLogService.log.mockRejectedValue(new Error('Audit DB down'));
 

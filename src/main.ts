@@ -1,13 +1,15 @@
 import './instrument';
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppConfig, getAppConfigName } from './common/config/app.config';
+import { AuthConfig, getAuthConfigName } from './common/config/auth.config';
+import { createSwaggerBasicAuthMiddleware } from './common/middleware/swagger-basic-auth.middleware';
 
 const SWAGGER_DESCRIPTION = `API for gym management platform — subscriptions, attendance, payments, trainers, classes and more.
 
@@ -70,6 +72,13 @@ async function bootstrap() {
   });
   const configService = app.get(ConfigService);
   const appConfig = configService.get<AppConfig>(getAppConfigName())!;
+  const authConfig = configService.get<AuthConfig>(getAuthConfigName())!;
+  const logger = new Logger('Bootstrap');
+
+  // Trust the reverse proxy (Nginx, Heroku router, etc) so `req.ip` is the
+  // real client IP. Without this, `@nestjs/throttler` buckets every request
+  // under the proxy's IP and rate limits become shared/bypassable.
+  app.set('trust proxy', appConfig.trustProxyHops);
 
   app.set('query parser', 'extended');
   app.useBodyParser('json', { limit: '1mb' });
@@ -90,15 +99,40 @@ async function bootstrap() {
     defaultVersion: '1',
   });
 
-  const config = new DocumentBuilder()
-    .setTitle('Gym Management API')
-    .setDescription(SWAGGER_DESCRIPTION)
-    .setVersion('0.0.1')
-    .addBearerAuth()
-    .addBasicAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Swagger UI exposes the full API surface (routes, DTOs, example payloads)
+  // and is a high-value target for attackers mapping the system. Gate it
+  // behind Basic Auth in all non-dev environments. If Basic Auth creds are
+  // missing in prod (shouldn't happen — config factory throws — but defense
+  // in depth) skip mounting Swagger entirely rather than serving it open.
+  const isProdLike =
+    appConfig.nodeEnv !== 'development' && appConfig.nodeEnv !== 'test';
+  const hasBasicAuthCreds = Boolean(
+    authConfig.basicAuthUser && authConfig.basicAuthPassword,
+  );
+
+  if (isProdLike && !hasBasicAuthCreds) {
+    logger.warn(
+      'Swagger UI disabled: BASIC_AUTH_USER / BASIC_AUTH_PASSWORD not configured',
+    );
+  } else {
+    if (isProdLike) {
+      const swaggerAuth = createSwaggerBasicAuthMiddleware(
+        authConfig.basicAuthUser,
+        authConfig.basicAuthPassword,
+      );
+      app.use(['/api/docs', '/api/docs-json'], swaggerAuth);
+    }
+
+    const config = new DocumentBuilder()
+      .setTitle('Gym Management API')
+      .setDescription(SWAGGER_DESCRIPTION)
+      .setVersion('0.0.1')
+      .addBearerAuth()
+      .addBasicAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   await app.listen(appConfig.port);
 }

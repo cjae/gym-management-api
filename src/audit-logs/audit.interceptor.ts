@@ -10,6 +10,7 @@ import { Observable, from } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
 import { AuditLogService } from './audit-logs.service';
 import { NO_AUDIT_KEY } from './decorators/no-audit.decorator';
+import { redactSensitive } from '../common/utils/redact-sensitive';
 import type { AuditAction } from '@prisma/client';
 
 interface JwtUser {
@@ -98,6 +99,14 @@ export class AuditInterceptor implements NestInterceptor {
     const route = `${method} ${request.url}`;
     const userAgent = request.headers?.['user-agent'];
 
+    // Deep-redact sensitive fields before persisting to audit metadata.
+    // Attackers with audit-log access must not recover passwords, tokens,
+    // or card details. Redaction happens here (at capture time) so the
+    // raw request body never reaches the DB.
+    const redactedBody = request.body
+      ? redactSensitive(request.body)
+      : undefined;
+
     // For UPDATE/DELETE, fetch old data before handler runs
     const needsOldData =
       (method === 'PUT' || method === 'PATCH' || method === 'DELETE') &&
@@ -127,8 +136,8 @@ export class AuditInterceptor implements NestInterceptor {
                     (method === 'POST' ||
                       method === 'PUT' ||
                       method === 'PATCH') &&
-                    request.body
-                      ? { requestBody: request.body }
+                    redactedBody
+                      ? { requestBody: redactedBody }
                       : undefined,
                 })
                 .catch((error: Error) => {

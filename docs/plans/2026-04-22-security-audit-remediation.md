@@ -9,10 +9,10 @@
 | Severity | Total | Done | Pending |
 |---|---|---|---|
 | Critical | 4 | 4 | 0 |
-| High | 13 | 6 | 7 |
-| Medium | 18 | 2 | 16 |
+| High | 13 | 13 | 0 |
+| Medium | 18 | 9 | 9 |
 | Low | 7 | 0 | 7 |
-| **Total** | **42** | **12** | **30** |
+| **Total** | **42** | **26** | **16** |
 
 Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remediation-client-impact.md`.
 
@@ -42,25 +42,30 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 
 ## High (13)
 
-- [ ] **H1** — Basic Auth compares with `===` (timing side-channel)
-  - File: `src/auth/strategies/basic.strategy.ts:24`
-- [ ] **H2** — Basic Auth fails open when either env var set but other blank
-  - File: `src/auth/strategies/basic.strategy.ts:20` — condition uses `||` but should be `&&` fail-closed at boot
-- [ ] **H3** — Audit interceptor stores raw request body (passwords, tokens, card data)
-  - File: `src/audit-logs/audit.interceptor.ts:126-132`
-  - Fix: deep-redact known sensitive keys before persisting metadata
-- [ ] **H4** — Sentry tags all errors with user email (PII leakage to 3rd party)
-  - File: `src/sentry/sentry-user.interceptor.ts:29`
-  - Fix: send only `id` + `role`; drop email
-- [ ] **H5** — `mustChangePassword` flag not enforced at guard level
-  - Fix: global guard that 403s on non-password-change routes while flag is true
+- [x] **H1** — Basic Auth compares with `===` (timing side-channel)
+  - File: `src/auth/strategies/basic.strategy.ts`
+  - Fix: `crypto.timingSafeEqual` over SHA-256 digests of both sides (fixed-length buffers); both user+pass compared independently (no `&&` short-circuit)
+- [x] **H2** — Basic Auth fails open when either env var set but other blank
+  - File: `src/auth/strategies/basic.strategy.ts`, `src/common/config/auth.config.ts`
+  - Fix: both `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` now routed through `requireInSecureEnvs` — throws at boot in non-dev/test envs when either is missing/empty
+- [x] **H3** — Audit interceptor stores raw request body (passwords, tokens, card data)
+  - File: `src/audit-logs/audit.interceptor.ts`, new `src/common/utils/redact-sensitive.ts`
+  - Fix: `redactSensitive()` helper deep-walks request body replacing known sensitive keys (password, token, cvv, paystackAuthorizationCode, …) with `'[REDACTED]'` before persisting to audit metadata. Case-insensitive matching
+- [x] **H4** — Sentry tags all errors with user email (PII leakage to 3rd party)
+  - File: `src/sentry/sentry-user.interceptor.ts`
+  - Fix: `Sentry.setUser` now receives only `{ id, role }` — email dropped
+- [x] **H5** — `mustChangePassword` flag not enforced at guard level
+  - Files: `src/auth/guards/jwt-auth.guard.ts`, new `src/auth/decorators/allow-while-must-change-password.decorator.ts`, `src/auth/auth.service.ts` (JWT payload), `src/auth/strategies/jwt.strategy.ts`
+  - Fix: JWT now carries `mustChangePassword` claim; `JwtAuthGuard` enforces 403 on non-allowlisted routes. Allowlist (via `@AllowWhileMustChangePassword()`): `GET /auth/me`, `PATCH /auth/change-password`, `POST /auth/logout`. Chose to extend JwtAuthGuard rather than a global guard because `@UseGuards(JwtAuthGuard)` runs at route level (after globals) — in-guard enforcement guarantees ordering
 - [x] **H6** — Password-reset token consumption is check-then-write race
   - File: `src/auth/auth.service.ts:285-321`
   - Fix: atomic `passwordResetToken.updateMany({ token, usedAt: null, expiresAt > now })` claim inside `$transaction`; password write gated on `count === 1`; same error message preserved
-- [ ] **H7** — Billing cron charges using stale plan price (price changes since sub creation)
-  - File: `src/billing/billing.service.ts`
-- [ ] **H8** — Billing cron silently skips on decrypt failure (no alerting)
-  - Fix: log + Sentry breadcrumb, mark sub for manual review
+- [x] **H7** — Billing cron charges using stale plan price (price changes since sub creation)
+  - Files: `prisma/schema.prisma`, `src/subscriptions/subscriptions.service.ts`, `src/billing/billing.service.ts`, `prisma/seed.ts`, `src/imports/imports.service.ts`
+  - Fix: added `MemberSubscription.priceKes` column (snapshot at subscription creation); billing cron now charges the snapshot. Migration `20260422130000_add_subscription_price_snapshot` adds column, backfills from current plan price, promotes to NOT NULL
+- [x] **H8** — Billing cron silently skips on decrypt failure (no alerting)
+  - Files: `prisma/schema.prisma`, `src/billing/billing.service.ts`
+  - Fix: on decrypt failure the cron now fires `Sentry.captureMessage(..., { level: 'warning' })` with subscription + member IDs, and stamps new `MemberSubscription.billingFlaggedAt` column so admin UI can surface these
 - [x] **H9** — Discount `maxUsesPerMember` count-then-check inside transaction but not atomic against concurrent redemption
   - Files: `src/discount-codes/discount-codes.service.ts`, new `DiscountRedemptionCounter` table
   - Fix: per-(code, member) counter row with conditional `updateMany({ uses < maxUsesPerMember })` increment — same atomic shape as `currentUses`. Migration `20260422120000_add_discount_redemption_counter` with backfill
@@ -79,31 +84,42 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 
 ## Medium (18)
 
-- [ ] **M1** — Throttler not proxy-aware; `app.set('trust proxy', ...)` missing in `main.ts`
-- [ ] **M2** — Swagger UI publicly exposed at `/api/docs` (no auth gate)
-  - File: `src/main.ts:101`
-  - Fix: gate behind Basic Auth or disable in production
+- [x] **M1** — Throttler not proxy-aware; `app.set('trust proxy', ...)` missing in `main.ts`
+  - Files: `src/main.ts`, `src/common/config/app.config.ts`
+  - Fix: `TRUST_PROXY_HOPS` env-configurable field (default `1`) wired via `app.set('trust proxy', hops)`; throttler now keyed by real client IP
+- [x] **M2** — Swagger UI publicly exposed at `/api/docs` (no auth gate)
+  - Files: `src/main.ts`, new `src/common/middleware/swagger-basic-auth.middleware.ts`
+  - Fix: outside `NODE_ENV=development|test`, `/api/docs` and `/api/docs-json` gated behind Basic Auth (reuses `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD`, timing-safe compare). If creds are missing in prod-like envs, Swagger is disabled entirely rather than served open
 - [ ] **M3** — JWT invalidation blocklist check has race with token issuance
 - [ ] **M4** — No refresh-token-reuse detection (stolen refresh token reusable until expiry)
-- [ ] **M5** — Login response timing enumerates valid emails
-  - Fix: constant-time compare path; same response time on hit/miss
+- [x] **M5** — Login response timing enumerates valid emails
+  - File: `src/auth/auth.service.ts`
+  - Fix: on user-not-found (or soft-deleted) path, now runs `bcrypt.compare` against a module-level dummy hash so both branches spend ~equal time. Error message + audit log unchanged
 - [ ] **M6** — `POST /discount-codes/validate` leaks existence/state via distinct error messages
 - [ ] **M7** — Trainer roster visible to MEMBER role (should be need-to-know)
 - [ ] **M8** — Soft-delete leaves PII (email, phone, displayPicture) on User row indefinitely
 - [ ] **M9** — Deletion approve/cancel endpoints race (member cancels while admin approves)
-- [ ] **M10** — WebSocket gateway CORS origin `*`
+- [x] **M10** — WebSocket gateway CORS origin `*`
+  - File: `src/analytics/activity.gateway.ts`
+  - Fix: CORS origin now an explicit allowlist from `ADMIN_URL` (comma-separated, default `http://localhost:3001`) with `credentials: true`. Native mobile clients (no Origin header) unaffected
 - [ ] **M11** — Goal title/description rendered by mobile — HTML/markdown injection possible
 - [ ] **M12** — Admin-created user welcome email is phishing surface (temp password in plaintext)
-- [ ] **M13** — Webhook returns 200 on internal failure (Paystack stops retrying)
+- [x] **M13** — Webhook returns 200 on internal failure (Paystack stops retrying)
+  - File: `src/payments/payments.service.ts`
+  - Fix: post-claim work wrapped in try/catch that logs and rethrows — Paystack now sees 5xx and retries. Signature-invalid (400) and idempotent-no-op (200) paths unchanged
 - [x] **M14** — Attendance streak update is non-atomic across multi-entrance check-ins
   - File: `src/attendance/attendance.service.ts`
   - Fix: `attendance.create` now inside `$transaction`, relies on `@@unique([memberId, checkInDate])` as atomic gate; `P2002` catch routes to no-op "already checked in today"; streak upsert guarded by `lastCheckInDate !== today`; activity/push/milestone events deferred to post-commit
 - [x] **M15** — Goal generation state machine (`GENERATING` → `READY`/`FAILED`) transitions outside transaction
   - Files: `src/goals/listeners/goal-generation.listener.ts`, `src/goals/goals.cron.ts` (sweeper was already correct)
   - Fix: listener wraps plan items + milestones + transition in one `$transaction`; atomic `goal.updateMany({ generationStatus: 'GENERATING' })` state-guard; `GenerationRaceLostError` rolls back the tx if sweeper already claimed; READY push deferred to post-commit
-- [ ] **M16** — Billing cron not replica-safe (running two instances double-charges)
+- [x] **M16** — Billing cron not replica-safe (running two instances double-charges)
+  - File: `src/billing/billing.service.ts`
+  - Fix: all five billing crons wrapped in `pg_try_advisory_lock` — only one replica runs each cycle; lock released in a finally clause so crashes don't leave locks held
 - [ ] **M17** — License grace period trusts local clock (7-day window manipulatable)
-- [ ] **M18** — Prisma SSL option `rejectUnauthorized: false` in prod config
+- [x] **M18** — Prisma SSL option `rejectUnauthorized: false` in prod config
+  - Files: `src/prisma/prisma.service.ts`, `prisma/seed.ts`
+  - Fix: `rejectUnauthorized` is now `true` in production (TLS cert validation enforced), `false` elsewhere for dev self-signed setups. Ops follow-up: if prod DB uses a self-signed cert, bundle the CA and append `sslrootcert=/path/to/ca.pem` to `DATABASE_URL`
 
 ## Low (7)
 
@@ -144,5 +160,19 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 - 2026-04-22 — H11 atomic PENDING-subscription cleanup cron — (uncommitted, PR 2)
 - 2026-04-22 — H12 gym-class enrollment capacity via counter column — (uncommitted, PR 2, **migration**)
 - 2026-04-22 — H13 referral reward moved into webhook tx with atomic claim — (uncommitted, PR 2)
-- 2026-04-22 — M14 atomic attendance check-in + streak + deferred events — (uncommitted, PR 2)
-- 2026-04-22 — M15 atomic goal generation state machine in listener — (uncommitted, PR 2)
+- 2026-04-22 — M14 atomic attendance check-in + streak + deferred events — 73243d5 (PR 2)
+- 2026-04-22 — M15 atomic goal generation state machine in listener — 73243d5 (PR 2)
+- 2026-04-22 — H1 Basic Auth timing-safe compare — (uncommitted, PR 3)
+- 2026-04-22 — H2 Basic Auth fail-closed + boot-time enforcement — (uncommitted, PR 3)
+- 2026-04-22 — H3 audit interceptor deep-redacts sensitive body keys — (uncommitted, PR 3)
+- 2026-04-22 — H4 Sentry user context drops email, keeps id+role — (uncommitted, PR 3)
+- 2026-04-22 — H5 mustChangePassword enforced via JwtAuthGuard with decorator opt-out — (uncommitted, PR 3)
+- 2026-04-22 — H7 priceKes snapshot at subscription creation + billed from snapshot — (uncommitted, PR 3, **migration**)
+- 2026-04-22 — H8 billing decrypt failure now alerts on Sentry + flags subscription — (uncommitted, PR 3)
+- 2026-04-22 — M1 trust proxy hops + throttler keyed on real client IP — (uncommitted, PR 3)
+- 2026-04-22 — M2 Swagger UI gated behind Basic Auth outside dev/test — (uncommitted, PR 3)
+- 2026-04-22 — M5 login timing parity via dummy bcrypt compare on miss — (uncommitted, PR 3)
+- 2026-04-22 — M10 WebSocket CORS narrowed to ADMIN_URL allowlist — (uncommitted, PR 3)
+- 2026-04-22 — M13 webhook propagates 5xx on post-claim failures (Paystack retries) — (uncommitted, PR 3)
+- 2026-04-22 — M16 billing crons wrapped in pg advisory lock (replica-safe) — (uncommitted, PR 3)
+- 2026-04-22 — M18 Prisma SSL cert validation enforced in production — (uncommitted, PR 3)

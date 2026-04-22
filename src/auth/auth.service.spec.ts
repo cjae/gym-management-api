@@ -18,6 +18,22 @@ import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
 import { OnboardingDto } from './dto/onboarding.dto';
 
+// bcrypt is a native binding whose exports are non-configurable, so
+// jest.spyOn / Object.defineProperty can't replace its members at runtime.
+// Wrap the compare function in a Jest mock via the module factory so we can
+// inspect call args while delegating to the real implementation.
+jest.mock('bcrypt', () => {
+  const actual = jest.requireActual<typeof import('bcrypt')>('bcrypt');
+  return {
+    ...actual,
+    compare: jest.fn((password: string, hash: string) =>
+      actual.compare(password, hash),
+    ),
+  };
+});
+
+const bcryptCompareMock = bcrypt.compare as unknown as jest.Mock;
+
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: DeepMockProxy<PrismaClient>;
@@ -190,6 +206,66 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'test@test.com', password: 'password123' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('runs bcrypt.compare against a dummy hash when email does not exist (timing parity)', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      bcryptCompareMock.mockClear();
+
+      await expect(
+        service.login({ email: 'nobody@test.com', password: 'whatever' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // bcrypt.compare MUST be called even on unknown email so the response
+      // time matches the wrong-password branch (prevents email enumeration).
+      expect(bcryptCompareMock).toHaveBeenCalledTimes(1);
+      const [submittedPassword, hashArg] = bcryptCompareMock.mock.calls[0];
+      expect(submittedPassword).toBe('whatever');
+      // The dummy hash must be a valid bcrypt hash (starts with $2a/$2b/$2y).
+      expect(hashArg).toMatch(/^\$2[aby]\$/);
+    });
+
+    it('runs bcrypt.compare against a dummy hash when user is soft-deleted (timing parity)', async () => {
+      const realUserHash = await bcrypt.hash('password123', 10);
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'deleted@test.com',
+        password: realUserHash,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        deletedAt: new Date(),
+      } as any);
+      bcryptCompareMock.mockClear();
+
+      await expect(
+        service.login({
+          email: 'deleted@test.com',
+          password: 'password123',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(bcryptCompareMock).toHaveBeenCalledTimes(1);
+      const [, hashArg] = bcryptCompareMock.mock.calls[0];
+      // Must compare against the dummy hash, NOT the real user's hash —
+      // we short-circuit on deletedAt before reaching real-user bcrypt.
+      expect(hashArg).toMatch(/^\$2[aby]\$/);
+      expect(hashArg).not.toBe(realUserHash);
+    });
+
+    it('still emits LOGIN_FAILED audit with userId=null for unknown email', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.login({ email: 'nobody@test.com', password: 'x' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(mockAuditLogService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: null,
+          action: 'LOGIN_FAILED',
+          metadata: { email: 'nobody@test.com' },
+        }),
+      );
     });
   });
 

@@ -115,3 +115,94 @@ Flagged by the implementing agents, tracked separately:
 - `goal-generation.listener.spec.ts:130` has a pre-existing `no-useless-catch` lint error unrelated to the audit.
 
 ---
+
+## PR 3 — Data exposure / hygiene (H1–H5, H7, H8, M1, M2, M5, M10, M13, M16, M18)
+
+**Shipped:** 2026-04-22
+**Findings fixed:** 5 High + 9 Medium. Hardening of auth, diagnostics, billing, bootstrap, and I/O resilience. All **Critical + High** now complete (17/17).
+
+### API contract changes (flag to mobile/admin teams)
+
+1. **New `403 Forbidden` from `JwtAuthGuard` when `mustChangePassword=true`.**
+   Admin-created users (temp-password flow) now receive:
+   ```
+   403 { "message": "Password change required. Please change your temporary password to continue." }
+   ```
+   on every authenticated endpoint **except** the allowlist: `GET /auth/me`, `PATCH /auth/change-password`, `POST /auth/logout`. Mobile and admin clients must catch this error and route the user to the change-password screen. Previously the flag was advisory-only (surfaced in `TokenResponseDto.mustChangePassword`) — now it's enforced server-side.
+2. **JWT payload gains `mustChangePassword: boolean` claim** on both access and refresh tokens. Clients already receive this field in the response body — the claim is additive, no decoding change required.
+3. **WebSocket `/activity` no longer accepts connections from arbitrary origins.** Browser clients must connect from an origin listed in `ADMIN_URL` (comma-separated). Native mobile apps (React Native / Expo) send no Origin header and are unaffected.
+4. **Swagger UI (`/api/docs`, `/api/docs-json`) requires Basic Auth** in staging/production. Reuses the existing `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` creds. Dev/test remain open.
+
+### Operational / deployment changes
+
+**One new Prisma migration** — must run before the new code ships. Includes a data backfill.
+
+| Migration | Change | Deploy impact |
+|---|---|---|
+| `20260422130000_add_subscription_price_snapshot` | Adds `MemberSubscription.priceKes Float` (required, backfilled from `SubscriptionPlan.price`) and `MemberSubscription.billingFlaggedAt DateTime?` | Backfill scales with active-subscription count. Safe to run online; adds-only + single UPDATE. Run before code deploy — new code requires the column. |
+
+| Change | Action required |
+|---|---|
+| `BASIC_AUTH_USER` + `BASIC_AUTH_PASSWORD` now required outside dev/test | Set in staging, production, preview. App **throws at boot** if either is missing or empty. Mirrors JWT/ENCRYPTION_KEY pattern from PR 1. |
+| `TRUST_PROXY_HOPS` env var (optional, default `1`) | Set to match your reverse-proxy topology. `1` is safe for a single proxy (Nginx, Heroku router). Behind multiple proxy layers (e.g., CloudFront → ALB → app), set to `2`. Too low: rate-limiter under-keys; too high: clients can spoof `X-Forwarded-For`. |
+| `NODE_ENV=production` now enforces strict Prisma SSL (`rejectUnauthorized: true`) | If the prod Postgres uses a self-signed cert, connections will start failing. **Ops follow-up:** bundle the CA and append `sslrootcert=/path/to/ca.pem` to `DATABASE_URL`. Staging / non-prod still skip validation. |
+
+**Deploy checklist for PR 3:**
+- [ ] Confirm `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` are non-empty in prod & staging
+- [ ] Set `TRUST_PROXY_HOPS` to match proxy depth (default `1` is correct for most deploys)
+- [ ] If prod DB uses a self-signed TLS cert: update `DATABASE_URL` with `sslrootcert=...` before deploying, otherwise connections will fail
+- [ ] Run `npx prisma migrate deploy` on staging → verify backfilled `priceKes` matches expected values
+- [ ] Run same on production, then deploy the new application code
+- [ ] Notify mobile/admin teams: handle new `403` from admin-created users, route to change-password screen
+
+### Subtle behavior changes (visible to ops / support — flag to teams)
+
+1. **Admin changing a plan's price no longer affects existing subscribers.** `priceKes` is snapshotted on each subscription at creation time. To change what a current subscriber pays, cancel and re-subscribe (or admin creates a new subscription). Backfilled historical rows were stamped with the plan's price **at migration time** — mid-flight plan-price edits from before this deploy are baked in at that value.
+2. **Billing crons alert on Sentry when a subscription's `paystackAuthorizationCode` fails to decrypt.** `Sentry.captureMessage(level: warning)` + `billingFlaggedAt` timestamp is set on the subscription. Admin UI should grow a filter on `billingFlaggedAt IS NOT NULL` so ops can reach out to flagged members.
+3. **Paystack webhook now retries on internal failures.** Previously, exceptions after the atomic claim were swallowed (200). Now they propagate as 500 and Paystack retries. Expect more webhook retry traffic when the DB/downstream flaps — this is correct, the retry hits the idempotent claim gate. Post-activation push/email failures remain best-effort (still swallowed, not retried).
+4. **Running 2+ API replicas on the same billing schedule is now safe.** All five billing crons (card renewals, overdue expiry, mobile-money reminders, birthday wishes, auto-unfreeze) acquire a PostgreSQL advisory lock. Second replica hitting a held lock returns immediately. Not applied to other crons in this PR (see audit-tracker follow-ups).
+5. **Login response time is now uniform.** Previously, requests for unknown emails returned fast (no bcrypt call); known emails ran bcrypt (~100ms). Now both paths run bcrypt (against a dummy hash on the miss path) so response time doesn't leak email existence. The `LOGIN_FAILED` audit log with `userId: null` still fires for unknown emails — no change there.
+6. **Rate limiter now keys on real client IP, not proxy IP.** If your rate-limit dashboards suddenly show per-IP buckets instead of one hot bucket, that's the `trust proxy` fix working. Legitimate clients hit their throttle ceiling independently.
+7. **Audit log metadata no longer contains raw passwords, tokens, or card references.** Sensitive keys (`password`, `token`, `cvv`, `paystackAuthorizationCode`, etc.) are replaced with `'[REDACTED]'` before persisting. Audit consumers reading these fields get a string literal, not the real value — adjust any downstream processors accordingly (unlikely any exist).
+8. **Sentry events no longer tag errors with user email.** `Sentry.setUser` now sends `{ id, role }` only. If your Sentry alerting or audit workflows grouped on email, switch to `id`.
+
+### Files changed (19 files + 1 migration, ~1,300 insertions)
+
+**Code:**
+- `src/auth/strategies/basic.strategy.ts` — H1, H2
+- `src/auth/auth.service.ts` — M5, H5 (JWT payload)
+- `src/auth/strategies/jwt.strategy.ts` — H5
+- `src/auth/guards/jwt-auth.guard.ts` — H5 (enforcement)
+- `src/auth/auth.controller.ts` — H5 (decorator application)
+- `src/auth/decorators/allow-while-must-change-password.decorator.ts` — H5 (new)
+- `src/audit-logs/audit.interceptor.ts` — H3
+- `src/common/utils/redact-sensitive.ts` — H3 (new)
+- `src/sentry/sentry-user.interceptor.ts` — H4
+- `src/billing/billing.service.ts` — H7 billing, H8 alerting, M16 locks
+- `src/subscriptions/subscriptions.service.ts` — H7 price snapshot
+- `prisma/seed.ts`, `src/imports/imports.service.ts` — H7 (missed creation sites)
+- `src/common/config/app.config.ts` — M1 (trust proxy config)
+- `src/main.ts` — M1 trust proxy, M2 Swagger gate
+- `src/common/middleware/swagger-basic-auth.middleware.ts` — M2 (new)
+- `src/prisma/prisma.service.ts` — M18
+- `src/analytics/activity.gateway.ts` — M10
+- `src/payments/payments.service.ts` — M13
+
+**Schema:**
+- `prisma/schema.prisma` — `MemberSubscription.priceKes`, `MemberSubscription.billingFlaggedAt`
+
+**Config:**
+- `src/common/config/auth.config.ts` — H2 BASIC_AUTH boot enforcement
+
+**Migrations:**
+- `prisma/migrations/20260422130000_add_subscription_price_snapshot/`
+
+**Specs:** matching `.spec.ts` for every modified file; new specs for the new middleware, decorator, and utilities.
+
+### Known follow-ups (not in this PR)
+
+- **Other crons could benefit from M16's advisory-lock pattern**: payments cleanup (`payments.service.ts`), goals sweeper/weekly-pulse/weekly-digest (`goals/goals.cron.ts`), member-tags recompute, QR rotation, imports processor, licensing phone-home. Currently only billing is protected. Several others are already idempotent by design (e.g., subscription cleanup uses atomic `deleteMany` claims from H11).
+- **H7 snapshotting is at subscription-creation time, not at first-charge time**. If you want the discount-applied amount as the locked-in renewal price, you'd need a second snapshot on first successful payment. Current design: renewals always charge the plan's signup price (no discount re-applied).
+- **`sslrootcert` wiring is ops' responsibility** — M18 enforces `rejectUnauthorized: true` in prod, but if prod DB uses a self-signed cert you must bundle the CA and update `DATABASE_URL` before the deploy, otherwise connections fail.
+
+---

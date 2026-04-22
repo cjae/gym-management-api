@@ -289,172 +289,200 @@ export class PaymentsService {
         return { received: true };
       }
 
-      // Claim succeeded — this invocation owns the side effects.
-      const updatedPayment = await this.prisma.payment.findUnique({
-        where: { id: paymentId },
-        include: {
-          subscription: {
-            include: {
-              primaryMember: {
-                select: {
-                  id: true,
-                  email: true,
-                  firstName: true,
-                  lastName: true,
+      // Claim succeeded — this invocation owns the side effects. Wrap the
+      // post-claim work (activation, referral reward, activity event) in a
+      // try/catch that rethrows. Returning 200 here on an internal failure
+      // would make Paystack consider the webhook delivered and stop
+      // retrying, silently dropping the activation. Rethrowing lets Nest
+      // return 500 so Paystack retries; the activation tx is atomic and
+      // guarded by status filters, so a retry sees the right state and
+      // proceeds (or becomes a no-op via the claim gate).
+      try {
+        const updatedPayment = await this.prisma.payment.findUnique({
+          where: { id: paymentId },
+          include: {
+            subscription: {
+              include: {
+                primaryMember: {
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
-
-      if (updatedPayment) {
-        const member = updatedPayment.subscription.primaryMember;
-        const memberName = `${member.firstName} ${member.lastName}`;
-        this.eventEmitter.emit('activity.payment', {
-          type: 'payment',
-          description: `${memberName} made a payment of ${updatedPayment.amount} ${updatedPayment.currency}`,
-          timestamp: new Date().toISOString(),
-          metadata: {
-            paymentId,
-            amount: updatedPayment.amount,
-            status: 'PAID',
-          },
         });
-      }
 
-      if (subscriptionId) {
-        // Activation + referral reward run inside a single transaction so
-        // either both commit or neither does. Out-of-tx side effects
-        // (push notifications, emails, activity events) are captured in
-        // `afterCommit` and flushed below only if the tx commits — a
-        // server crash between claim and reward can't silently drop the
-        // reward anymore.
-        const afterCommit: Array<() => void> = [];
+        if (updatedPayment) {
+          const member = updatedPayment.subscription.primaryMember;
+          const memberName = `${member.firstName} ${member.lastName}`;
+          this.eventEmitter.emit('activity.payment', {
+            type: 'payment',
+            description: `${memberName} made a payment of ${updatedPayment.amount} ${updatedPayment.currency}`,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              paymentId,
+              amount: updatedPayment.amount,
+              status: 'PAID',
+            },
+          });
+        }
 
-        await this.prisma.$transaction(async (tx) => {
-          const subscription = await tx.memberSubscription.findUnique({
-            where: { id: subscriptionId },
-            include: { plan: true },
+        if (subscriptionId) {
+          // Activation + referral reward run inside a single transaction so
+          // either both commit or neither does. Out-of-tx side effects
+          // (push notifications, emails, activity events) are captured in
+          // `afterCommit` and flushed below only if the tx commits — a
+          // server crash between claim and reward can't silently drop the
+          // reward anymore.
+          const afterCommit: Array<() => void> = [];
+
+          await this.prisma.$transaction(async (tx) => {
+            const subscription = await tx.memberSubscription.findUnique({
+              where: { id: subscriptionId },
+              include: { plan: true },
+            });
+
+            if (!subscription) {
+              // Subscription was cleaned up (H11 race — cleanup cron
+              // deleted the PENDING sub before this activation could run).
+              // The payment is already marked PAID by the atomic claim
+              // above, so we log loudly and return 200 so Paystack doesn't
+              // retry. Ops must reconcile the paid-but-no-subscription
+              // case manually.
+              this.logger.error(
+                `Paid payment ${paymentId} references subscription ${subscriptionId} that no longer exists — manual reconciliation required`,
+              );
+              return;
+            }
+
+            // If subscription is still active with remaining time, extend
+            // from current endDate so early renewals don't lose leftover
+            // days.
+            const now = new Date();
+            const baseDate =
+              subscription.status === 'ACTIVE' && subscription.endDate > now
+                ? subscription.endDate
+                : now;
+            const nextBillingDate = getNextBillingDate(
+              baseDate,
+              subscription.plan.billingInterval,
+            );
+
+            const updateData: Prisma.MemberSubscriptionUpdateManyMutationInput =
+              {
+                status: 'ACTIVE',
+                endDate: nextBillingDate,
+                nextBillingDate,
+                frozenDaysUsed: 0,
+                freezeCount: 0,
+                // Clear discount fields after first payment so renewals
+                // charge full price
+                discountAmount: null,
+                originalPlanPrice: null,
+              };
+
+            // Update subscription to the online payment method so billing
+            // cron picks it up for auto-charges / reminders going forward.
+            const channelToMethod: Record<string, PaymentMethod> = {
+              card: PaymentMethod.CARD,
+              mobile_money: PaymentMethod.MOBILE_MONEY,
+              bank_transfer: PaymentMethod.BANK_TRANSFER,
+            };
+            if (channel && channelToMethod[channel]) {
+              updateData.paymentMethod = channelToMethod[channel];
+            }
+
+            // Enable auto-renewal for all successful payments so the
+            // billing cron can auto-charge card users and send reminders
+            // to non-card users.
+            updateData.autoRenew = true;
+
+            // Save card authorization for future auto-charges. We refuse
+            // to persist the raw code without encryption — if no key is
+            // configured (dev/test), we skip the field entirely rather
+            // than storing plaintext. Production config enforces
+            // ENCRYPTION_KEY.
+            if (channel === 'card' && authorization?.authorization_code) {
+              if (this.encryptionKey) {
+                updateData.paystackAuthorizationCode = encrypt(
+                  authorization.authorization_code,
+                  this.encryptionKey,
+                );
+              } else {
+                this.logger.warn(
+                  `Skipping paystackAuthorizationCode persistence for subscription ${subscriptionId} — no ENCRYPTION_KEY configured`,
+                );
+              }
+            }
+
+            // Status-guarded `updateMany` so a concurrent cleanup cron
+            // that deleted this sub between the findUnique above and here
+            // produces count=0 rather than a P2025 "record not found"
+            // crash. count=0 => webhook lost the race cleanly.
+            const activation = await tx.memberSubscription.updateMany({
+              where: { id: subscriptionId },
+              data: updateData,
+            });
+
+            if (activation.count === 0) {
+              this.logger.error(
+                `Subscription ${subscriptionId} disappeared between read and activation — paid payment ${paymentId} requires manual reconciliation`,
+              );
+              return;
+            }
+
+            // Process referral reward inside the same tx. An atomic
+            // `referral.updateMany({ id, status: 'PENDING' })` claim
+            // prevents double-rewarding on duplicate webhooks; if the
+            // surrounding tx rolls back, the referral claim rolls back
+            // with it.
+            await this.processReferralReward(
+              tx,
+              subscription.primaryMemberId,
+              afterCommit,
+            );
           });
 
-          if (!subscription) {
-            // Subscription was cleaned up (H11 race — cleanup cron
-            // deleted the PENDING sub before this activation could run).
-            // The payment is already marked PAID by the atomic claim
-            // above, so we log loudly and return 200 so Paystack doesn't
-            // retry. Ops must reconcile the paid-but-no-subscription
-            // case manually.
-            this.logger.error(
-              `Paid payment ${paymentId} references subscription ${subscriptionId} that no longer exists — manual reconciliation required`,
-            );
-            return;
-          }
-
-          // If subscription is still active with remaining time, extend
-          // from current endDate so early renewals don't lose leftover
-          // days.
-          const now = new Date();
-          const baseDate =
-            subscription.status === 'ACTIVE' && subscription.endDate > now
-              ? subscription.endDate
-              : now;
-          const nextBillingDate = getNextBillingDate(
-            baseDate,
-            subscription.plan.billingInterval,
-          );
-
-          const updateData: Prisma.MemberSubscriptionUpdateManyMutationInput = {
-            status: 'ACTIVE',
-            endDate: nextBillingDate,
-            nextBillingDate,
-            frozenDaysUsed: 0,
-            freezeCount: 0,
-            // Clear discount fields after first payment so renewals
-            // charge full price
-            discountAmount: null,
-            originalPlanPrice: null,
-          };
-
-          // Update subscription to the online payment method so billing
-          // cron picks it up for auto-charges / reminders going forward.
-          const channelToMethod: Record<string, PaymentMethod> = {
-            card: PaymentMethod.CARD,
-            mobile_money: PaymentMethod.MOBILE_MONEY,
-            bank_transfer: PaymentMethod.BANK_TRANSFER,
-          };
-          if (channel && channelToMethod[channel]) {
-            updateData.paymentMethod = channelToMethod[channel];
-          }
-
-          // Enable auto-renewal for all successful payments so the
-          // billing cron can auto-charge card users and send reminders
-          // to non-card users.
-          updateData.autoRenew = true;
-
-          // Save card authorization for future auto-charges. We refuse
-          // to persist the raw code without encryption — if no key is
-          // configured (dev/test), we skip the field entirely rather
-          // than storing plaintext. Production config enforces
-          // ENCRYPTION_KEY.
-          if (channel === 'card' && authorization?.authorization_code) {
-            if (this.encryptionKey) {
-              updateData.paystackAuthorizationCode = encrypt(
-                authorization.authorization_code,
-                this.encryptionKey,
-              );
-            } else {
-              this.logger.warn(
-                `Skipping paystackAuthorizationCode persistence for subscription ${subscriptionId} — no ENCRYPTION_KEY configured`,
+          // Tx committed — flush deferred side effects (push, email).
+          // These must not run inside the tx because network IO inside a
+          // tx holds DB connections and serializes on long operations.
+          // Individual side-effect failures are swallowed — the payment
+          // is already activated, a push/email failure shouldn't make
+          // Paystack retry (retry would hit the already-PAID claim gate
+          // and no-op anyway, but wasted work).
+          for (const fn of afterCommit) {
+            try {
+              fn();
+            } catch (err) {
+              this.logger.error(
+                `afterCommit side effect failed: ${err instanceof Error ? err.message : String(err)}`,
               );
             }
           }
-
-          // Status-guarded `updateMany` so a concurrent cleanup cron
-          // that deleted this sub between the findUnique above and here
-          // produces count=0 rather than a P2025 "record not found"
-          // crash. count=0 => webhook lost the race cleanly.
-          const activation = await tx.memberSubscription.updateMany({
-            where: { id: subscriptionId },
-            data: updateData,
-          });
-
-          if (activation.count === 0) {
-            this.logger.error(
-              `Subscription ${subscriptionId} disappeared between read and activation — paid payment ${paymentId} requires manual reconciliation`,
-            );
-            return;
-          }
-
-          // Process referral reward inside the same tx. An atomic
-          // `referral.updateMany({ id, status: 'PENDING' })` claim
-          // prevents double-rewarding on duplicate webhooks; if the
-          // surrounding tx rolls back, the referral claim rolls back
-          // with it.
-          await this.processReferralReward(
-            tx,
-            subscription.primaryMemberId,
-            afterCommit,
-          );
-        });
-
-        // Tx committed — flush deferred side effects (push, email).
-        // These must not run inside the tx because network IO inside a
-        // tx holds DB connections and serializes on long operations.
-        for (const fn of afterCommit) {
-          try {
-            fn();
-          } catch (err) {
-            this.logger.error(
-              `afterCommit side effect failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
         }
-      }
 
-      this.logger.log(
-        `Webhook charge.success processed for reference ${reference}`,
-      );
+        this.logger.log(
+          `Webhook charge.success processed for reference ${reference}`,
+        );
+      } catch (err) {
+        // Internal failure after the atomic claim. The claim already
+        // flipped the payment to PAID, but downstream activation/referral
+        // work threw. Rethrow so Nest returns 500 and Paystack retries;
+        // the retry will see the payment already PAID (claim.count === 0)
+        // and short-circuit to the idempotent no-op path. Any partial tx
+        // work rolled back because `$transaction` threw. Ops: expect
+        // Paystack retries on internal webhook errors, not dropped
+        // events.
+        this.logger.error(
+          `Post-claim webhook work failed for reference ${reference}: ${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+        throw err;
+      }
     }
 
     if (body.event === 'charge.failed') {

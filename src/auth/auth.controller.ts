@@ -33,6 +33,7 @@ import { BasicAuthGuard } from './guards/basic-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshAuthGuard } from './guards/jwt-refresh-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { AllowWhileMustChangePassword } from './decorators/allow-while-must-change-password.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { OnboardingDto } from './dto/onboarding.dto';
 import { CreateDeletionRequestDto } from './dto/create-deletion-request.dto';
@@ -114,6 +115,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @AllowWhileMustChangePassword()
   @ApiBearerAuth()
   @ApiOkResponse({
     type: AuthMeResponseDto,
@@ -154,6 +156,7 @@ export class AuthController {
 
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
+  @AllowWhileMustChangePassword()
   @ApiBearerAuth()
   @ApiOkResponse({
     type: MessageResponseDto,
@@ -169,6 +172,7 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
+  @AllowWhileMustChangePassword()
   @ApiBearerAuth()
   @ApiOkResponse({
     type: MessageResponseDto,
