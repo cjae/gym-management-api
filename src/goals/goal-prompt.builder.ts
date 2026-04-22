@@ -70,6 +70,8 @@ export const buildGoalPrompt = (input: GoalPromptInput): string => {
     input.priorGoalsAbandoned > input.priorGoalsCompleted;
   const showAttendanceMismatch =
     input.requestedFrequency != null &&
+    input.memberTenureMonths != null &&
+    input.memberTenureMonths >= 1 &&
     input.actualAttendanceLast4Weeks / 4 < input.requestedFrequency;
 
   return `

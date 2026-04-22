@@ -48,19 +48,40 @@ export class GoalGenerationListener {
       select: { createdAt: true },
     });
 
-    const attendanceFrom = new Date(
-      baseGoal.createdAt.getTime() - 28 * 24 * 60 * 60 * 1000,
+    // Attendance.checkInDate is @db.Date (UTC date-only). Normalize the window
+    // bounds to UTC midnight so we don't drop rows for check-ins on day boundaries.
+    const createdAtDateOnly = new Date(
+      Date.UTC(
+        baseGoal.createdAt.getUTCFullYear(),
+        baseGoal.createdAt.getUTCMonth(),
+        baseGoal.createdAt.getUTCDate(),
+      ),
     );
-    const attendanceTo = baseGoal.createdAt;
+    const attendanceFrom = new Date(
+      createdAtDateOnly.getTime() - 28 * 24 * 60 * 60 * 1000,
+    );
+    const attendanceTo = createdAtDateOnly;
 
     const goal = await this.prisma.goal.findUniqueOrThrow({
       where: { id: payload.goalId },
       include: {
         member: {
-          include: {
+          select: {
+            id: true,
+            createdAt: true,
+            birthday: true,
+            gender: true,
+            experienceLevel: true,
+            bodyweightKg: true,
+            heightCm: true,
+            sessionMinutes: true,
+            preferredTrainingDays: true,
+            sleepHoursAvg: true,
+            primaryMotivation: true,
+            injuryNotes: true,
             streak: true,
             subscriptionsOwned: {
-              where: { status: 'ACTIVE' },
+              where: { status: { in: ['ACTIVE', 'FROZEN'] } },
               include: { plan: { select: { name: true, isOffPeak: true } } },
               orderBy: { endDate: 'desc' },
               take: 1,
@@ -70,6 +91,7 @@ export class GoalGenerationListener {
                 checkInDate: { gte: attendanceFrom, lte: attendanceTo },
               },
               select: { id: true },
+              take: 100,
             },
             trainerAssignmentsAsMember: {
               where: { endDate: null },
@@ -134,9 +156,12 @@ export class GoalGenerationListener {
         )
       : null;
 
-    const memberTenureMonths = Math.floor(
-      (goal.createdAt.getTime() - member.createdAt.getTime()) /
-        (30 * 24 * 60 * 60 * 1000),
+    const memberTenureMonths = Math.max(
+      0,
+      (goal.createdAt.getUTCFullYear() - member.createdAt.getUTCFullYear()) *
+        12 +
+        (goal.createdAt.getUTCMonth() - member.createdAt.getUTCMonth()) -
+        (goal.createdAt.getUTCDate() < member.createdAt.getUTCDate() ? 1 : 0),
     );
 
     const firstSubscription = member.subscriptionsOwned[0];
@@ -271,12 +296,23 @@ export class GoalGenerationListener {
   }
 
   private async markFailed(goalId: string, err: Error) {
-    await this.prisma.goal.update({
-      where: { id: goalId },
-      data: {
-        generationStatus: 'FAILED',
-        generationError: err.message.slice(0, 1000),
-      },
-    });
+    try {
+      await this.prisma.goal.update({
+        where: { id: goalId },
+        data: {
+          generationStatus: 'FAILED',
+          generationError: err.message.slice(0, 1000),
+        },
+      });
+    } catch (updateErr) {
+      if (
+        updateErr instanceof Prisma.PrismaClientKnownRequestError &&
+        updateErr.code === 'P2025'
+      ) {
+        this.logger.warn(`Goal ${goalId} no longer exists; cannot mark failed`);
+        return;
+      }
+      throw updateErr;
+    }
   }
 }

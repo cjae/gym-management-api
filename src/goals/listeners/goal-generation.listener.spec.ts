@@ -320,20 +320,27 @@ describe('GoalGenerationListener', () => {
       );
 
       const findArgs = prisma.goal.findUniqueOrThrow.mock.calls[1][0];
-      const expectedGte = new Date(
-        baseGoal.createdAt.getTime() - 28 * 24 * 60 * 60 * 1000,
+      const expectedLte = new Date(
+        Date.UTC(
+          baseGoal.createdAt.getUTCFullYear(),
+          baseGoal.createdAt.getUTCMonth(),
+          baseGoal.createdAt.getUTCDate(),
+        ),
       );
-      const expectedLte = baseGoal.createdAt;
+      const expectedGte = new Date(
+        expectedLte.getTime() - 28 * 24 * 60 * 60 * 1000,
+      );
       expect(findArgs).toEqual(
         expect.objectContaining({
           include: expect.objectContaining({
             member: expect.objectContaining({
-              include: expect.objectContaining({
+              select: expect.objectContaining({
                 attendances: {
                   where: {
                     checkInDate: { gte: expectedGte, lte: expectedLte },
                   },
                   select: { id: true },
+                  take: 100,
                 },
               }),
             }),
@@ -408,7 +415,7 @@ describe('GoalGenerationListener', () => {
         expect.objectContaining({
           include: expect.objectContaining({
             member: expect.objectContaining({
-              include: expect.objectContaining({
+              select: expect.objectContaining({
                 goals: {
                   where: {
                     id: { not: 'g1' },
@@ -447,7 +454,7 @@ describe('GoalGenerationListener', () => {
         expect.objectContaining({
           include: expect.objectContaining({
             member: expect.objectContaining({
-              include: expect.objectContaining({
+              select: expect.objectContaining({
                 trainerAssignmentsAsMember: {
                   where: { endDate: null },
                   select: { id: true },
@@ -479,6 +486,97 @@ describe('GoalGenerationListener', () => {
       expect(prompt).not.toContain(
         'plans should complement trainer guidance, not replace it',
       );
+    });
+
+    it('does not leak password in member select', async () => {
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const findArgs = prisma.goal.findUniqueOrThrow.mock.calls[1][0] as {
+        include: { member: { select: Record<string, unknown> } };
+      };
+      const memberSelect = findArgs.include.member.select;
+      expect(memberSelect).toEqual(
+        expect.not.objectContaining({ password: true }),
+      );
+      expect(memberSelect).toEqual(
+        expect.objectContaining({
+          id: true,
+          createdAt: true,
+          birthday: true,
+          gender: true,
+          experienceLevel: true,
+          bodyweightKg: true,
+          heightCm: true,
+          sessionMinutes: true,
+          preferredTrainingDays: true,
+          sleepHoursAvg: true,
+          primaryMotivation: true,
+          injuryNotes: true,
+        }),
+      );
+    });
+
+    it('includes FROZEN subscriptions as active context', async () => {
+      prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
+      llm.generatePlan.mockResolvedValue(validLlmResponse);
+      stubTransaction();
+
+      await listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      });
+
+      const findArgs = prisma.goal.findUniqueOrThrow.mock.calls[1][0];
+      expect(findArgs).toEqual(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            member: expect.objectContaining({
+              select: expect.objectContaining({
+                subscriptionsOwned: expect.objectContaining({
+                  where: { status: { in: ['ACTIVE', 'FROZEN'] } },
+                }),
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it('swallows P2025 when marking a deleted goal as failed', async () => {
+    prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
+    llm.generatePlan.mockRejectedValue(new Error('LLM error'));
+    const p2025 = Object.assign(new Error('Record not found'), {
+      code: 'P2025',
+    });
+    Object.setPrototypeOf(
+      p2025,
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@prisma/client').Prisma.PrismaClientKnownRequestError.prototype,
+    );
+    prisma.goal.update.mockRejectedValue(p2025);
+
+    await expect(
+      listener.handle({
+        goalId: 'g1',
+        memberId: 'm1',
+        requestedFrequency: null,
+      }),
+    ).resolves.not.toThrow();
+
+    expect(emitter.emit).toHaveBeenCalledWith('goal.plan.failed', {
+      goalId: 'g1',
+      memberId: 'm1',
+      requestedFrequency: null,
     });
   });
 });

@@ -271,6 +271,27 @@ describe('buildGoalPrompt', () => {
         ...base,
         requestedFrequency: 5,
         actualAttendanceLast4Weeks: 4,
+        memberTenureMonths: 3,
+      });
+      expect(out).toContain('Use actual attendance as the honest baseline');
+    });
+
+    it('suppresses attendance-mismatch rule for brand-new members (tenure < 1 month)', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: 5,
+        actualAttendanceLast4Weeks: 0,
+        memberTenureMonths: 0,
+      });
+      expect(out).not.toContain('Use actual attendance as the honest baseline');
+    });
+
+    it('emits attendance-mismatch rule once tenure reaches 1 month', () => {
+      const out = buildGoalPrompt({
+        ...base,
+        requestedFrequency: 5,
+        actualAttendanceLast4Weeks: 4,
+        memberTenureMonths: 1,
       });
       expect(out).toContain('Use actual attendance as the honest baseline');
     });
