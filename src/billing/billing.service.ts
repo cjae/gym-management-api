@@ -162,9 +162,28 @@ export class BillingService {
         continue;
       }
 
-      const authCode = this.encryptionKey
-        ? decrypt(sub.paystackAuthorizationCode!, this.encryptionKey)
-        : sub.paystackAuthorizationCode!;
+      let authCode: string;
+      try {
+        // When no encryption key is configured (dev/test), the webhook path
+        // refuses to persist plaintext codes, so any stored value must be
+        // ciphertext. Decryption failures here indicate either a legacy
+        // plaintext row (from before the encryption-required fix) or
+        // tampered/corrupt data — in both cases we null the code so the
+        // member re-authorizes on next renewal rather than looping forever.
+        if (!this.encryptionKey) {
+          throw new Error('ENCRYPTION_KEY not configured');
+        }
+        authCode = decrypt(sub.paystackAuthorizationCode!, this.encryptionKey);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to decrypt paystackAuthorizationCode for subscription ${sub.id}; clearing stored code. Member will need to re-authorize. Error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        await this.prisma.memberSubscription.update({
+          where: { id: sub.id },
+          data: { paystackAuthorizationCode: null },
+        });
+        continue;
+      }
 
       await this.paymentsService.chargeAuthorization(
         sub.id,

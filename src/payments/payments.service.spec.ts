@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -235,11 +236,11 @@ describe('PaymentsService', () => {
       };
       const { raw, signature } = buildWebhookPayload(body);
 
-      // No duplicate reference
-      prisma.payment.findFirst.mockResolvedValue(null);
+      // Atomic claim succeeds
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
-      // Payment update
-      prisma.payment.update.mockResolvedValue({
+      // Post-claim read for activity event
+      prisma.payment.findUnique.mockResolvedValue({
         id: paymentId,
         amount: 2000,
         currency: 'KES',
@@ -299,9 +300,9 @@ describe('PaymentsService', () => {
       };
       const { raw, signature } = buildWebhookPayload(body);
 
-      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
-      prisma.payment.update.mockResolvedValue({
+      prisma.payment.findUnique.mockResolvedValue({
         id: paymentId,
         amount: 2500,
         currency: 'KES',
@@ -356,9 +357,9 @@ describe('PaymentsService', () => {
       };
       const { raw, signature } = buildWebhookPayload(body);
 
-      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
-      prisma.payment.update.mockResolvedValue({
+      prisma.payment.findUnique.mockResolvedValue({
         id: paymentId,
         amount: 2500,
         currency: 'KES',
@@ -398,6 +399,172 @@ describe('PaymentsService', () => {
       expect(
         Math.abs(newEndDate.getTime() - oneMonthFromNow.getTime()),
       ).toBeLessThan(60_000);
+    });
+
+    // C2 — timing-safe signature comparison
+    describe('signature verification (C2)', () => {
+      it('rejects a webhook with an invalid (same-length) signature', async () => {
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+        // A valid-hex string of same length as a SHA-512 hex digest (128 chars),
+        // but not the right digest.
+        const badSignature = 'a'.repeat(128);
+
+        await expect(service.handleWebhook(raw, badSignature)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('rejects a signature of different length with BadRequest (not TypeError)', async () => {
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+        // Wrong-length signature must not crash timingSafeEqual — we short-
+        // circuit before calling it.
+        const shortSignature = 'deadbeef';
+
+        await expect(
+          service.handleWebhook(raw, shortSignature),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('rejects an empty signature with BadRequest', async () => {
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+
+        await expect(service.handleWebhook(raw, '')).rejects.toThrow(
+          BadRequestException,
+        );
+      });
+    });
+
+    // C3 — atomic idempotency (no double side effects on concurrent webhooks)
+    describe('atomic idempotency (C3)', () => {
+      function buildSuccessWebhook() {
+        const subscriptionId = 'sub-race';
+        const paymentId = 'pay-race';
+        const reference = 'ref_race';
+        const body = {
+          event: 'charge.success',
+          data: {
+            reference,
+            metadata: { subscriptionId, paymentId },
+            channel: 'mobile_money',
+          },
+        };
+        return { subscriptionId, paymentId, reference, body };
+      }
+
+      it('runs side effects when updateMany claims the payment (count=1)', async () => {
+        const { subscriptionId, paymentId, body } = buildSuccessWebhook();
+        const { raw, signature } = buildWebhookPayload(body);
+
+        prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.payment.findUnique.mockResolvedValue({
+          id: paymentId,
+          amount: 2500,
+          currency: 'KES',
+          subscription: {
+            primaryMember: {
+              id: 'user-race',
+              email: 'race@test.com',
+              firstName: 'Race',
+              lastName: 'Winner',
+            },
+          },
+        } as any);
+        prisma.memberSubscription.findUnique.mockResolvedValue({
+          id: subscriptionId,
+          status: 'PENDING',
+          primaryMemberId: 'user-race',
+          endDate: new Date(),
+          plan: { price: 2500, billingInterval: 'MONTHLY' },
+        } as any);
+        prisma.memberSubscription.update.mockResolvedValue({} as any);
+        prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.handleWebhook(raw, signature);
+
+        expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+          where: { id: paymentId, status: 'PENDING' },
+          data: expect.objectContaining({ status: 'PAID' }),
+        });
+        expect(prisma.memberSubscription.update).toHaveBeenCalled();
+        // Referral claim path is exercised (even if count is 0 it's called)
+        expect(prisma.referral.updateMany).toHaveBeenCalled();
+        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+          'activity.payment',
+          expect.any(Object),
+        );
+      });
+
+      it('skips all side effects on duplicate webhook (count=0)', async () => {
+        const { body } = buildSuccessWebhook();
+        const { raw, signature } = buildWebhookPayload(body);
+
+        // Simulate the losing side of the race — another invocation already
+        // flipped this payment from PENDING to PAID.
+        prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+        const result = await service.handleWebhook(raw, signature);
+
+        expect(result).toEqual({ received: true });
+        // No subscription lookup, no subscription update, no referral claim,
+        // no activity event.
+        expect(prisma.payment.findUnique).not.toHaveBeenCalled();
+        expect(prisma.memberSubscription.findUnique).not.toHaveBeenCalled();
+        expect(prisma.memberSubscription.update).not.toHaveBeenCalled();
+        expect(prisma.referral.updateMany).not.toHaveBeenCalled();
+        expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('simulated concurrent invocations: only one applies side effects', async () => {
+        const { subscriptionId, paymentId, body } = buildSuccessWebhook();
+        const { raw, signature } = buildWebhookPayload(body);
+
+        // First call wins the race, second loses.
+        prisma.payment.updateMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 });
+
+        prisma.payment.findUnique.mockResolvedValue({
+          id: paymentId,
+          amount: 2500,
+          currency: 'KES',
+          subscription: {
+            primaryMember: {
+              id: 'user-race',
+              email: 'race@test.com',
+              firstName: 'Race',
+              lastName: 'Winner',
+            },
+          },
+        } as any);
+        prisma.memberSubscription.findUnique.mockResolvedValue({
+          id: subscriptionId,
+          status: 'PENDING',
+          primaryMemberId: 'user-race',
+          endDate: new Date(),
+          plan: { price: 2500, billingInterval: 'MONTHLY' },
+        } as any);
+        prisma.memberSubscription.update.mockResolvedValue({} as any);
+        prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+        await Promise.all([
+          service.handleWebhook(raw, signature),
+          service.handleWebhook(raw, signature),
+        ]);
+
+        // updateMany called twice (both invocations attempted the claim)
+        expect(prisma.payment.updateMany).toHaveBeenCalledTimes(2);
+        // But subscription update ran exactly once — the winner's path.
+        expect(prisma.memberSubscription.update).toHaveBeenCalledTimes(1);
+        // Exactly one activity event fired.
+        expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
+        // Referral claim attempted exactly once (side-effect path gated by count).
+        expect(prisma.referral.updateMany).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

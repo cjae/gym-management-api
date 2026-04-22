@@ -238,7 +238,22 @@ export class PaymentsService {
       .createHmac('sha512', this.paystackSecretKey)
       .update(rawBody)
       .digest('hex');
-    if (hash !== signature) throw new BadRequestException('Invalid signature');
+
+    // Timing-safe signature comparison. `timingSafeEqual` throws on length
+    // mismatch, so short-circuit that case with the same BadRequest response.
+    const hashBuffer = Buffer.from(hash, 'hex');
+    let signatureBuffer: Buffer;
+    try {
+      signatureBuffer = Buffer.from(signature ?? '', 'hex');
+    } catch {
+      throw new BadRequestException('Invalid signature');
+    }
+    if (
+      hashBuffer.length !== signatureBuffer.length ||
+      !crypto.timingSafeEqual(hashBuffer, signatureBuffer)
+    ) {
+      throw new BadRequestException('Invalid signature');
+    }
 
     const body: PaystackWebhookBody = JSON.parse(
       rawBody.toString(),
@@ -249,42 +264,51 @@ export class PaymentsService {
       const subscriptionId = metadata?.subscriptionId;
       const paymentId = metadata?.paymentId;
 
-      // Idempotency: skip if this reference was already processed
-      if (reference) {
-        const existing = await this.prisma.payment.findFirst({
-          where: { paystackReference: reference },
-        });
-        if (existing) {
-          this.logger.warn(
-            `Duplicate webhook for reference ${reference}, skipping`,
-          );
-          return { received: true };
-        }
+      if (!paymentId) {
+        this.logger.warn(
+          `charge.success webhook missing paymentId metadata (reference=${reference})`,
+        );
+        return { received: true };
       }
 
-      if (paymentId) {
-        const updatedPayment = await this.prisma.payment.update({
-          where: { id: paymentId },
-          data: {
-            status: 'PAID',
-            paystackReference: reference,
-          },
-          include: {
-            subscription: {
-              include: {
-                primaryMember: {
-                  select: {
-                    id: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true,
-                  },
+      // Atomically claim this payment. `updateMany` filters on both the
+      // paymentId and the pre-transition PENDING status. Two concurrent
+      // webhooks for the same reference race here — only one will see
+      // count === 1; the other sees 0 and exits without re-applying side
+      // effects. This replaces the prior check-then-write pattern that
+      // could double-activate subscriptions / double-reward referrals.
+      const claim = await this.prisma.payment.updateMany({
+        where: { id: paymentId, status: 'PENDING' },
+        data: { status: 'PAID', paystackReference: reference },
+      });
+
+      if (claim.count === 0) {
+        this.logger.warn(
+          `Duplicate or already-processed webhook for reference ${reference}, skipping`,
+        );
+        return { received: true };
+      }
+
+      // Claim succeeded — this invocation owns the side effects.
+      const updatedPayment = await this.prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: {
+          subscription: {
+            include: {
+              primaryMember: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
                 },
               },
             },
           },
-        });
+        },
+      });
 
+      if (updatedPayment) {
         const member = updatedPayment.subscription.primaryMember;
         const memberName = `${member.firstName} ${member.lastName}`;
         this.eventEmitter.emit('activity.payment', {
@@ -344,11 +368,21 @@ export class PaymentsService {
           // cron can auto-charge card users and send reminders to non-card users.
           updateData.autoRenew = true;
 
-          // Save card authorization for future auto-charges
+          // Save card authorization for future auto-charges. We refuse to
+          // persist the raw code without encryption — if no key is
+          // configured (dev/test), we skip the field entirely rather than
+          // storing plaintext. Production config enforces ENCRYPTION_KEY.
           if (channel === 'card' && authorization?.authorization_code) {
-            updateData.paystackAuthorizationCode = this.encryptionKey
-              ? encrypt(authorization.authorization_code, this.encryptionKey)
-              : authorization.authorization_code;
+            if (this.encryptionKey) {
+              updateData.paystackAuthorizationCode = encrypt(
+                authorization.authorization_code,
+                this.encryptionKey,
+              );
+            } else {
+              this.logger.warn(
+                `Skipping paystackAuthorizationCode persistence for subscription ${subscriptionId} — no ENCRYPTION_KEY configured`,
+              );
+            }
           }
 
           await this.prisma.memberSubscription.update({
@@ -356,7 +390,9 @@ export class PaymentsService {
             data: updateData,
           });
 
-          // Process referral reward if applicable
+          // Process referral reward if applicable. Safe to run post-claim:
+          // the claim gate above guarantees we reach here at most once per
+          // paymentId, so referrals can't be double-rewarded from duplicates.
           this.processReferralReward(subscription.primaryMemberId).catch(
             (err) =>
               this.logger.error(`Failed to process referral reward: ${err}`),

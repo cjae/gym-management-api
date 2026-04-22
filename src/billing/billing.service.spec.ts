@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { encrypt } from '../common/utils/encryption.util';
 
 describe('BillingService', () => {
   let service: BillingService;
@@ -23,12 +24,20 @@ describe('BillingService', () => {
     sendCardPaymentFailedEmail: jest.fn(),
   };
 
+  // 32-byte hex key (64 chars) — a valid AES-256-GCM key so the default
+  // config uses the "ENCRYPTION_KEY configured" branch. Individual tests
+  // override this when they need to exercise the no-key path.
+  const testEncryptionKey = 'a'.repeat(64);
+
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string) => {
       if (key === 'app')
         return { memberAppUrl: 'powerbarnfitness://manage-subscription' };
       if (key === 'payment')
-        return { paystackSecretKey: 'sk_test', encryptionKey: '' };
+        return {
+          paystackSecretKey: 'sk_test',
+          encryptionKey: testEncryptionKey,
+        };
       return {};
     }),
   };
@@ -65,9 +74,10 @@ describe('BillingService', () => {
 
   describe('processCardRenewals', () => {
     it('should charge card subscriptions due today', async () => {
+      const encryptedAuth = encrypt('AUTH_abc123', testEncryptionKey);
       const subscription = {
         id: 'sub-1',
-        paystackAuthorizationCode: 'AUTH_abc123',
+        paystackAuthorizationCode: encryptedAuth,
         paymentMethod: 'CARD',
         autoRenew: true,
         nextBillingDate: new Date(),
@@ -94,9 +104,10 @@ describe('BillingService', () => {
     });
 
     it('should charge full plan price on renewal, not discounted price', async () => {
+      const encryptedAuth = encrypt('AUTH_abc123', testEncryptionKey);
       const subscription = {
         id: 'sub-1',
-        paystackAuthorizationCode: 'AUTH_abc123',
+        paystackAuthorizationCode: encryptedAuth,
         paymentMethod: 'CARD',
         autoRenew: true,
         nextBillingDate: new Date(),
@@ -126,9 +137,10 @@ describe('BillingService', () => {
     });
 
     it('should expire subscription after 2 consecutive card failures', async () => {
+      const encryptedAuth = encrypt('AUTH_abc123', testEncryptionKey);
       const subscription = {
         id: 'sub-1',
-        paystackAuthorizationCode: 'AUTH_abc123',
+        paystackAuthorizationCode: encryptedAuth,
         paymentMethod: 'CARD',
         autoRenew: true,
         nextBillingDate: new Date(),
@@ -148,6 +160,43 @@ describe('BillingService', () => {
         data: { status: 'EXPIRED', autoRenew: false },
       });
       expect(mockEmailService.sendCardPaymentFailedEmail).toHaveBeenCalled();
+    });
+
+    // C4 — decryption-failure path self-heals by nulling the stored code
+    it('nulls stored auth code and skips charge on decrypt failure (C4)', async () => {
+      // Corrupt ciphertext — valid format (three colon-separated hex parts)
+      // but won't decrypt under testEncryptionKey. This simulates either a
+      // legacy plaintext row or tampered data.
+      const corruptAuth = 'deadbeef:cafe:babe';
+      const subscription = {
+        id: 'sub-corrupt',
+        paystackAuthorizationCode: corruptAuth,
+        paymentMethod: 'CARD',
+        autoRenew: true,
+        nextBillingDate: new Date(),
+        primaryMember: {
+          id: 'u-corrupt',
+          email: 'corrupt@test.com',
+          firstName: 'Corrupt',
+        },
+        plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
+      };
+
+      prisma.memberSubscription.findMany.mockResolvedValueOnce([
+        subscription,
+      ] as any);
+      prisma.payment.count.mockResolvedValueOnce(0);
+
+      // Should NOT throw — service swallows the decrypt error and nulls
+      // the field so the member re-authorizes on the next cycle.
+      await expect(service.processCardRenewals()).resolves.not.toThrow();
+
+      expect(prisma.memberSubscription.update).toHaveBeenCalledWith({
+        where: { id: 'sub-corrupt' },
+        data: { paystackAuthorizationCode: null },
+      });
+      // Charge must not have been attempted with bogus data.
+      expect(mockPaymentsService.chargeAuthorization).not.toHaveBeenCalled();
     });
   });
 
