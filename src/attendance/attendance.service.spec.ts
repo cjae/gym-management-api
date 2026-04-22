@@ -2,7 +2,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -148,7 +148,7 @@ describe('AttendanceService', () => {
     });
   });
 
-  it('should emit check_in.result with "Already checked in today" on re-scan', async () => {
+  it('should emit check_in.result with "Already checked in today" on re-scan (P2002 swallowed gracefully)', async () => {
     prisma.gymQrCode.findFirst.mockResolvedValue({
       id: '1',
       code: 'valid',
@@ -159,13 +159,17 @@ describe('AttendanceService', () => {
       subscriptionId: 'sub-1',
       subscription: { plan: { isOffPeak: false } },
     } as any);
-    prisma.attendance.findUnique.mockResolvedValue({
-      id: 'att-1',
-      memberId: 'member-1',
-    } as any);
+    // tx.attendance.create hits the @@unique([memberId, checkInDate]) — P2002.
+    prisma.attendance.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.0.0',
+      }),
+    );
     prisma.streak.findUnique.mockResolvedValue({
       memberId: 'member-1',
       weeklyStreak: 5,
+      longestStreak: 6,
       daysThisWeek: 3,
       weekStart: currentMonday,
     } as any);
@@ -182,6 +186,17 @@ describe('AttendanceService', () => {
     expect(result.weeklyStreak).toBe(5);
     expect(result.daysThisWeek).toBe(3);
     expect(result.daysRequired).toBe(4);
+    // Streak must NOT have been written on the losing path.
+    expect(prisma.streak.upsert).not.toHaveBeenCalled();
+    // Activity + streak.updated must NOT fire on the losing path.
+    expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+      'activity.check_in',
+      expect.anything(),
+    );
+    expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+      'streak.updated',
+      expect.anything(),
+    );
     expect(mockEventEmitter.emit).toHaveBeenCalledWith('check_in.result', {
       type: 'check_in_result',
       member: {
@@ -195,6 +210,136 @@ describe('AttendanceService', () => {
       entranceId: undefined,
       timestamp: expect.any(String),
     });
+  });
+
+  it('simulated race: two concurrent check-ins at different entrances → streak incremented exactly once, one P2002 swallowed', async () => {
+    const entranceA = '550e8400-e29b-41d4-a716-446655440001';
+    const entranceB = '550e8400-e29b-41d4-a716-446655440002';
+
+    prisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    } as any);
+    prisma.entrance.findUnique.mockImplementation(
+      ({ where: { id } }: any) =>
+        ({
+          id,
+          name: `Entrance ${id}`,
+          isActive: true,
+        }) as any,
+    );
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
+      id: 'sm-1',
+      memberId: 'member-1',
+      subscriptionId: 'sub-1',
+      subscription: { plan: { isOffPeak: false } },
+    } as any);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Smith',
+      displayPicture: null,
+    } as any);
+    prisma.streak.findUnique.mockResolvedValue(null);
+
+    // First attendance.create succeeds, second fails with P2002.
+    let createCalls = 0;
+    prisma.attendance.create.mockImplementation(async () => {
+      createCalls += 1;
+      if (createCalls === 1) return {} as any;
+      throw new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        { code: 'P2002', clientVersion: '6.0.0' },
+      );
+    });
+    prisma.streak.upsert.mockResolvedValue({
+      weeklyStreak: 0,
+      longestStreak: 0,
+      daysThisWeek: 1,
+      bestWeek: 1,
+      weekStart: currentMonday,
+      lastCheckInDate: today,
+    } as any);
+    prisma.attendance.count.mockResolvedValue(1);
+
+    const [a, b] = await Promise.all([
+      service.checkIn('member-1', { qrCode: `valid:${entranceA}` }),
+      service.checkIn('member-1', { qrCode: `valid:${entranceB}` }),
+    ]);
+
+    // Exactly one "winning" check-in, one "already checked in".
+    const winners = [a, b].filter((r) => !r.alreadyCheckedIn);
+    const losers = [a, b].filter((r) => r.alreadyCheckedIn);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+
+    // Streak upsert called exactly once (only the winning tx touched it).
+    expect(prisma.streak.upsert).toHaveBeenCalledTimes(1);
+
+    // activity.check_in and streak.updated each emitted exactly once
+    // (only for the winner) — no duplicate dashboard events.
+    const activityCalls = mockEventEmitter.emit.mock.calls.filter(
+      (c) => c[0] === 'activity.check_in',
+    );
+    const streakCalls = mockEventEmitter.emit.mock.calls.filter(
+      (c) => c[0] === 'streak.updated',
+    );
+    expect(activityCalls).toHaveLength(1);
+    expect(streakCalls).toHaveLength(1);
+
+    // Two check_in.result events total (success + already-checked-in).
+    const resultCalls = mockEventEmitter.emit.mock.calls.filter(
+      (c) => c[0] === 'check_in.result',
+    );
+    expect(resultCalls).toHaveLength(2);
+  });
+
+  it('re-scan at second entrance does NOT re-emit milestone / streak.updated', async () => {
+    const entranceId = '550e8400-e29b-41d4-a716-446655440099';
+    prisma.gymQrCode.findFirst.mockResolvedValue({
+      id: '1',
+      code: 'valid',
+    } as any);
+    prisma.entrance.findUnique.mockResolvedValue({
+      id: entranceId,
+      name: 'Side Door',
+      isActive: true,
+    } as any);
+    prisma.subscriptionMember.findFirst.mockResolvedValue({
+      id: 'sm-1',
+      memberId: 'member-1',
+      subscriptionId: 'sub-1',
+      subscription: { plan: { isOffPeak: false } },
+    } as any);
+    prisma.attendance.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.0.0',
+      }),
+    );
+    prisma.streak.findUnique.mockResolvedValue({
+      memberId: 'member-1',
+      weeklyStreak: 4,
+      longestStreak: 4,
+      daysThisWeek: 4,
+      weekStart: currentMonday,
+      lastCheckInDate: today,
+    } as any);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'member-1',
+      firstName: 'Jane',
+      lastName: 'Smith',
+      displayPicture: null,
+    } as any);
+
+    await service.checkIn('member-1', { qrCode: `valid:${entranceId}` });
+
+    // No streak write, no milestone-triggering streak.updated event.
+    expect(prisma.streak.upsert).not.toHaveBeenCalled();
+    expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+      'streak.updated',
+      expect.anything(),
+    );
   });
 
   it('should parse entranceId from QR payload and save on attendance', async () => {
@@ -471,13 +616,17 @@ describe('AttendanceService', () => {
 
     it('should increment daysThisWeek for same-week check-in', async () => {
       setupCheckInMocks();
+      // Last check-in was yesterday within the same week — not today, so the
+      // idempotency guard in updateStreak does not short-circuit.
+      const yesterday = new Date(today);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
       prisma.streak.findUnique.mockResolvedValue({
         memberId: 'member-1',
         weeklyStreak: 3,
         longestStreak: 5,
         daysThisWeek: 2,
         weekStart: currentMonday,
-        lastCheckInDate: today,
+        lastCheckInDate: yesterday,
       } as any);
       prisma.streak.upsert.mockResolvedValue({
         weeklyStreak: 3,

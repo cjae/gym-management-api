@@ -233,15 +233,26 @@ describe('AuthService', () => {
   });
 
   describe('resetPassword', () => {
-    it('should reset password and clear mustChangePassword flag', async () => {
-      prisma.passwordResetToken.findUnique.mockResolvedValue({
-        id: 'token-id',
-        userId: '1',
-        token: 'valid-token',
-        expiresAt: new Date(Date.now() + 3600000),
-        usedAt: null,
+    // Interactive $transaction: the service passes a callback that receives a tx client.
+    // We route tx.* back to the same prisma mock so assertions still work.
+    const wireInteractiveTransaction = () => {
+      prisma.$transaction.mockImplementation((arg: any) => {
+        if (typeof arg === 'function') {
+          return arg(prisma);
+        }
+        return Promise.resolve([]);
+      });
+    };
+
+    it('atomically claims the token and updates the password', async () => {
+      wireInteractiveTransaction();
+      prisma.passwordResetToken.updateMany.mockResolvedValue({
+        count: 1,
       } as any);
-      prisma.$transaction.mockResolvedValue([] as any);
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        userId: '1',
+      } as any);
+      prisma.user.update.mockResolvedValue({} as any);
 
       const result = await service.resetPassword({
         token: 'valid-token',
@@ -249,8 +260,16 @@ describe('AuthService', () => {
       });
 
       expect(result.message).toContain('reset successfully');
-
       expect(prisma.$transaction).toHaveBeenCalled();
+
+      // Atomic claim: gated on usedAt null AND expiresAt in the future.
+      const updateManyCall = prisma.passwordResetToken.updateMany.mock
+        .calls[0][0] as any;
+      expect(updateManyCall.where).toMatchObject({
+        usedAt: null,
+      });
+      expect(updateManyCall.where.expiresAt).toEqual({ gt: expect.any(Date) });
+      expect(updateManyCall.data.usedAt).toBeInstanceOf(Date);
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: '1' },
@@ -260,13 +279,40 @@ describe('AuthService', () => {
       });
     });
 
-    it('should throw BadRequestException for expired token', async () => {
+    it('rejects replay with the same error (claim returns count 0 on second call)', async () => {
+      wireInteractiveTransaction();
+      // First call: successful claim.
+      prisma.passwordResetToken.updateMany
+        .mockResolvedValueOnce({ count: 1 } as any)
+        // Second call: token is already used, so updateMany matches nothing.
+        .mockResolvedValueOnce({ count: 0 } as any);
       prisma.passwordResetToken.findUnique.mockResolvedValue({
-        id: 'token-id',
         userId: '1',
-        token: 'expired-token',
-        expiresAt: new Date(Date.now() - 1000),
-        usedAt: null,
+      } as any);
+      prisma.user.update.mockResolvedValue({} as any);
+
+      await service.resetPassword({
+        token: 'replay-token',
+        newPassword: 'newPassword123',
+      });
+
+      await expect(
+        service.resetPassword({
+          token: 'replay-token',
+          newPassword: 'anotherPassword123',
+        }),
+      ).rejects.toThrow(
+        new BadRequestException('Invalid or expired reset token'),
+      );
+
+      // Only the first call's password update ran.
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws BadRequestException for expired token (claim matches nothing)', async () => {
+      wireInteractiveTransaction();
+      prisma.passwordResetToken.updateMany.mockResolvedValue({
+        count: 0,
       } as any);
 
       await expect(
@@ -275,15 +321,13 @@ describe('AuthService', () => {
           newPassword: 'newPassword123',
         }),
       ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException for already used token', async () => {
-      prisma.passwordResetToken.findUnique.mockResolvedValue({
-        id: 'token-id',
-        userId: '1',
-        token: 'used-token',
-        expiresAt: new Date(Date.now() + 3600000),
-        usedAt: new Date(),
+    it('throws BadRequestException for already-used token (claim matches nothing)', async () => {
+      wireInteractiveTransaction();
+      prisma.passwordResetToken.updateMany.mockResolvedValue({
+        count: 0,
       } as any);
 
       await expect(
@@ -292,10 +336,14 @@ describe('AuthService', () => {
           newPassword: 'newPassword123',
         }),
       ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException for invalid token', async () => {
-      prisma.passwordResetToken.findUnique.mockResolvedValue(null);
+    it('throws BadRequestException for invalid token', async () => {
+      wireInteractiveTransaction();
+      prisma.passwordResetToken.updateMany.mockResolvedValue({
+        count: 0,
+      } as any);
 
       await expect(
         service.resetPassword({
@@ -303,6 +351,45 @@ describe('AuthService', () => {
           newPassword: 'newPassword123',
         }),
       ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('simulated race: second parallel caller gets count 0 and no password change', async () => {
+      wireInteractiveTransaction();
+      // Both calls would have seen an unused+unexpired token via findUnique under the old flow,
+      // but updateMany's atomic where-clause means only ONE call can win.
+      prisma.passwordResetToken.updateMany
+        .mockResolvedValueOnce({ count: 1 } as any) // winner
+        .mockResolvedValueOnce({ count: 0 } as any); // loser
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        userId: '1',
+      } as any);
+      prisma.user.update.mockResolvedValue({} as any);
+
+      const results = await Promise.allSettled([
+        service.resetPassword({
+          token: 'shared-token',
+          newPassword: 'winnerPassword1',
+        }),
+        service.resetPassword({
+          token: 'shared-token',
+          newPassword: 'loserPassword1',
+        }),
+      ]);
+
+      // bcrypt.hash is genuinely async and either call can reach $transaction first,
+      // so we don't pin "which" call wins — only that exactly one wins and one loses.
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      const loser = rejected[0];
+      if (loser.status === 'rejected') {
+        expect(loser.reason).toBeInstanceOf(BadRequestException);
+      }
+
+      // Only one password write happened.
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
     });
   });
 

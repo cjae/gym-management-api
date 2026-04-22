@@ -81,16 +81,15 @@ describe('GoalGenerationListener', () => {
   it('generates plan and emits goal.plan.ready on success', async () => {
     prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
     llm.generatePlan.mockResolvedValue(validLlmResponse);
+    const planCreateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const milestoneCreateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const goalUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
     (prisma.$transaction as jest.Mock).mockImplementation(
       (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
-          goalPlanItem: {
-            createMany: jest.fn().mockResolvedValue({ count: 1 }),
-          },
-          goalMilestone: {
-            createMany: jest.fn().mockResolvedValue({ count: 1 }),
-          },
-          goal: { update: jest.fn().mockResolvedValue({}) },
+          goalPlanItem: { createMany: planCreateMany },
+          goalMilestone: { createMany: milestoneCreateMany },
+          goal: { updateMany: goalUpdateMany },
         }),
     );
 
@@ -101,6 +100,17 @@ describe('GoalGenerationListener', () => {
     });
 
     expect(llm.generatePlan).toHaveBeenCalledWith(expect.any(String));
+
+    // Atomic state-guarded claim: GENERATING -> READY
+    expect(goalUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'g1', generationStatus: 'GENERATING' },
+      data: expect.objectContaining({ generationStatus: 'READY' }),
+    });
+    // Plan items + milestones written in same tx
+    expect(planCreateMany).toHaveBeenCalledTimes(1);
+    expect(milestoneCreateMany).toHaveBeenCalledTimes(1);
+
+    // Push notification fires AFTER the tx commits (not inside it)
     expect(emitter.emit).toHaveBeenCalledWith('goal.plan.ready', {
       goalId: 'g1',
       memberId: 'm1',
@@ -108,10 +118,25 @@ describe('GoalGenerationListener', () => {
     });
   });
 
-  it('marks goal FAILED and emits goal.plan.failed when LLM throws', async () => {
+  it('rolls back and does not emit ready when goal is already out of GENERATING (lost race with sweeper)', async () => {
     prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
-    llm.generatePlan.mockRejectedValue(new Error('LLM error'));
-    prisma.goal.update.mockResolvedValue({} as never);
+    llm.generatePlan.mockResolvedValue(validLlmResponse);
+    const planCreateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const milestoneCreateMany = jest.fn().mockResolvedValue({ count: 1 });
+    // Sweeper already flipped this goal: state-guarded update returns count=0
+    const goalUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    // Simulate Prisma tx rollback: the callback throws, which bubbles to the
+    // caller (real Prisma would also rollback all tx writes, but with mocks
+    // no writes happened anyway since createMany/updateMany are gated on
+    // reaching their call sites).
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          goalPlanItem: { createMany: planCreateMany },
+          goalMilestone: { createMany: milestoneCreateMany },
+          goal: { updateMany: goalUpdateMany },
+        }),
+    );
 
     await listener.handle({
       goalId: 'g1',
@@ -119,8 +144,32 @@ describe('GoalGenerationListener', () => {
       requestedFrequency: null,
     });
 
-    expect(prisma.goal.update).toHaveBeenCalledWith({
-      where: { id: 'g1' },
+    // State-guarded claim attempted
+    expect(goalUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'g1', generationStatus: 'GENERATING' },
+      data: expect.objectContaining({ generationStatus: 'READY' }),
+    });
+    // No orphaned plan items / milestones (short-circuited before createMany)
+    expect(planCreateMany).not.toHaveBeenCalled();
+    expect(milestoneCreateMany).not.toHaveBeenCalled();
+    // No READY push, no FAILED push, no markFailed override
+    expect(emitter.emit).not.toHaveBeenCalled();
+    expect(prisma.goal.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('marks goal FAILED and emits goal.plan.failed when LLM throws', async () => {
+    prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
+    llm.generatePlan.mockRejectedValue(new Error('LLM error'));
+    prisma.goal.updateMany.mockResolvedValue({ count: 1 });
+
+    await listener.handle({
+      goalId: 'g1',
+      memberId: 'm1',
+      requestedFrequency: null,
+    });
+
+    expect(prisma.goal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'g1', generationStatus: 'GENERATING' },
       data: expect.objectContaining({ generationStatus: 'FAILED' }),
     });
     expect(emitter.emit).toHaveBeenCalledWith('goal.plan.failed', {
@@ -137,7 +186,7 @@ describe('GoalGenerationListener', () => {
       estimatedWeeks: 3,
       plan: [{ ...validLlmResponse.plan[0], weekNumber: 1 }],
     });
-    prisma.goal.update.mockResolvedValue({} as never);
+    prisma.goal.updateMany.mockResolvedValue({ count: 1 });
 
     await listener.handle({
       goalId: 'g1',
@@ -145,8 +194,8 @@ describe('GoalGenerationListener', () => {
       requestedFrequency: null,
     });
 
-    expect(prisma.goal.update).toHaveBeenCalledWith({
-      where: { id: 'g1' },
+    expect(prisma.goal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'g1', generationStatus: 'GENERATING' },
       data: expect.objectContaining({ generationStatus: 'FAILED' }),
     });
   });
@@ -166,7 +215,7 @@ describe('GoalGenerationListener', () => {
           goalMilestone: {
             createMany: jest.fn().mockResolvedValue({ count: 1 }),
           },
-          goal: { update: jest.fn().mockResolvedValue({}) },
+          goal: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         }),
     );
 
@@ -220,7 +269,7 @@ describe('GoalGenerationListener', () => {
             goalMilestone: {
               createMany: jest.fn().mockResolvedValue({ count: 1 }),
             },
-            goal: { update: jest.fn().mockResolvedValue({}) },
+            goal: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
           }),
       );
     };
@@ -552,18 +601,12 @@ describe('GoalGenerationListener', () => {
     });
   });
 
-  it('swallows P2025 when marking a deleted goal as failed', async () => {
+  it('logs a warning when markFailed finds the goal already out of GENERATING', async () => {
     prisma.goal.findUniqueOrThrow.mockResolvedValue(baseGoal as never);
     llm.generatePlan.mockRejectedValue(new Error('LLM error'));
-    const p2025 = Object.assign(new Error('Record not found'), {
-      code: 'P2025',
-    });
-    Object.setPrototypeOf(
-      p2025,
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('@prisma/client').Prisma.PrismaClientKnownRequestError.prototype,
-    );
-    prisma.goal.update.mockRejectedValue(p2025);
+    // Goal has already been terminated by the sweeper or deleted; updateMany
+    // touches 0 rows but does not throw.
+    prisma.goal.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
       listener.handle({
@@ -573,6 +616,7 @@ describe('GoalGenerationListener', () => {
       }),
     ).resolves.not.toThrow();
 
+    // markFailed still emits goal.plan.failed (outer catch owns that event)
     expect(emitter.emit).toHaveBeenCalledWith('goal.plan.failed', {
       goalId: 'g1',
       memberId: 'm1',

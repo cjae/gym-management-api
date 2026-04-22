@@ -324,14 +324,36 @@ export class PaymentsService {
       }
 
       if (subscriptionId) {
-        const subscription = await this.prisma.memberSubscription.findUnique({
-          where: { id: subscriptionId },
-          include: { plan: true },
-        });
+        // Activation + referral reward run inside a single transaction so
+        // either both commit or neither does. Out-of-tx side effects
+        // (push notifications, emails, activity events) are captured in
+        // `afterCommit` and flushed below only if the tx commits — a
+        // server crash between claim and reward can't silently drop the
+        // reward anymore.
+        const afterCommit: Array<() => void> = [];
 
-        if (subscription) {
-          // If subscription is still active with remaining time, extend from
-          // current endDate so early renewals don't lose leftover days.
+        await this.prisma.$transaction(async (tx) => {
+          const subscription = await tx.memberSubscription.findUnique({
+            where: { id: subscriptionId },
+            include: { plan: true },
+          });
+
+          if (!subscription) {
+            // Subscription was cleaned up (H11 race — cleanup cron
+            // deleted the PENDING sub before this activation could run).
+            // The payment is already marked PAID by the atomic claim
+            // above, so we log loudly and return 200 so Paystack doesn't
+            // retry. Ops must reconcile the paid-but-no-subscription
+            // case manually.
+            this.logger.error(
+              `Paid payment ${paymentId} references subscription ${subscriptionId} that no longer exists — manual reconciliation required`,
+            );
+            return;
+          }
+
+          // If subscription is still active with remaining time, extend
+          // from current endDate so early renewals don't lose leftover
+          // days.
           const now = new Date();
           const baseDate =
             subscription.status === 'ACTIVE' && subscription.endDate > now
@@ -342,13 +364,14 @@ export class PaymentsService {
             subscription.plan.billingInterval,
           );
 
-          const updateData: Prisma.MemberSubscriptionUpdateInput = {
+          const updateData: Prisma.MemberSubscriptionUpdateManyMutationInput = {
             status: 'ACTIVE',
             endDate: nextBillingDate,
             nextBillingDate,
             frozenDaysUsed: 0,
             freezeCount: 0,
-            // Clear discount fields after first payment so renewals charge full price
+            // Clear discount fields after first payment so renewals
+            // charge full price
             discountAmount: null,
             originalPlanPrice: null,
           };
@@ -364,14 +387,16 @@ export class PaymentsService {
             updateData.paymentMethod = channelToMethod[channel];
           }
 
-          // Enable auto-renewal for all successful payments so the billing
-          // cron can auto-charge card users and send reminders to non-card users.
+          // Enable auto-renewal for all successful payments so the
+          // billing cron can auto-charge card users and send reminders
+          // to non-card users.
           updateData.autoRenew = true;
 
-          // Save card authorization for future auto-charges. We refuse to
-          // persist the raw code without encryption — if no key is
-          // configured (dev/test), we skip the field entirely rather than
-          // storing plaintext. Production config enforces ENCRYPTION_KEY.
+          // Save card authorization for future auto-charges. We refuse
+          // to persist the raw code without encryption — if no key is
+          // configured (dev/test), we skip the field entirely rather
+          // than storing plaintext. Production config enforces
+          // ENCRYPTION_KEY.
           if (channel === 'card' && authorization?.authorization_code) {
             if (this.encryptionKey) {
               updateData.paystackAuthorizationCode = encrypt(
@@ -385,18 +410,45 @@ export class PaymentsService {
             }
           }
 
-          await this.prisma.memberSubscription.update({
+          // Status-guarded `updateMany` so a concurrent cleanup cron
+          // that deleted this sub between the findUnique above and here
+          // produces count=0 rather than a P2025 "record not found"
+          // crash. count=0 => webhook lost the race cleanly.
+          const activation = await tx.memberSubscription.updateMany({
             where: { id: subscriptionId },
             data: updateData,
           });
 
-          // Process referral reward if applicable. Safe to run post-claim:
-          // the claim gate above guarantees we reach here at most once per
-          // paymentId, so referrals can't be double-rewarded from duplicates.
-          this.processReferralReward(subscription.primaryMemberId).catch(
-            (err) =>
-              this.logger.error(`Failed to process referral reward: ${err}`),
+          if (activation.count === 0) {
+            this.logger.error(
+              `Subscription ${subscriptionId} disappeared between read and activation — paid payment ${paymentId} requires manual reconciliation`,
+            );
+            return;
+          }
+
+          // Process referral reward inside the same tx. An atomic
+          // `referral.updateMany({ id, status: 'PENDING' })` claim
+          // prevents double-rewarding on duplicate webhooks; if the
+          // surrounding tx rolls back, the referral claim rolls back
+          // with it.
+          await this.processReferralReward(
+            tx,
+            subscription.primaryMemberId,
+            afterCommit,
           );
+        });
+
+        // Tx committed — flush deferred side effects (push, email).
+        // These must not run inside the tx because network IO inside a
+        // tx holds DB connections and serializes on long operations.
+        for (const fn of afterCommit) {
+          try {
+            fn();
+          } catch (err) {
+            this.logger.error(
+              `afterCommit side effect failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
         }
       }
 
@@ -541,16 +593,40 @@ export class PaymentsService {
     return { data: sanitized, total, page, limit };
   }
 
-  private async processReferralReward(payingUserId: string) {
-    // Atomically claim the referral to prevent double-rewarding on duplicate webhooks
-    const claimed = await this.prisma.referral.updateMany({
+  /**
+   * Process referral reward for a paying member. Runs INSIDE the caller's
+   * transaction (typically the webhook claim tx) so a roll-back rolls the
+   * reward back with it. Out-of-tx side effects (push notification, email)
+   * are appended to `afterCommit` and must be fired by the caller only
+   * after the tx commits.
+   *
+   * Uses two atomic claim gates:
+   *   1. `referral.updateMany({ referredId, status: 'PENDING' })` — a
+   *      duplicate webhook sees count=0 and returns without extending the
+   *      referrer's subscription (H13 double-reward fix).
+   *   2. `memberSubscription.updateMany({ id })` for the referrer's
+   *      subscription extension — tolerates the referrer's sub being
+   *      cancelled mid-flight without crashing.
+   *
+   * Per-cycle cap (configurable via GymSettings.maxReferralsPerCycle,
+   * default 3) is re-evaluated inside the tx so it's still enforced.
+   */
+  private async processReferralReward(
+    tx: Prisma.TransactionClient,
+    payingUserId: string,
+    afterCommit: Array<() => void>,
+  ) {
+    // Atomically claim the referral to prevent double-rewarding on
+    // duplicate webhooks. `status: 'PENDING'` in the filter is the claim
+    // gate: only one concurrent caller sees count=1.
+    const claimed = await tx.referral.updateMany({
       where: { referredId: payingUserId, status: 'PENDING' },
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
 
     if (claimed.count === 0) return;
 
-    const referral = await this.prisma.referral.findUnique({
+    const referral = await tx.referral.findUnique({
       where: { referredId: payingUserId },
       include: {
         referrer: {
@@ -578,15 +654,13 @@ export class PaymentsService {
       return;
     }
 
-    const referrerSubscription = await this.prisma.memberSubscription.findFirst(
-      {
-        where: {
-          primaryMemberId: referral.referrerId,
-          status: { in: ['ACTIVE', 'FROZEN'] },
-        },
-        include: { plan: true },
+    const referrerSubscription = await tx.memberSubscription.findFirst({
+      where: {
+        primaryMemberId: referral.referrerId,
+        status: { in: ['ACTIVE', 'FROZEN'] },
       },
-    );
+      include: { plan: true },
+    });
 
     const settings = await this.gymSettingsService.getCachedSettings();
     const rewardDays = settings?.referralRewardDays ?? 7;
@@ -601,7 +675,7 @@ export class PaymentsService {
         referrerSubscription.plan.billingInterval,
       );
 
-      const completedInCycle = await this.prisma.referral.count({
+      const completedInCycle = await tx.referral.count({
         where: {
           referrerId: referral.referrerId,
           status: 'COMPLETED',
@@ -623,7 +697,9 @@ export class PaymentsService {
           newBillingDate.setDate(newBillingDate.getDate() + rewardDays);
         }
 
-        await this.prisma.memberSubscription.update({
+        // updateMany (not update) so a concurrent cancellation/deletion
+        // of the referrer's subscription doesn't crash this tx.
+        await tx.memberSubscription.updateMany({
           where: { id: referrerSubscription.id },
           data: {
             endDate: newEndDate,
@@ -634,40 +710,50 @@ export class PaymentsService {
     }
 
     // Update reward days on the already-claimed referral
-    await this.prisma.referral.update({
+    await tx.referral.update({
       where: { id: referral.id },
       data: { rewardDays: earnedDays },
     });
 
     if (earnedDays > 0) {
       const referredName = `${referral.referred.firstName} ${referral.referred.lastName}`;
+      const referrerId = referral.referrerId;
+      const referredId = referral.referredId;
+      const referrerEmail = referral.referrer.email;
+      const referrerFirstName = referral.referrer.firstName;
+      const days = earnedDays;
 
-      this.notificationsService
-        .create({
-          userId: referral.referrerId,
-          title: 'Referral reward earned!',
-          body: `${referredName} joined — you earned ${earnedDays} free days!`,
-          type: NotificationType.REFERRAL_REWARD,
-          metadata: {
-            referredId: referral.referredId,
+      // Defer notification + email until after the enclosing tx commits.
+      // These hit the network; running them inside the tx would hold DB
+      // connections open for the duration of each request.
+      afterCommit.push(() => {
+        this.notificationsService
+          .create({
+            userId: referrerId,
+            title: 'Referral reward earned!',
+            body: `${referredName} joined — you earned ${days} free days!`,
+            type: NotificationType.REFERRAL_REWARD,
+            metadata: {
+              referredId,
+              referredName,
+              rewardDays: days,
+            },
+          })
+          .catch((err) =>
+            this.logger.error(`Failed to send referral notification: ${err}`),
+          );
+
+        this.emailService
+          .sendReferralRewardEmail(
+            referrerEmail,
+            referrerFirstName,
             referredName,
-            rewardDays: earnedDays,
-          },
-        })
-        .catch((err) =>
-          this.logger.error(`Failed to send referral notification: ${err}`),
-        );
-
-      this.emailService
-        .sendReferralRewardEmail(
-          referral.referrer.email,
-          referral.referrer.firstName,
-          referredName,
-          earnedDays,
-        )
-        .catch((err) =>
-          this.logger.error(`Failed to send referral email: ${err}`),
-        );
+            days,
+          )
+          .catch((err) =>
+            this.logger.error(`Failed to send referral email: ${err}`),
+          );
+      });
     }
   }
 }

@@ -363,17 +363,18 @@ model TrainerProfile {
 }
 
 model GymClass {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  dayOfWeek   Int
-  startTime   String
-  endTime     String
-  maxCapacity Int      @default(20)
-  trainerId   String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  title         String
+  description   String?
+  dayOfWeek     Int
+  startTime     String
+  endTime       String
+  maxCapacity   Int      @default(20)
+  enrolledCount Int      @default(0)
+  trainerId     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   trainer     TrainerProfile?   @relation(fields: [trainerId], references: [id])
   enrollments ClassEnrollment[]
@@ -796,6 +797,22 @@ model DiscountRedemption {
 
   @@unique([discountCodeId, memberId, subscriptionId])
   @@index([discountCodeId])
+  @@index([memberId])
+}
+
+// Tracks how many times a given (discountCode, member) pair has BENEFITED from the code.
+// A duo subscription benefits BOTH primary and secondary members, so redeemCode increments
+// the counter for every SubscriptionMember on the subscription — not just the redeemer.
+// The per-member cap is enforced atomically via a conditional `updateMany` on `uses`.
+model DiscountRedemptionCounter {
+  id             String   @id @default(uuid())
+  discountCodeId String
+  memberId       String
+  uses           Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([discountCodeId, memberId])
   @@index([memberId])
 }
 

@@ -253,17 +253,22 @@ export class DiscountCodesService {
       throw new BadRequestException('Discount code is invalid or unavailable');
     }
 
-    // 5. Check per-member cap
-    const memberUses = await this.prisma.discountRedemption.count({
-      where: { discountCodeId: discountCode.id, memberId },
-    });
-    if (
-      discountCode.maxUsesPerMember !== null &&
-      memberUses >= discountCode.maxUsesPerMember
-    ) {
-      throw new BadRequestException(
-        'You have already used this discount code the maximum number of times',
+    // 5. Check per-member cap using the "benefit" counter. The counter is
+    // incremented for EVERY member of a subscription at redemption time
+    // (including secondary duo members), so this naturally reflects
+    // "has this person ever benefited from this code" across solo and
+    // duo subscriptions.
+    if (discountCode.maxUsesPerMember !== null) {
+      const memberUses = await this.getMemberBenefitCount(
+        this.prisma,
+        discountCode.id,
+        memberId,
       );
+      if (memberUses >= discountCode.maxUsesPerMember) {
+        throw new BadRequestException(
+          'You have already used this discount code the maximum number of times',
+        );
+      }
     }
 
     // 6. Check plan restriction
@@ -321,6 +326,24 @@ export class DiscountCodesService {
     };
   }
 
+  /**
+   * Returns how many times a member has "benefited" from a discount code — counting
+   * BOTH their own redemptions AND redemptions on any subscription they are a member of
+   * (primary or secondary duo member). Backed by `DiscountRedemptionCounter`, which is
+   * incremented per-member on redemption.
+   */
+  private async getMemberBenefitCount(
+    client: Prisma.TransactionClient | PrismaService,
+    discountCodeId: string,
+    memberId: string,
+  ): Promise<number> {
+    const counter = await client.discountRedemptionCounter.findUnique({
+      where: { discountCodeId_memberId: { discountCodeId, memberId } },
+      select: { uses: true },
+    });
+    return counter?.uses ?? 0;
+  }
+
   async redeemCode(
     tx: Prisma.TransactionClient,
     discountCodeId: string,
@@ -331,19 +354,58 @@ export class DiscountCodesService {
     maxUses: number | null,
     maxUsesPerMember: number | null,
   ) {
-    // Race-safe per-member cap check (within transaction)
-    if (maxUsesPerMember !== null) {
-      const memberUses = await tx.discountRedemption.count({
-        where: { discountCodeId, memberId },
+    // Atomically claim per-member usage for every member on the subscription
+    // (primary + any secondary duo members). For each member we:
+    //   1. Ensure a counter row exists via createMany (idempotent, skipDuplicates).
+    //   2. Conditionally increment via updateMany guarded by uses < maxUsesPerMember.
+    // If the increment returns count=0, someone else already hit the cap for that
+    // member and we abort. The enclosing $transaction guarantees rollback of any
+    // earlier per-member increments in this call.
+    const subscriptionMembers = await tx.subscriptionMember.findMany({
+      where: { subscriptionId },
+      select: { memberId: true },
+    });
+
+    // Include the caller's memberId defensively — at redemption time it is expected
+    // to already be a SubscriptionMember, but we tolerate calls before the join row
+    // has been created (e.g., race in the caller's tx ordering).
+    const memberIds = new Set<string>(
+      subscriptionMembers.map((m) => m.memberId),
+    );
+    memberIds.add(memberId);
+
+    // Ensure counter rows exist — skipDuplicates avoids clobbering existing uses.
+    await tx.discountRedemptionCounter.createMany({
+      data: Array.from(memberIds).map((mid) => ({
+        discountCodeId,
+        memberId: mid,
+        uses: 0,
+      })),
+      skipDuplicates: true,
+    });
+
+    for (const mid of memberIds) {
+      // Conditional increment: if a per-member cap is set, guard on uses < cap.
+      // Otherwise just bump uses so future caps reflect historical benefit.
+      const where: Prisma.DiscountRedemptionCounterWhereInput = {
+        discountCodeId,
+        memberId: mid,
+      };
+      if (maxUsesPerMember !== null) {
+        where.uses = { lt: maxUsesPerMember };
+      }
+      const result = await tx.discountRedemptionCounter.updateMany({
+        where,
+        data: { uses: { increment: 1 } },
       });
-      if (memberUses >= maxUsesPerMember) {
+      if (result.count === 0 && maxUsesPerMember !== null) {
         throw new ConflictException(
           'You have already used this discount code the maximum number of times',
         );
       }
     }
 
-    // Race-safe conditional increment
+    // Race-safe global cap conditional increment
     const whereClause: Prisma.DiscountCodeWhereInput = { id: discountCodeId };
     if (maxUses !== null) {
       whereClause.currentUses = { lt: maxUses };
@@ -358,7 +420,9 @@ export class DiscountCodesService {
       throw new ConflictException('Discount code has reached its maximum uses');
     }
 
-    // Create redemption record
+    // Create redemption record. The @@unique([discountCodeId, memberId, subscriptionId])
+    // and subscriptionId @unique constraints prevent duplicate rows for the same
+    // subscription even under a rare race that slips past the counter guard.
     return tx.discountRedemption.create({
       data: {
         discountCodeId,
@@ -382,11 +446,35 @@ export class DiscountCodesService {
       return;
     }
 
+    // Look up who benefited (every SubscriptionMember on the subscription) so we can
+    // decrement the matching counter rows. Fall back to the stored memberId if the
+    // subscriptionMember rows were already deleted (e.g., by cleanup flows).
+    const subscriptionMembers = await tx.subscriptionMember.findMany({
+      where: { subscriptionId },
+      select: { memberId: true },
+    });
+    const memberIds = new Set<string>(
+      subscriptionMembers.map((m) => m.memberId),
+    );
+    memberIds.add(redemption.memberId);
+
     await tx.discountRedemption.delete({
       where: { id: redemption.id },
     });
 
-    // Race-safe decrement: only if currentUses > 0 to prevent going negative
+    // Race-safe decrement per-member: only if uses > 0 to prevent going negative.
+    for (const mid of memberIds) {
+      await tx.discountRedemptionCounter.updateMany({
+        where: {
+          discountCodeId: redemption.discountCodeId,
+          memberId: mid,
+          uses: { gt: 0 },
+        },
+        data: { uses: { decrement: 1 } },
+      });
+    }
+
+    // Race-safe global decrement: only if currentUses > 0 to prevent going negative
     await tx.discountCode.updateMany({
       where: { id: redemption.discountCodeId, currentUses: { gt: 0 } },
       data: { currentUses: { decrement: 1 } },

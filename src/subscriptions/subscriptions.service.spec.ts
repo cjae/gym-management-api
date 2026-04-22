@@ -911,6 +911,13 @@ describe('SubscriptionsService', () => {
   describe('cleanupPendingSubscriptions', () => {
     beforeEach(() => {
       jest.clearAllMocks();
+      // jest.clearAllMocks wipes the $transaction implementation set in
+      // the outer beforeEach, so re-install it for this describe block.
+      (prisma.$transaction as jest.Mock).mockImplementation((input: unknown) =>
+        typeof input === 'function'
+          ? (input as (tx: typeof prisma) => unknown)(prisma)
+          : Promise.all(input as Promise<unknown>[]),
+      );
     });
 
     it('should delete PENDING subscriptions older than 1 hour and their payments', async () => {
@@ -919,12 +926,14 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findMany.mockResolvedValueOnce(
         staleSubscriptions as any,
       );
-      prisma.payment.deleteMany.mockResolvedValueOnce({ count: 2 });
-      prisma.subscriptionMember.deleteMany.mockResolvedValueOnce({
-        count: 2,
+      // Cleanup runs one tx per stale id; each tx deletes payments,
+      // subscriptionMembers, and status-guarded deletes the subscription.
+      prisma.payment.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.subscriptionMember.deleteMany.mockResolvedValue({
+        count: 1,
       } as any);
-      prisma.memberSubscription.deleteMany.mockResolvedValueOnce({
-        count: 2,
+      prisma.memberSubscription.deleteMany.mockResolvedValue({
+        count: 1,
       } as any);
 
       await service.cleanupPendingSubscriptions();
@@ -937,14 +946,28 @@ describe('SubscriptionsService', () => {
         select: { id: true },
       });
 
+      // One reverseRedemption + one delete trio per id.
+      expect(mockDiscountCodesService.reverseRedemption).toHaveBeenCalledTimes(
+        2,
+      );
       expect(prisma.payment.deleteMany).toHaveBeenCalledWith({
-        where: { subscriptionId: { in: ['sub-1', 'sub-2'] } },
+        where: { subscriptionId: 'sub-1' },
+      });
+      expect(prisma.payment.deleteMany).toHaveBeenCalledWith({
+        where: { subscriptionId: 'sub-2' },
       });
       expect(prisma.subscriptionMember.deleteMany).toHaveBeenCalledWith({
-        where: { subscriptionId: { in: ['sub-1', 'sub-2'] } },
+        where: { subscriptionId: 'sub-1' },
+      });
+      expect(prisma.subscriptionMember.deleteMany).toHaveBeenCalledWith({
+        where: { subscriptionId: 'sub-2' },
+      });
+      // Status-guarded atomic claim on the subscription itself.
+      expect(prisma.memberSubscription.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'sub-1', status: 'PENDING' },
       });
       expect(prisma.memberSubscription.deleteMany).toHaveBeenCalledWith({
-        where: { id: { in: ['sub-1', 'sub-2'] } },
+        where: { id: 'sub-2', status: 'PENDING' },
       });
     });
 

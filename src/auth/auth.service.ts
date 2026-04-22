@@ -284,33 +284,45 @@ export class AuthService {
 
   async resetPassword(dto: ResetPasswordDto) {
     const hashedToken = this.hashToken(dto.token);
-    const resetToken = await this.prisma.passwordResetToken.findUnique({
-      where: { token: hashedToken },
-    });
-
-    if (!resetToken)
-      throw new BadRequestException('Invalid or expired reset token');
-    if (resetToken.usedAt)
-      throw new BadRequestException('Invalid or expired reset token');
-    if (resetToken.expiresAt < new Date())
-      throw new BadRequestException('Invalid or expired reset token');
-
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
 
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: resetToken.userId },
-        data: { password: hashedPassword, mustChangePassword: false },
-      }),
-      this.prisma.passwordResetToken.update({
-        where: { id: resetToken.id },
+    const userId = await this.prisma.$transaction(async (tx) => {
+      // Atomic claim: mark the token used only if it is still unused and not expired.
+      // Returning count === 1 guarantees we are the sole winner of any race.
+      const claim = await tx.passwordResetToken.updateMany({
+        where: {
+          token: hashedToken,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
         data: { usedAt: new Date() },
-      }),
-    ]);
+      });
+
+      if (claim.count === 0) {
+        // Same user-facing error for missing / already-used / expired — no enumeration delta.
+        throw new BadRequestException('Invalid or expired reset token');
+      }
+
+      // Safe to re-read now that we have exclusively claimed the token.
+      const claimed = await tx.passwordResetToken.findUnique({
+        where: { token: hashedToken },
+        select: { userId: true },
+      });
+      if (!claimed) {
+        throw new BadRequestException('Invalid or expired reset token');
+      }
+
+      await tx.user.update({
+        where: { id: claimed.userId },
+        data: { password: hashedPassword, mustChangePassword: false },
+      });
+
+      return claimed.userId;
+    });
 
     this.auditLogService
       .log({
-        userId: resetToken.userId,
+        userId,
         action: AuditAction.PASSWORD_RESET,
         resource: 'Auth',
         route: 'POST /api/v1/auth/reset-password',

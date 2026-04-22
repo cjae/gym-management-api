@@ -252,7 +252,7 @@ describe('DiscountCodesService', () => {
       prisma.discountCode.findUnique.mockResolvedValueOnce(
         makeDiscountCode() as any,
       );
-      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       const result = await service.validateCode('SAVE20', planId, memberId);
@@ -269,7 +269,7 @@ describe('DiscountCodesService', () => {
           discountValue: 500,
         }) as any,
       );
-      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       const result = await service.validateCode('SAVE20', planId, memberId);
@@ -329,7 +329,9 @@ describe('DiscountCodesService', () => {
       prisma.discountCode.findUnique.mockResolvedValueOnce(
         makeDiscountCode({ maxUsesPerMember: 1 }) as any,
       );
-      prisma.discountRedemption.count.mockResolvedValueOnce(1);
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce({
+        uses: 1,
+      } as any);
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
@@ -338,13 +340,38 @@ describe('DiscountCodesService', () => {
       );
     });
 
+    it('should reject code when secondary duo member already benefited via shared subscription (H10)', async () => {
+      // The counter is seeded for member-1 (the secondary) because the primary
+      // already redeemed the code on their shared duo sub. validateCode queries
+      // the counter, so it correctly sees uses=1 even though no DiscountRedemption
+      // row has memberId=member-1.
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ maxUsesPerMember: 1 }) as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce({
+        uses: 1,
+      } as any);
+
+      await expect(
+        service.validateCode('SAVE20', planId, memberId),
+      ).rejects.toThrow(
+        'You have already used this discount code the maximum number of times',
+      );
+      expect(prisma.discountRedemptionCounter.findUnique).toHaveBeenCalledWith({
+        where: {
+          discountCodeId_memberId: { discountCodeId: 'dc-1', memberId },
+        },
+        select: { uses: true },
+      });
+    });
+
     it('should reject code not valid for selected plan', async () => {
       prisma.discountCode.findUnique.mockResolvedValueOnce(
         makeDiscountCode({
           plans: [{ planId: 'other-plan' }],
         }) as any,
       );
-      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
 
       await expect(
         service.validateCode('SAVE20', planId, memberId),
@@ -358,7 +385,7 @@ describe('DiscountCodesService', () => {
           discountValue: 3000,
         }) as any,
       );
-      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       await expect(
@@ -375,7 +402,7 @@ describe('DiscountCodesService', () => {
           discountValue: 99,
         }) as any,
       );
-      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
 
       // 3000 * 0.01 = 30 KES < 50 KES minimum
@@ -393,6 +420,15 @@ describe('DiscountCodesService', () => {
     const discountedAmount = 2400;
 
     it('should redeem code successfully when no per-member cap', async () => {
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 1,
+      });
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
       prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 1 });
       prisma.discountRedemption.create.mockResolvedValueOnce({
         id: 'redemption-1',
@@ -413,11 +449,19 @@ describe('DiscountCodesService', () => {
       );
 
       expect(result.id).toBe('redemption-1');
-      expect(prisma.discountRedemption.count).not.toHaveBeenCalled();
     });
 
-    it('should redeem code successfully when under per-member cap', async () => {
-      prisma.discountRedemption.count.mockResolvedValueOnce(0);
+    it('should redeem code successfully when under per-member cap (H9 happy path)', async () => {
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 1,
+      });
+      // Counter increment succeeds — uses was 0, now 1, still < cap of 2.
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
       prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 1 });
       prisma.discountRedemption.create.mockResolvedValueOnce({
         id: 'redemption-1',
@@ -438,13 +482,27 @@ describe('DiscountCodesService', () => {
       );
 
       expect(result.id).toBe('redemption-1');
-      expect(prisma.discountRedemption.count).toHaveBeenCalledWith({
-        where: { discountCodeId, memberId },
+      expect(prisma.discountRedemptionCounter.updateMany).toHaveBeenCalledWith({
+        where: {
+          discountCodeId,
+          memberId,
+          uses: { lt: 2 },
+        },
+        data: { uses: { increment: 1 } },
       });
     });
 
-    it('should reject when per-member cap is reached (race condition guard)', async () => {
-      prisma.discountRedemption.count.mockResolvedValueOnce(1);
+    it('should reject replay on same (code, member) when cap already hit (H9 race)', async () => {
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 0,
+      });
+      // Conditional increment matches 0 rows because uses is already == cap.
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValueOnce({
+        count: 0,
+      });
 
       await expect(
         service.redeemCode(
@@ -461,7 +519,15 @@ describe('DiscountCodesService', () => {
     });
 
     it('should throw correct message when per-member cap is reached', async () => {
-      prisma.discountRedemption.count.mockResolvedValueOnce(2);
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 0,
+      });
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValueOnce({
+        count: 0,
+      });
 
       await expect(
         service.redeemCode(
@@ -479,7 +545,139 @@ describe('DiscountCodesService', () => {
       );
     });
 
+    it('should race-reject concurrent redemptions: only one succeeds (H9 atomic claim)', async () => {
+      // Simulate two concurrent redeemCode calls for the same (code, member).
+      // The DB serializes the conditional updateMany: the first returns count=1
+      // (uses 0->1), the second returns count=0 because uses is no longer < 1.
+      prisma.subscriptionMember.findMany.mockResolvedValue([
+        { memberId },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValue({
+        count: 0,
+      });
+      prisma.discountRedemptionCounter.updateMany
+        .mockResolvedValueOnce({ count: 1 }) // winner
+        .mockResolvedValueOnce({ count: 0 }); // loser
+      prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.discountRedemption.create.mockResolvedValueOnce({
+        id: 'redemption-1',
+        discountCodeId,
+        memberId,
+        subscriptionId,
+      } as any);
+
+      const winner = service.redeemCode(
+        prisma,
+        discountCodeId,
+        memberId,
+        subscriptionId,
+        originalAmount,
+        discountedAmount,
+        null,
+        1,
+      );
+      const loser = service.redeemCode(
+        prisma,
+        discountCodeId,
+        memberId,
+        'sub-2',
+        originalAmount,
+        discountedAmount,
+        null,
+        1,
+      );
+
+      await expect(winner).resolves.toMatchObject({ id: 'redemption-1' });
+      await expect(loser).rejects.toThrow(ConflictException);
+    });
+
+    it('should bump counter for secondary duo member (H10 benefit semantics)', async () => {
+      // Primary (memberId) redeems on a duo sub with secondary member-B. Counter
+      // increment runs for BOTH members so member-B is tagged as "benefited" and
+      // cannot re-use the code on a separate subscription later.
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId },
+        { memberId: 'member-b' },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 2,
+      });
+      prisma.discountRedemptionCounter.updateMany
+        .mockResolvedValueOnce({ count: 1 }) // primary
+        .mockResolvedValueOnce({ count: 1 }); // secondary
+      prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.discountRedemption.create.mockResolvedValueOnce({
+        id: 'redemption-1',
+        discountCodeId,
+        memberId,
+        subscriptionId,
+      } as any);
+
+      await service.redeemCode(
+        prisma,
+        discountCodeId,
+        memberId,
+        subscriptionId,
+        originalAmount,
+        discountedAmount,
+        null,
+        1,
+      );
+
+      expect(prisma.discountRedemptionCounter.createMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          expect.objectContaining({ memberId, discountCodeId }),
+          expect.objectContaining({
+            memberId: 'member-b',
+            discountCodeId,
+          }),
+        ]),
+        skipDuplicates: true,
+      });
+      expect(prisma.discountRedemptionCounter.updateMany).toHaveBeenCalledTimes(
+        2,
+      );
+    });
+
+    it('should reject secondary duo member re-using code on a later subscription (H10)', async () => {
+      // member-b already has uses=1 on the counter from the earlier duo
+      // redemption, so the conditional increment (uses < 1) returns count=0.
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId: 'member-b' },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 0,
+      });
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValueOnce({
+        count: 0,
+      });
+
+      await expect(
+        service.redeemCode(
+          prisma,
+          discountCodeId,
+          'member-b',
+          'sub-b-solo',
+          originalAmount,
+          discountedAmount,
+          null,
+          1,
+        ),
+      ).rejects.toThrow(
+        'You have already used this discount code the maximum number of times',
+      );
+    });
+
     it('should reject when global cap is reached', async () => {
+      prisma.subscriptionMember.findMany.mockResolvedValueOnce([
+        { memberId },
+      ] as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValueOnce({
+        count: 0,
+      });
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
       prisma.discountCode.updateMany.mockResolvedValueOnce({ count: 0 });
 
       await expect(

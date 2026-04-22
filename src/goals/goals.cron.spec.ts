@@ -66,6 +66,31 @@ describe('GoalsCron', () => {
       expect(prisma.goal.updateMany).not.toHaveBeenCalled();
       expect(emitter.emit).not.toHaveBeenCalled();
     });
+
+    it('skips goals the listener already transitioned to READY (lost race)', async () => {
+      prisma.goal.findMany.mockResolvedValue([
+        { id: 'g1', memberId: 'm1' },
+      ] as never);
+      // State-guarded updateMany returns 0 because the goal is no longer
+      // GENERATING (the listener beat the sweeper by committing READY).
+      prisma.goal.updateMany.mockResolvedValue({ count: 0 });
+
+      await cron.sweepStaleGenerations();
+
+      expect(prisma.goal.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'g1',
+          generationStatus: 'GENERATING',
+          generationStartedAt: { lt: expect.any(Date) },
+        },
+        data: {
+          generationStatus: 'FAILED',
+          generationError: 'Generation timed out',
+        },
+      });
+      // No goal.plan.failed event when the state-guarded claim missed.
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
   });
 
   describe('sendWeeklyMotivation', () => {

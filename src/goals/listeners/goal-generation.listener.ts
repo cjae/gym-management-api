@@ -30,6 +30,16 @@ export class GoalGenerationListener {
     try {
       await this.generate(payload);
     } catch (err) {
+      if (err instanceof GenerationRaceLostError) {
+        // Another actor (e.g., the stale-generation sweeper) already transitioned
+        // this goal out of GENERATING. The transaction rolled back cleanly; do
+        // not mark FAILED, do not emit goal.plan.ready/failed. The other actor
+        // owns the terminal state and its follow-up events.
+        this.logger.warn(
+          `Goal ${payload.goalId} generation race lost; skipping state update`,
+        );
+        return;
+      }
       Sentry.captureException(err, {
         extra: { goalId: payload.goalId, memberId: payload.memberId },
       });
@@ -238,7 +248,25 @@ export class GoalGenerationListener {
     const deadline = new Date(goal.createdAt);
     deadline.setUTCDate(deadline.getUTCDate() + dto.estimatedWeeks * 7);
 
-    await this.prisma.$transaction(async (tx) => {
+    const committed = await this.prisma.$transaction(async (tx) => {
+      // Atomic state-guarded claim: only transition GENERATING -> READY.
+      // If another actor (e.g., sweeper) has already transitioned this goal,
+      // count === 0 and we throw to roll back plan item / milestone writes.
+      const { count } = await tx.goal.updateMany({
+        where: { id: goal.id, generationStatus: 'GENERATING' },
+        data: {
+          recommendedGymFrequency: dto.recommendedGymFrequency,
+          aiReasoning: dto.reasoning,
+          aiEstimatedDeadline: deadline,
+          rawLlmResponse: raw as Prisma.InputJsonValue,
+          generationStatus: 'READY',
+          generationError: null,
+        },
+      });
+      if (count === 0) {
+        throw new GenerationRaceLostError(goal.id);
+      }
+
       if (dto.plan.length > 0) {
         await tx.goalPlanItem.createMany({
           data: dto.plan.map((p) => ({
@@ -275,35 +303,38 @@ export class GoalGenerationListener {
           })),
         });
       }
-      await tx.goal.update({
-        where: { id: goal.id },
-        data: {
-          recommendedGymFrequency: dto.recommendedGymFrequency,
-          aiReasoning: dto.reasoning,
-          aiEstimatedDeadline: deadline,
-          rawLlmResponse: raw as Prisma.InputJsonValue,
-          generationStatus: 'READY',
-          generationError: null,
-        },
-      });
+
+      return true;
     });
 
-    this.eventEmitter.emit('goal.plan.ready', {
-      goalId: goal.id,
-      memberId: goal.memberId,
-      title: goal.title,
-    });
+    // Defer push notification until AFTER the transaction commits so we never
+    // notify for a plan that got rolled back.
+    if (committed) {
+      this.eventEmitter.emit('goal.plan.ready', {
+        goalId: goal.id,
+        memberId: goal.memberId,
+        title: goal.title,
+      });
+    }
   }
 
   private async markFailed(goalId: string, err: Error) {
     try {
-      await this.prisma.goal.update({
-        where: { id: goalId },
+      // Atomic state-guarded claim: only flip GENERATING -> FAILED so we never
+      // clobber a READY goal (e.g., if somehow the listener failed after a
+      // successful commit) or a row the sweeper already terminated.
+      const { count } = await this.prisma.goal.updateMany({
+        where: { id: goalId, generationStatus: 'GENERATING' },
         data: {
           generationStatus: 'FAILED',
           generationError: err.message.slice(0, 1000),
         },
       });
+      if (count === 0) {
+        this.logger.warn(
+          `Goal ${goalId} no longer in GENERATING; cannot mark failed`,
+        );
+      }
     } catch (updateErr) {
       if (
         updateErr instanceof Prisma.PrismaClientKnownRequestError &&
@@ -314,5 +345,12 @@ export class GoalGenerationListener {
       }
       throw updateErr;
     }
+  }
+}
+
+class GenerationRaceLostError extends Error {
+  constructor(goalId: string) {
+    super(`Generation race lost for goal ${goalId}`);
+    this.name = 'GenerationRaceLostError';
   }
 }

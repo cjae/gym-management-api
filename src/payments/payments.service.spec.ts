@@ -59,6 +59,16 @@ describe('PaymentsService', () => {
     service = module.get<PaymentsService>(PaymentsService);
     prisma = module.get(PrismaService);
     jest.clearAllMocks();
+
+    // The webhook handler wraps activation + referral reward in a
+    // `prisma.$transaction(async (tx) => ...)`. Route the tx callback to
+    // the same DeepMockProxy so `tx.xxx` calls land on the same spies as
+    // `prisma.xxx`. For array-form transactions, resolve each promise.
+    (prisma.$transaction as jest.Mock).mockImplementation((input: unknown) =>
+      typeof input === 'function'
+        ? (input as (tx: typeof prisma) => unknown)(prisma)
+        : Promise.all(input as Promise<unknown>[]),
+    );
   });
 
   it('should be defined', () => {
@@ -265,15 +275,15 @@ describe('PaymentsService', () => {
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
-      // Subscription update
-      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      // Subscription activation (status-guarded updateMany inside tx)
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
 
       // Referral lookup (no pending referral)
       prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleWebhook(raw, signature);
 
-      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+      expect(prisma.memberSubscription.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: subscriptionId },
           data: expect.objectContaining({
@@ -327,12 +337,12 @@ describe('PaymentsService', () => {
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
-      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
       prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleWebhook(raw, signature);
 
-      const updateCall = prisma.memberSubscription.update.mock.calls[0][0];
+      const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
       const newEndDate = updateCall.data.endDate as Date;
 
       // Should be ~1 month from futureEndDate (not from now)
@@ -384,12 +394,12 @@ describe('PaymentsService', () => {
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
-      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
       prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleWebhook(raw, signature);
 
-      const updateCall = prisma.memberSubscription.update.mock.calls[0][0];
+      const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
       const newEndDate = updateCall.data.endDate as Date;
 
       // Should be ~1 month from now (not from the past endDate)
@@ -481,7 +491,7 @@ describe('PaymentsService', () => {
           endDate: new Date(),
           plan: { price: 2500, billingInterval: 'MONTHLY' },
         } as any);
-        prisma.memberSubscription.update.mockResolvedValue({} as any);
+        prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
         prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
         await service.handleWebhook(raw, signature);
@@ -490,7 +500,8 @@ describe('PaymentsService', () => {
           where: { id: paymentId, status: 'PENDING' },
           data: expect.objectContaining({ status: 'PAID' }),
         });
-        expect(prisma.memberSubscription.update).toHaveBeenCalled();
+        // Activation uses status-guarded updateMany inside the tx.
+        expect(prisma.memberSubscription.updateMany).toHaveBeenCalled();
         // Referral claim path is exercised (even if count is 0 it's called)
         expect(prisma.referral.updateMany).toHaveBeenCalled();
         expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -514,7 +525,7 @@ describe('PaymentsService', () => {
         // no activity event.
         expect(prisma.payment.findUnique).not.toHaveBeenCalled();
         expect(prisma.memberSubscription.findUnique).not.toHaveBeenCalled();
-        expect(prisma.memberSubscription.update).not.toHaveBeenCalled();
+        expect(prisma.memberSubscription.updateMany).not.toHaveBeenCalled();
         expect(prisma.referral.updateMany).not.toHaveBeenCalled();
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
@@ -548,7 +559,7 @@ describe('PaymentsService', () => {
           endDate: new Date(),
           plan: { price: 2500, billingInterval: 'MONTHLY' },
         } as any);
-        prisma.memberSubscription.update.mockResolvedValue({} as any);
+        prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
         prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
         await Promise.all([
@@ -558,8 +569,8 @@ describe('PaymentsService', () => {
 
         // updateMany called twice (both invocations attempted the claim)
         expect(prisma.payment.updateMany).toHaveBeenCalledTimes(2);
-        // But subscription update ran exactly once — the winner's path.
-        expect(prisma.memberSubscription.update).toHaveBeenCalledTimes(1);
+        // But subscription activation ran exactly once — the winner's path.
+        expect(prisma.memberSubscription.updateMany).toHaveBeenCalledTimes(1);
         // Exactly one activity event fired.
         expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
         // Referral claim attempted exactly once (side-effect path gated by count).

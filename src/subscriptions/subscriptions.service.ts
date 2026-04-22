@@ -878,6 +878,8 @@ export class SubscriptionsService {
   async cleanupPendingSubscriptions() {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
+    // Candidate list (non-authoritative — the atomic claim below is what
+    // actually owns the deletion).
     const staleSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         status: 'PENDING' as SubscriptionStatus,
@@ -888,28 +890,92 @@ export class SubscriptionsService {
 
     if (staleSubscriptions.length === 0) return;
 
-    const ids = staleSubscriptions.map((s) => s.id);
+    // Per-id atomic cleanup: each id gets its own short transaction so a
+    // slow row doesn't hold a long-lived lock on the others. Inside the tx
+    // we atomically claim the subscription with a status-guarded
+    // `deleteMany({ id, status: 'PENDING' })`. If a webhook already flipped
+    // this subscription to ACTIVE (the race this fix is for), the claim
+    // returns count=0 and we skip the row without touching its payments,
+    // discount redemptions, or members. Conversely, once we've claimed
+    // (row deleted), the webhook's own status-guarded `updateMany`
+    // activation will see count=0 and gracefully no-op without activating
+    // a deleted sub — the "paid but no subscription" race is closed on
+    // both sides.
+    let cleaned = 0;
+    let racedLost = 0;
 
-    // Delete in order: reverse discounts → payments → subscription members → subscriptions (FK constraints)
-    await this.prisma.$transaction(async (tx) => {
-      // Reverse discount redemptions (decrements currentUses and deletes records)
-      for (const sub of staleSubscriptions) {
-        await this.discountCodesService.reverseRedemption(tx, sub.id);
-      }
+    for (const { id } of staleSubscriptions) {
+      const claimed = await this.prisma
+        .$transaction(async (tx) => {
+          // Dependent rows must be removed before the parent because of FK
+          // constraints. These are scoped by subscriptionId, so even if the
+          // parent claim fails below, a PENDING subscription's
+          // payments/members are always safe to remove — the sub is gone.
+          // BUT: we must not touch dependents unless we're certain we own
+          // the subscription. Order of operations:
+          //   1. Reverse discount redemption for this sub (uses the
+          //      redemption's subscriptionId — safe, scoped).
+          //   2. Delete payments scoped to this subscriptionId.
+          //   3. Delete subscriptionMember rows scoped to this
+          //      subscriptionId.
+          //   4. Atomically delete the subscription iff still PENDING.
+          // Because these all run in the same interactive transaction, if
+          // step 4's claim fails (count=0), the whole tx rolls back and
+          // the dependent rows stay intact — this is what protects an
+          // in-flight webhook's state.
+          await this.discountCodesService.reverseRedemption(tx, id);
 
-      await tx.payment.deleteMany({
-        where: { subscriptionId: { in: ids } },
-      });
-      await tx.subscriptionMember.deleteMany({
-        where: { subscriptionId: { in: ids } },
-      });
-      await tx.memberSubscription.deleteMany({
-        where: { id: { in: ids } },
-      });
-    });
+          await tx.payment.deleteMany({
+            where: { subscriptionId: id },
+          });
+          await tx.subscriptionMember.deleteMany({
+            where: { subscriptionId: id },
+          });
 
-    this.logger.log(
-      `Cleaned up ${staleSubscriptions.length} stale pending subscription(s)`,
-    );
+          const result = await tx.memberSubscription.deleteMany({
+            where: {
+              id,
+              status: 'PENDING' as SubscriptionStatus,
+            },
+          });
+
+          if (result.count === 0) {
+            // Race lost — a webhook activated this sub between our
+            // candidate scan and this claim. Throw to roll back the
+            // payment/subscriptionMember deletes above so we don't
+            // corrupt the now-ACTIVE subscription's state.
+            throw new PendingCleanupRaceLost();
+          }
+
+          return true;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof PendingCleanupRaceLost) return false;
+          throw err;
+        });
+
+      if (claimed) cleaned++;
+      else racedLost++;
+    }
+
+    if (cleaned > 0 || racedLost > 0) {
+      this.logger.log(
+        `Cleaned up ${cleaned} stale pending subscription(s); ${racedLost} raced lost to concurrent webhook(s)`,
+      );
+    }
+  }
+}
+
+/**
+ * Sentinel thrown inside the per-id cleanup transaction when the atomic
+ * status-guarded delete fails (count=0). Rolling back via throw ensures
+ * the dependent-row deletes (payments, subscriptionMembers, discount
+ * redemption reversal) are also rolled back when a concurrent webhook
+ * has already activated the subscription.
+ */
+class PendingCleanupRaceLost extends Error {
+  constructor() {
+    super('Pending cleanup raced lost');
+    this.name = 'PendingCleanupRaceLost';
   }
 }
