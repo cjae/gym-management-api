@@ -231,10 +231,7 @@ export class BillingService {
           sub.primaryMember.email,
           sub.primaryMember.firstName,
           sub.plan.name,
-          // H7 — price-at-signup snapshot, not `sub.plan.price`. Users must
-          // see what they actually owe, not a price the admin has since
-          // lowered or raised on the plan.
-          sub.priceKes,
+          sub.plan.price,
           this.memberAppUrl,
         );
         this.logger.warn(
@@ -289,10 +286,7 @@ export class BillingService {
         sub.id,
         authCode,
         sub.primaryMember.email,
-        // H7 — always charge the plan price captured at signup so an admin
-        // changing `SubscriptionPlan.price` mid-cycle does not retroactively
-        // re-price this subscription (either up OR down).
-        sub.priceKes,
+        sub.plan.price,
       );
       this.logger.log(`Charged card for subscription ${sub.id}`);
     }
@@ -332,9 +326,7 @@ export class BillingService {
           sub.primaryMember.email,
           sub.primaryMember.firstName,
           sub.plan.name,
-          // H7 — price-at-signup snapshot; reminders quote the amount the
-          // member actually owes on renewal, not the current plan price.
-          sub.priceKes,
+          sub.plan.price,
           daysUntil,
           `${this.memberAppUrl}`,
         );

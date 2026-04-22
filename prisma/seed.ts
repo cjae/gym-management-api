@@ -113,7 +113,6 @@ async function main() {
       id: 'seed-subscription-member-001',
       primaryMemberId: member.id,
       planId: plan.id,
-      priceKes: plan.price,
       startDate: now,
       endDate,
       status: 'ACTIVE',

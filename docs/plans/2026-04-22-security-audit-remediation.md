@@ -6,13 +6,13 @@
 
 ## Progress
 
-| Severity | Total | Done | Pending |
-|---|---|---|---|
-| Critical | 4 | 4 | 0 |
-| High | 13 | 13 | 0 |
-| Medium | 18 | 9 | 9 |
-| Low | 7 | 0 | 7 |
-| **Total** | **42** | **26** | **16** |
+| Severity | Total | Done | Wontfix | Pending |
+|---|---|---|---|---|
+| Critical | 4 | 4 | 0 | 0 |
+| High | 13 | 12 | 1 | 0 |
+| Medium | 18 | 9 | 0 | 9 |
+| Low | 7 | 0 | 0 | 7 |
+| **Total** | **42** | **25** | **1** | **16** |
 
 Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remediation-client-impact.md`.
 
@@ -60,12 +60,11 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 - [x] **H6** — Password-reset token consumption is check-then-write race
   - File: `src/auth/auth.service.ts:285-321`
   - Fix: atomic `passwordResetToken.updateMany({ token, usedAt: null, expiresAt > now })` claim inside `$transaction`; password write gated on `count === 1`; same error message preserved
-- [x] **H7** — Billing cron charges using stale plan price (price changes since sub creation)
-  - Files: `prisma/schema.prisma`, `src/subscriptions/subscriptions.service.ts`, `src/billing/billing.service.ts`, `prisma/seed.ts`, `src/imports/imports.service.ts`
-  - Fix: added `MemberSubscription.priceKes` column (snapshot at subscription creation); billing cron now charges the snapshot. Migration `20260422130000_add_subscription_price_snapshot` adds column, backfills from current plan price, promotes to NOT NULL
+- [-] **H7** — Billing cron charges using stale plan price (price changes since sub creation)
+  - Wontfix justification: Not a security bug — a product contract question. This is a single-tenant gym with direct member relationships; price changes are communicated out-of-band to members before taking effect. Snapshotting the price would require a "cancel and resubscribe" escape hatch we don't have and don't want (would need to handle pro-rata refunds, streak preservation, freeze carry-over, check-in history). The original behavior (bill from `SubscriptionPlan.price`) is intentional for this domain. Revisit if the product goes multi-tenant white-label.
 - [x] **H8** — Billing cron silently skips on decrypt failure (no alerting)
   - Files: `prisma/schema.prisma`, `src/billing/billing.service.ts`
-  - Fix: on decrypt failure the cron now fires `Sentry.captureMessage(..., { level: 'warning' })` with subscription + member IDs, and stamps new `MemberSubscription.billingFlaggedAt` column so admin UI can surface these
+  - Fix: on decrypt failure the cron now fires `Sentry.captureMessage(..., { level: 'warning' })` with subscription + member IDs, and stamps new `MemberSubscription.billingFlaggedAt` column so admin UI can surface these. Migration `20260422130000_add_subscription_billing_flag` adds the nullable column
 - [x] **H9** — Discount `maxUsesPerMember` count-then-check inside transaction but not atomic against concurrent redemption
   - Files: `src/discount-codes/discount-codes.service.ts`, new `DiscountRedemptionCounter` table
   - Fix: per-(code, member) counter row with conditional `updateMany({ uses < maxUsesPerMember })` increment — same atomic shape as `currentUses`. Migration `20260422120000_add_discount_redemption_counter` with backfill
@@ -167,8 +166,8 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 - 2026-04-22 — H3 audit interceptor deep-redacts sensitive body keys — (uncommitted, PR 3)
 - 2026-04-22 — H4 Sentry user context drops email, keeps id+role — (uncommitted, PR 3)
 - 2026-04-22 — H5 mustChangePassword enforced via JwtAuthGuard with decorator opt-out — (uncommitted, PR 3)
-- 2026-04-22 — H7 priceKes snapshot at subscription creation + billed from snapshot — (uncommitted, PR 3, **migration**)
-- 2026-04-22 — H8 billing decrypt failure now alerts on Sentry + flags subscription — (uncommitted, PR 3)
+- 2026-04-22 — H7 wontfix — product contract question, not a security bug; original behavior (bill from `SubscriptionPlan.price`) is intentional for this single-tenant domain
+- 2026-04-22 — H8 billing decrypt failure now alerts on Sentry + flags subscription — (uncommitted, PR 3, **migration**)
 - 2026-04-22 — M1 trust proxy hops + throttler keyed on real client IP — (uncommitted, PR 3)
 - 2026-04-22 — M2 Swagger UI gated behind Basic Auth outside dev/test — (uncommitted, PR 3)
 - 2026-04-22 — M5 login timing parity via dummy bcrypt compare on miss — (uncommitted, PR 3)

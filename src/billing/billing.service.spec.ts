@@ -104,7 +104,6 @@ describe('BillingService', () => {
         paymentMethod: 'CARD',
         autoRenew: true,
         nextBillingDate: new Date(),
-        priceKes: 2500,
         primaryMember: { id: 'u-1', email: 'test@test.com', firstName: 'John' },
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
@@ -137,7 +136,6 @@ describe('BillingService', () => {
         nextBillingDate: new Date(),
         discountAmount: 500,
         originalPlanPrice: 2500,
-        priceKes: 2500,
         primaryMember: { id: 'u-1', email: 'test@test.com', firstName: 'John' },
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
@@ -152,50 +150,11 @@ describe('BillingService', () => {
 
       await service.processCardRenewals();
 
-      // Should charge priceKes (2500), not discounted price (2000)
+      // Renewal charges full plan price, not the (one-time) discounted amount
       expect(mockPaymentsService.chargeAuthorization).toHaveBeenCalledWith(
         'sub-1',
         'AUTH_abc123',
         'test@test.com',
-        2500,
-      );
-    });
-
-    // H7 — bills using priceKes snapshot, not the (now-changed) current plan price.
-    it('bills using priceKes snapshot even when plan.price has changed (H7)', async () => {
-      const encryptedAuth = encrypt('AUTH_h7', testEncryptionKey);
-      // priceKes was snapshotted at signup at 2500. Admin has since raised
-      // the plan price to 5000 — the renewal must still charge 2500.
-      const subscription = {
-        id: 'sub-h7',
-        paystackAuthorizationCode: encryptedAuth,
-        paymentMethod: 'CARD',
-        autoRenew: true,
-        nextBillingDate: new Date(),
-        priceKes: 2500,
-        primaryMember: {
-          id: 'u-h7',
-          email: 'h7@test.com',
-          firstName: 'Hilda',
-        },
-        plan: { price: 5000, name: 'Monthly', billingInterval: 'MONTHLY' },
-      };
-
-      prisma.memberSubscription.findMany.mockResolvedValueOnce([
-        subscription,
-      ] as any);
-      prisma.payment.count.mockResolvedValueOnce(0);
-      mockPaymentsService.chargeAuthorization.mockResolvedValueOnce({
-        id: 'pay-h7',
-      });
-
-      await service.processCardRenewals();
-
-      // Crucial assertion: charged 2500 (priceKes), not 5000 (plan.price).
-      expect(mockPaymentsService.chargeAuthorization).toHaveBeenCalledWith(
-        'sub-h7',
-        'AUTH_h7',
-        'h7@test.com',
         2500,
       );
     });
@@ -208,7 +167,6 @@ describe('BillingService', () => {
         paymentMethod: 'CARD',
         autoRenew: true,
         nextBillingDate: new Date(),
-        priceKes: 2500,
         primaryMember: { id: 'u-1', email: 'test@test.com', firstName: 'John' },
         plan: { price: 2500, name: 'Monthly', billingInterval: 'MONTHLY' },
       };
@@ -240,7 +198,6 @@ describe('BillingService', () => {
         paymentMethod: 'CARD',
         autoRenew: true,
         nextBillingDate: new Date(),
-        priceKes: 2500,
         primaryMember: {
           id: 'u-corrupt',
           email: 'corrupt@test.com',
@@ -294,7 +251,6 @@ describe('BillingService', () => {
         paymentMethod: 'MOBILE_MONEY',
         autoRenew: true,
         nextBillingDate: threeDaysFromNow,
-        priceKes: 2500,
         primaryMember: {
           id: 'u-2',
           email: 'mpesa@test.com',
@@ -332,7 +288,6 @@ describe('BillingService', () => {
         paymentMethod: 'MOBILE_MONEY',
         autoRenew: true,
         nextBillingDate: yesterday,
-        priceKes: 2500,
         primaryMember: {
           id: 'u-3',
           email: 'expired@test.com',

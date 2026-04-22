@@ -116,10 +116,10 @@ Flagged by the implementing agents, tracked separately:
 
 ---
 
-## PR 3 — Data exposure / hygiene (H1–H5, H7, H8, M1, M2, M5, M10, M13, M16, M18)
+## PR 3 — Data exposure / hygiene (H1–H5, H8, M1, M2, M5, M10, M13, M16, M18)
 
 **Shipped:** 2026-04-22
-**Findings fixed:** 5 High + 9 Medium. Hardening of auth, diagnostics, billing, bootstrap, and I/O resilience. All **Critical + High** now complete (17/17).
+**Findings fixed:** 4 High + 9 Medium. Hardening of auth, diagnostics, billing, bootstrap, and I/O resilience. H7 declared wontfix (see audit tracker for justification). 16/17 Critical+High closed; H7 is not a defect.
 
 ### API contract changes (flag to mobile/admin teams)
 
@@ -135,11 +135,11 @@ Flagged by the implementing agents, tracked separately:
 
 ### Operational / deployment changes
 
-**One new Prisma migration** — must run before the new code ships. Includes a data backfill.
+**One new Prisma migration** — must run before the new code ships.
 
 | Migration | Change | Deploy impact |
 |---|---|---|
-| `20260422130000_add_subscription_price_snapshot` | Adds `MemberSubscription.priceKes Float` (required, backfilled from `SubscriptionPlan.price`) and `MemberSubscription.billingFlaggedAt DateTime?` | Backfill scales with active-subscription count. Safe to run online; adds-only + single UPDATE. Run before code deploy — new code requires the column. |
+| `20260422130000_add_subscription_billing_flag` | Adds nullable `MemberSubscription.billingFlaggedAt DateTime?` (set by billing cron when auth-code decrypt fails, so ops can review). | Adds-only, no backfill. Safe to run online. |
 
 | Change | Action required |
 |---|---|
@@ -151,20 +151,19 @@ Flagged by the implementing agents, tracked separately:
 - [ ] Confirm `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` are non-empty in prod & staging
 - [ ] Set `TRUST_PROXY_HOPS` to match proxy depth (default `1` is correct for most deploys)
 - [ ] If prod DB uses a self-signed TLS cert: update `DATABASE_URL` with `sslrootcert=...` before deploying, otherwise connections will fail
-- [ ] Run `npx prisma migrate deploy` on staging → verify backfilled `priceKes` matches expected values
+- [ ] Run `npx prisma migrate deploy` on staging to apply `add_subscription_billing_flag`
 - [ ] Run same on production, then deploy the new application code
 - [ ] Notify mobile/admin teams: handle new `403` from admin-created users, route to change-password screen
 
 ### Subtle behavior changes (visible to ops / support — flag to teams)
 
-1. **Admin changing a plan's price no longer affects existing subscribers.** `priceKes` is snapshotted on each subscription at creation time. To change what a current subscriber pays, cancel and re-subscribe (or admin creates a new subscription). Backfilled historical rows were stamped with the plan's price **at migration time** — mid-flight plan-price edits from before this deploy are baked in at that value.
-2. **Billing crons alert on Sentry when a subscription's `paystackAuthorizationCode` fails to decrypt.** `Sentry.captureMessage(level: warning)` + `billingFlaggedAt` timestamp is set on the subscription. Admin UI should grow a filter on `billingFlaggedAt IS NOT NULL` so ops can reach out to flagged members.
-3. **Paystack webhook now retries on internal failures.** Previously, exceptions after the atomic claim were swallowed (200). Now they propagate as 500 and Paystack retries. Expect more webhook retry traffic when the DB/downstream flaps — this is correct, the retry hits the idempotent claim gate. Post-activation push/email failures remain best-effort (still swallowed, not retried).
-4. **Running 2+ API replicas on the same billing schedule is now safe.** All five billing crons (card renewals, overdue expiry, mobile-money reminders, birthday wishes, auto-unfreeze) acquire a PostgreSQL advisory lock. Second replica hitting a held lock returns immediately. Not applied to other crons in this PR (see audit-tracker follow-ups).
-5. **Login response time is now uniform.** Previously, requests for unknown emails returned fast (no bcrypt call); known emails ran bcrypt (~100ms). Now both paths run bcrypt (against a dummy hash on the miss path) so response time doesn't leak email existence. The `LOGIN_FAILED` audit log with `userId: null` still fires for unknown emails — no change there.
-6. **Rate limiter now keys on real client IP, not proxy IP.** If your rate-limit dashboards suddenly show per-IP buckets instead of one hot bucket, that's the `trust proxy` fix working. Legitimate clients hit their throttle ceiling independently.
-7. **Audit log metadata no longer contains raw passwords, tokens, or card references.** Sensitive keys (`password`, `token`, `cvv`, `paystackAuthorizationCode`, etc.) are replaced with `'[REDACTED]'` before persisting. Audit consumers reading these fields get a string literal, not the real value — adjust any downstream processors accordingly (unlikely any exist).
-8. **Sentry events no longer tag errors with user email.** `Sentry.setUser` now sends `{ id, role }` only. If your Sentry alerting or audit workflows grouped on email, switch to `id`.
+1. **Billing crons alert on Sentry when a subscription's `paystackAuthorizationCode` fails to decrypt.** `Sentry.captureMessage(level: warning)` + `billingFlaggedAt` timestamp is set on the subscription. Admin UI should grow a filter on `billingFlaggedAt IS NOT NULL` so ops can reach out to flagged members.
+2. **Paystack webhook now retries on internal failures.** Previously, exceptions after the atomic claim were swallowed (200). Now they propagate as 500 and Paystack retries. Expect more webhook retry traffic when the DB/downstream flaps — this is correct, the retry hits the idempotent claim gate. Post-activation push/email failures remain best-effort (still swallowed, not retried).
+3. **Running 2+ API replicas on the same billing schedule is now safe.** All five billing crons (card renewals, overdue expiry, mobile-money reminders, birthday wishes, auto-unfreeze) acquire a PostgreSQL advisory lock. Second replica hitting a held lock returns immediately. Not applied to other crons in this PR (see audit-tracker follow-ups).
+4. **Login response time is now uniform.** Previously, requests for unknown emails returned fast (no bcrypt call); known emails ran bcrypt (~100ms). Now both paths run bcrypt (against a dummy hash on the miss path) so response time doesn't leak email existence. The `LOGIN_FAILED` audit log with `userId: null` still fires for unknown emails — no change there.
+5. **Rate limiter now keys on real client IP, not proxy IP.** If your rate-limit dashboards suddenly show per-IP buckets instead of one hot bucket, that's the `trust proxy` fix working. Legitimate clients hit their throttle ceiling independently.
+6. **Audit log metadata no longer contains raw passwords, tokens, or card references.** Sensitive keys (`password`, `token`, `cvv`, `paystackAuthorizationCode`, etc.) are replaced with `'[REDACTED]'` before persisting. Audit consumers reading these fields get a string literal, not the real value — adjust any downstream processors accordingly (unlikely any exist).
+7. **Sentry events no longer tag errors with user email.** `Sentry.setUser` now sends `{ id, role }` only. If your Sentry alerting or audit workflows grouped on email, switch to `id`.
 
 ### Files changed (19 files + 1 migration, ~1,300 insertions)
 
@@ -178,9 +177,7 @@ Flagged by the implementing agents, tracked separately:
 - `src/audit-logs/audit.interceptor.ts` — H3
 - `src/common/utils/redact-sensitive.ts` — H3 (new)
 - `src/sentry/sentry-user.interceptor.ts` — H4
-- `src/billing/billing.service.ts` — H7 billing, H8 alerting, M16 locks
-- `src/subscriptions/subscriptions.service.ts` — H7 price snapshot
-- `prisma/seed.ts`, `src/imports/imports.service.ts` — H7 (missed creation sites)
+- `src/billing/billing.service.ts` — H8 alerting, M16 locks
 - `src/common/config/app.config.ts` — M1 (trust proxy config)
 - `src/main.ts` — M1 trust proxy, M2 Swagger gate
 - `src/common/middleware/swagger-basic-auth.middleware.ts` — M2 (new)
@@ -189,20 +186,19 @@ Flagged by the implementing agents, tracked separately:
 - `src/payments/payments.service.ts` — M13
 
 **Schema:**
-- `prisma/schema.prisma` — `MemberSubscription.priceKes`, `MemberSubscription.billingFlaggedAt`
+- `prisma/schema.prisma` — `MemberSubscription.billingFlaggedAt`
 
 **Config:**
 - `src/common/config/auth.config.ts` — H2 BASIC_AUTH boot enforcement
 
 **Migrations:**
-- `prisma/migrations/20260422130000_add_subscription_price_snapshot/`
+- `prisma/migrations/20260422130000_add_subscription_billing_flag/`
 
 **Specs:** matching `.spec.ts` for every modified file; new specs for the new middleware, decorator, and utilities.
 
 ### Known follow-ups (not in this PR)
 
 - **Other crons could benefit from M16's advisory-lock pattern**: payments cleanup (`payments.service.ts`), goals sweeper/weekly-pulse/weekly-digest (`goals/goals.cron.ts`), member-tags recompute, QR rotation, imports processor, licensing phone-home. Currently only billing is protected. Several others are already idempotent by design (e.g., subscription cleanup uses atomic `deleteMany` claims from H11).
-- **H7 snapshotting is at subscription-creation time, not at first-charge time**. If you want the discount-applied amount as the locked-in renewal price, you'd need a second snapshot on first successful payment. Current design: renewals always charge the plan's signup price (no discount re-applied).
 - **`sslrootcert` wiring is ops' responsibility** — M18 enforces `rejectUnauthorized: true` in prod, but if prod DB uses a self-signed cert you must bundle the CA and update `DATABASE_URL` before the deploy, otherwise connections fail.
 
 ---
