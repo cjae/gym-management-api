@@ -244,14 +244,16 @@ describe('AttendanceService', () => {
 
     // First attendance.create succeeds, second fails with P2002.
     let createCalls = 0;
-    prisma.attendance.create.mockImplementation(async () => {
-      createCalls += 1;
-      if (createCalls === 1) return {} as any;
-      throw new Prisma.PrismaClientKnownRequestError(
-        'Unique constraint failed',
-        { code: 'P2002', clientVersion: '6.0.0' },
-      );
-    });
+    (prisma.attendance.create as unknown as jest.Mock).mockImplementation(
+      async () => {
+        createCalls += 1;
+        if (createCalls === 1) return {} as any;
+        throw new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint failed',
+          { code: 'P2002', clientVersion: '6.0.0' },
+        );
+      },
+    );
     prisma.streak.upsert.mockResolvedValue({
       weeklyStreak: 0,
       longestStreak: 0,
