@@ -368,9 +368,11 @@ export class AuthService {
         ...dto,
         birthday: dto.birthday ? new Date(dto.birthday) : undefined,
         injuryNotes:
-          dto.injuryNotes !== undefined
-            ? sanitizeText(dto.injuryNotes)
-            : undefined,
+          dto.injuryNotes === undefined
+            ? undefined
+            : dto.injuryNotes === null
+              ? null
+              : sanitizeText(dto.injuryNotes),
       },
       select: safeUserSelect,
     });
@@ -378,19 +380,8 @@ export class AuthService {
   }
 
   async completeOnboarding(userId: string, dto: OnboardingDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, onboardingCompletedAt: true },
-    });
-    if (!existing) throw new UnauthorizedException('User not found');
-    if (existing.onboardingCompletedAt) {
-      throw new BadRequestException(
-        'Onboarding already completed — use PATCH /auth/me to update personalization.',
-      );
-    }
-
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
+    const result = await this.prisma.user.updateMany({
+      where: { id: userId, onboardingCompletedAt: null },
       data: {
         experienceLevel: dto.experienceLevel,
         bodyweightKg: dto.bodyweightKg,
@@ -403,6 +394,21 @@ export class AuthService {
           dto.injuryNotes != null ? sanitizeText(dto.injuryNotes) : null,
         onboardingCompletedAt: new Date(),
       },
+    });
+
+    if (result.count === 0) {
+      const existing = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      if (!existing) throw new UnauthorizedException('User not found');
+      throw new BadRequestException(
+        'Onboarding already completed — use PATCH /auth/me to update personalization.',
+      );
+    }
+
+    const updated = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
       select: safeUserSelect,
     });
     return this.withOnboardingFlag(updated);

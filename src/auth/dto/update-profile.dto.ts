@@ -120,7 +120,7 @@ export class UpdateProfileDto {
   })
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
+  @ArrayMinSize(0)
   @ArrayUnique()
   @IsString({ each: true })
   @IsIn(WEEKDAY_CODES as unknown as string[], { each: true })

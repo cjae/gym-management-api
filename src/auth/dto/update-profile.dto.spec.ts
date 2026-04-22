@@ -68,6 +68,11 @@ describe('UpdateProfileDto personalization fields', () => {
     expect(hasErrorOn(errors, 'preferredTrainingDays')).toBe(true);
   });
 
+  it('allows preferredTrainingDays to be cleared (empty array)', async () => {
+    const errors = await errorsFor({ preferredTrainingDays: [] });
+    expect(hasErrorOn(errors, 'preferredTrainingDays')).toBe(false);
+  });
+
   it('accepts injuryNotes up to 500 characters', async () => {
     const errors = await errorsFor({ injuryNotes: 'x'.repeat(500) });
     expect(hasErrorOn(errors, 'injuryNotes')).toBe(false);

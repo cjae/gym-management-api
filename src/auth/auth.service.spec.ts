@@ -524,6 +524,31 @@ describe('AuthService', () => {
         }) as Record<string, unknown>,
       });
     });
+
+    it('clears injuryNotes when explicitly null', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+      } as any);
+      prisma.user.update.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        injuryNotes: null,
+      } as any);
+
+      await service.updateProfile('1', {
+        injuryNotes: null as unknown as string,
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ injuryNotes: null }) as Record<
+            string,
+            unknown
+          >,
+        }),
+      );
+    });
   });
 
   describe('completeOnboarding', () => {
@@ -539,11 +564,8 @@ describe('AuthService', () => {
     } as OnboardingDto;
 
     it('stamps onboardingCompletedAt and persists all fields', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        id: '1',
-        onboardingCompletedAt: null,
-      } as any);
-      prisma.user.update.mockResolvedValue({
+      prisma.user.updateMany.mockResolvedValue({ count: 1 } as any);
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
         id: '1',
         email: 'test@test.com',
         onboardingCompletedAt: new Date(),
@@ -553,8 +575,8 @@ describe('AuthService', () => {
       await service.completeOnboarding('1', validPayload);
       const after = Date.now();
 
-      expect(prisma.user.update).toHaveBeenCalledTimes(1);
-      const call = prisma.user.update.mock.calls[0][0];
+      expect(prisma.user.updateMany).toHaveBeenCalledTimes(1);
+      const call = prisma.user.updateMany.mock.calls[0][0];
       const data = call.data as Record<string, unknown>;
       expect(data).toMatchObject({
         experienceLevel: 'INTERMEDIATE',
@@ -572,31 +594,48 @@ describe('AuthService', () => {
       expect(stamped.getTime()).toBeLessThanOrEqual(after);
     });
 
+    it('uses atomic updateMany scoped to incomplete onboarding', async () => {
+      prisma.user.updateMany.mockResolvedValue({ count: 1 } as any);
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ id: '1' } as any);
+
+      await service.completeOnboarding('1', validPayload);
+
+      expect(prisma.user.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: '1', onboardingCompletedAt: null },
+        }),
+      );
+    });
+
     it('throws BadRequestException when onboarding is already completed', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        id: '1',
-        onboardingCompletedAt: new Date('2026-04-20'),
-      } as any);
+      prisma.user.updateMany.mockResolvedValue({ count: 0 } as any);
+      prisma.user.findUnique.mockResolvedValue({ id: '1' } as any);
 
       await expect(
         service.completeOnboarding('1', validPayload),
       ).rejects.toThrow(BadRequestException);
-      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('throws UnauthorizedException when the user does not exist', async () => {
+      prisma.user.updateMany.mockResolvedValue({ count: 0 } as any);
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.completeOnboarding('missing', validPayload),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('sanitizes injuryNotes by collapsing newlines and tabs', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        id: '1',
-        onboardingCompletedAt: null,
-      } as any);
-      prisma.user.update.mockResolvedValue({ id: '1' } as any);
+      prisma.user.updateMany.mockResolvedValue({ count: 1 } as any);
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ id: '1' } as any);
 
       await service.completeOnboarding('1', {
         ...validPayload,
         injuryNotes: 'Shoulder\n\tpain\ron left side',
       } as OnboardingDto);
 
-      const call = prisma.user.update.mock.calls[0][0];
+      const call = prisma.user.updateMany.mock.calls[0][0];
       const data = call.data as { injuryNotes: string };
       expect(data.injuryNotes).not.toMatch(/[\n\r\t]/);
       expect(data.injuryNotes).toContain('Shoulder');
