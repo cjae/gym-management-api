@@ -11,9 +11,10 @@ import { PrismaClient } from '@prisma/client';
 describe('ShopService', () => {
   let service: ShopService;
   let prisma: DeepMockProxy<PrismaClient>;
+  let module: TestingModule;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         ShopService,
         { provide: PrismaService, useValue: mockDeep<PrismaClient>() },
@@ -115,6 +116,79 @@ describe('ShopService', () => {
       await expect(service.findOneItem('item-1', true)).rejects.toThrow(
         'Shop item not found',
       );
+    });
+  });
+
+  const mockVariant = {
+    id: 'variant-1',
+    shopItemId: 'item-1',
+    name: 'Large',
+    priceOverride: null,
+    stock: 5,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  describe('addVariant', () => {
+    it('should add a variant to an item', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue(mockItem as any);
+      prisma.shopItemVariant.create.mockResolvedValue(mockVariant as any);
+      const result = await service.addVariant('item-1', {
+        name: 'Large',
+        stock: 5,
+      });
+      expect(result.name).toBe('Large');
+    });
+
+    it('should throw NotFoundException if item not found', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue(null);
+      await expect(
+        service.addVariant('item-1', { name: 'Large', stock: 5 }),
+      ).rejects.toThrow('Shop item not found');
+    });
+  });
+
+  describe('removeVariant', () => {
+    it('should throw NotFoundException if variant not found', async () => {
+      prisma.shopItemVariant.findUnique.mockResolvedValue(null);
+      await expect(
+        service.removeVariant('item-1', 'variant-1'),
+      ).rejects.toThrow('Variant not found');
+    });
+  });
+
+  describe('createOrder', () => {
+    let gymSettingsServiceMock: DeepMockProxy<GymSettingsService>;
+
+    beforeEach(() => {
+      gymSettingsServiceMock = module.get(GymSettingsService);
+      gymSettingsServiceMock.getCachedSettings.mockResolvedValue({
+        currency: 'KES',
+      } as any);
+    });
+
+    it('should throw BadRequestException when item not found', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue(null);
+      await expect(
+        service.createOrder('member-1', 'member@test.com', {
+          items: [{ shopItemId: 'item-1', quantity: 1 }],
+          paymentMethod: 'CARD' as any,
+        }),
+      ).rejects.toThrow('Shop item item-1 not found');
+    });
+
+    it('should throw ConflictException when stock insufficient', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue({
+        ...mockItem,
+        stock: 0,
+        variants: [],
+      } as any);
+      await expect(
+        service.createOrder('member-1', 'member@test.com', {
+          items: [{ shopItemId: 'item-1', quantity: 1 }],
+          paymentMethod: 'CARD' as any,
+        }),
+      ).rejects.toThrow('Insufficient stock');
     });
   });
 });

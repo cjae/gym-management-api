@@ -27,10 +27,15 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { ShopService } from './shop.service';
 import { CreateShopItemDto } from './dto/create-shop-item.dto';
 import { UpdateShopItemDto } from './dto/update-shop-item.dto';
+import { CreateShopItemVariantDto } from './dto/create-shop-item-variant.dto';
+import { UpdateShopItemVariantDto } from './dto/update-shop-item-variant.dto';
 import {
   ShopItemResponseDto,
+  ShopItemVariantResponseDto,
   PaginatedShopItemsResponseDto,
 } from './dto/shop-item-response.dto';
+import { CreateShopOrderDto } from './dto/create-shop-order.dto';
+import { CreateShopOrderResponseDto } from './dto/shop-order-response.dto';
 
 @ApiTags('Shop')
 @ApiBearerAuth()
@@ -91,5 +96,55 @@ export class ShopController {
   @ApiNotFoundResponse({ description: 'Shop item not found' })
   removeItem(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.removeItem(id);
+  }
+
+  // ── Item Variants ──
+
+  @Post('items/:id/variants')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiCreatedResponse({ type: ShopItemVariantResponseDto })
+  addVariant(
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Body() dto: CreateShopItemVariantDto,
+  ) {
+    return this.shopService.addVariant(itemId, dto);
+  }
+
+  @Patch('items/:id/variants/:vid')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: ShopItemVariantResponseDto })
+  updateVariant(
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Param('vid', ParseUUIDPipe) variantId: string,
+    @Body() dto: UpdateShopItemVariantDto,
+  ) {
+    return this.shopService.updateVariant(itemId, variantId, dto);
+  }
+
+  @Delete('items/:id/variants/:vid')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @ApiOkResponse({ description: 'Variant deleted' })
+  removeVariant(
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Param('vid', ParseUUIDPipe) variantId: string,
+  ) {
+    return this.shopService.removeVariant(itemId, variantId);
+  }
+
+  // ── Orders ──
+
+  @Post('orders')
+  @UseGuards(RolesGuard)
+  @Roles('MEMBER')
+  @ApiCreatedResponse({ type: CreateShopOrderResponseDto })
+  createOrder(
+    @Body() dto: CreateShopOrderDto,
+    @CurrentUser('id') memberId: string,
+    @CurrentUser('email') email: string,
+  ) {
+    return this.shopService.createOrder(memberId, email, dto);
   }
 }

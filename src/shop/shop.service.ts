@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -10,6 +16,10 @@ import {
 } from '../common/config/payment.config';
 import { CreateShopItemDto } from './dto/create-shop-item.dto';
 import { UpdateShopItemDto } from './dto/update-shop-item.dto';
+import { CreateShopItemVariantDto } from './dto/create-shop-item-variant.dto';
+import { UpdateShopItemVariantDto } from './dto/update-shop-item-variant.dto';
+import { CreateShopOrderDto } from './dto/create-shop-order.dto';
+import axios from 'axios';
 
 @Injectable()
 export class ShopService {
@@ -92,5 +102,213 @@ export class ShopService {
   async removeItem(id: string) {
     await this.findOneItem(id);
     return this.prisma.shopItem.delete({ where: { id } });
+  }
+
+  async addVariant(itemId: string, dto: CreateShopItemVariantDto) {
+    await this.findOneItem(itemId);
+    return this.prisma.shopItemVariant.create({
+      data: {
+        shopItemId: itemId,
+        name: dto.name,
+        priceOverride: dto.priceOverride ?? null,
+        stock: dto.stock,
+      },
+    });
+  }
+
+  async updateVariant(
+    itemId: string,
+    variantId: string,
+    dto: UpdateShopItemVariantDto,
+  ) {
+    const variant = await this.prisma.shopItemVariant.findUnique({
+      where: { id: variantId },
+    });
+    if (!variant || variant.shopItemId !== itemId) {
+      throw new NotFoundException('Variant not found');
+    }
+    return this.prisma.shopItemVariant.update({
+      where: { id: variantId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.priceOverride !== undefined && {
+          priceOverride: dto.priceOverride,
+        }),
+        ...(dto.stock !== undefined && { stock: dto.stock }),
+      },
+    });
+  }
+
+  async removeVariant(itemId: string, variantId: string) {
+    const variant = await this.prisma.shopItemVariant.findUnique({
+      where: { id: variantId },
+    });
+    if (!variant || variant.shopItemId !== itemId) {
+      throw new NotFoundException('Variant not found');
+    }
+    return this.prisma.shopItemVariant.delete({ where: { id: variantId } });
+  }
+
+  async createOrder(memberId: string, email: string, dto: CreateShopOrderDto) {
+    const settings = await this.gymSettingsService.getCachedSettings();
+    const currency = settings?.currency ?? 'KES';
+
+    const lineItems: Array<{
+      shopItemId: string;
+      variantId?: string;
+      quantity: number;
+      unitPrice: number;
+      hasVariant: boolean;
+    }> = [];
+
+    for (const line of dto.items) {
+      const item = await this.prisma.shopItem.findUnique({
+        where: { id: line.shopItemId },
+        include: { variants: true },
+      });
+      if (!item || !item.isActive) {
+        throw new BadRequestException(`Shop item ${line.shopItemId} not found`);
+      }
+
+      if (line.variantId) {
+        const variant = item.variants.find((v) => v.id === line.variantId);
+        if (!variant) {
+          throw new BadRequestException(
+            `Variant ${line.variantId} not found on item ${line.shopItemId}`,
+          );
+        }
+        if (variant.stock < line.quantity) {
+          throw new ConflictException(
+            `Insufficient stock for variant ${variant.name}`,
+          );
+        }
+        lineItems.push({
+          shopItemId: line.shopItemId,
+          variantId: line.variantId,
+          quantity: line.quantity,
+          unitPrice: variant.priceOverride ?? item.price,
+          hasVariant: true,
+        });
+      } else {
+        if (item.stock < line.quantity) {
+          throw new ConflictException(
+            `Insufficient stock for item ${item.name}`,
+          );
+        }
+        lineItems.push({
+          shopItemId: line.shopItemId,
+          quantity: line.quantity,
+          unitPrice: item.price,
+          hasVariant: false,
+        });
+      }
+    }
+
+    const totalAmount = lineItems.reduce(
+      (sum, l) => sum + l.unitPrice * l.quantity,
+      0,
+    );
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.shopOrder.create({
+        data: {
+          memberId,
+          totalAmount,
+          currency,
+          paymentMethod: dto.paymentMethod,
+          orderItems: {
+            create: lineItems.map((l) => ({
+              shopItemId: l.shopItemId,
+              variantId: l.variantId ?? null,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+            })),
+          },
+        },
+        include: { orderItems: true },
+      });
+
+      for (const l of lineItems) {
+        if (l.hasVariant && l.variantId) {
+          const result = await tx.shopItemVariant.updateMany({
+            where: { id: l.variantId, stock: { gte: l.quantity } },
+            data: { stock: { decrement: l.quantity } },
+          });
+          if (result.count === 0) {
+            throw new ConflictException(
+              'Insufficient stock (concurrent order)',
+            );
+          }
+        } else {
+          const result = await tx.shopItem.updateMany({
+            where: { id: l.shopItemId, stock: { gte: l.quantity } },
+            data: { stock: { decrement: l.quantity } },
+          });
+          if (result.count === 0) {
+            throw new ConflictException(
+              'Insufficient stock (concurrent order)',
+            );
+          }
+        }
+      }
+
+      return created;
+    });
+
+    const reference = `shop_${order.id}_${Date.now()}`;
+    const channelMap: Record<string, string> = {
+      CARD: 'card',
+      MOBILE_MONEY: 'mobile_money',
+      BANK_TRANSFER: 'bank_transfer',
+    };
+    const channel = channelMap[dto.paymentMethod] ?? 'card';
+
+    const payload = {
+      email,
+      amount: Math.round(totalAmount * 100),
+      currency,
+      channels: [channel],
+      reference,
+      ...(this.paystackCallbackUrl && {
+        callback_url: this.paystackCallbackUrl,
+      }),
+      metadata: {
+        type: 'shop',
+        orderId: order.id,
+        ...(this.paystackCancelUrl && {
+          cancel_action: this.paystackCancelUrl,
+        }),
+      },
+    };
+
+    try {
+      const response = await axios.post<{
+        data: {
+          authorization_url: string;
+          access_code: string;
+          reference: string;
+        };
+      }>(`${this.paystackBaseUrl}/transaction/initialize`, payload, {
+        headers: {
+          Authorization: `Bearer ${this.paystackSecretKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      await this.prisma.shopOrder.update({
+        where: { id: order.id },
+        data: { paystackReference: reference },
+      });
+
+      return { order, checkout: response.data.data };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.logger.error('Paystack shop initialization failed', {
+          status: error.response?.status,
+          body: error.response?.data,
+        });
+      }
+      throw new BadRequestException('Payment initialization failed');
+    }
   }
 }
