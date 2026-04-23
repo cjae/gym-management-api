@@ -1012,6 +1012,8 @@ model ShopItemVariant {
 
   item       ShopItem      @relation(fields: [shopItemId], references: [id], onDelete: Cascade)
   orderItems ShopOrderItem[]
+
+  @@index([shopItemId])
 }
 
 model ShopOrder {
@@ -1025,8 +1027,11 @@ model ShopOrder {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  member     User           @relation(fields: [memberId], references: [id])
+  member     User           @relation(fields: [memberId], references: [id], onDelete: Restrict)
   orderItems ShopOrderItem[]
+
+  @@index([memberId])
+  @@index([status])
 }
 
 model ShopOrderItem {
@@ -1041,4 +1046,7 @@ model ShopOrderItem {
   order   ShopOrder        @relation(fields: [shopOrderId], references: [id], onDelete: Cascade)
   item    ShopItem         @relation(fields: [shopItemId], references: [id])
   variant ShopItemVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([shopOrderId])
+  @@index([shopItemId])
 }
