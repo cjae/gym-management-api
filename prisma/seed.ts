@@ -4,19 +4,32 @@ import pg from 'pg';
 import * as bcrypt from 'bcrypt';
 
 const dbUrl = process.env.DATABASE_URL;
+const isProduction = process.env.NODE_ENV === 'production';
+const sslModeMatch = dbUrl?.match(/[?&]sslmode=([^&]*)/);
+const sslMode = sslModeMatch?.[1];
 const useSSL =
-  dbUrl?.includes('sslmode=') || process.env.NODE_ENV === 'production';
+  isProduction ||
+  ['require', 'verify-ca', 'verify-full'].includes(sslMode ?? '');
 const cleanUrl = dbUrl
   ?.replace(/[?&]sslmode=[^&]*/g, (match) => (match.startsWith('?') ? '?' : ''))
   .replace(/\?$/, '');
+// Enforce TLS cert validation in production; allow self-signed elsewhere.
+const sslOption = useSSL ? { ssl: { rejectUnauthorized: isProduction } } : {};
 const pool = new pg.Pool({
   connectionString: cleanUrl,
-  ...(useSSL && { ssl: { rejectUnauthorized: false } }),
+  ...sslOption,
 });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  if (isProduction) {
+    throw new Error(
+      'Seed script must not run in production (NODE_ENV=production). ' +
+        'Aborting to prevent hardcoded dev credentials from being inserted.',
+    );
+  }
+
   const hash = await bcrypt.hash('password123', 10);
 
   const existingSuperAdmin = await prisma.user.findFirst({
@@ -45,24 +58,42 @@ async function main() {
     'Seed data created: Super Admin (powerbarnfitnesske@gmail.com / password123)',
   );
 
-  // Member user for goals testing
-  const existingMember = await prisma.user.findFirst({
-    where: {
-      OR: [{ email: 'member@example.com' }, { referralCode: 'MEMBER01' }],
+  // Member user for goals testing.
+  // Upsert keyed on email so re-seeds heal old rows missing personalization fields.
+  const member = await prisma.user.upsert({
+    where: { email: 'member@example.com' },
+    create: {
+      email: 'member@example.com',
+      password: hash,
+      firstName: 'Jane',
+      lastName: 'Member',
+      role: 'MEMBER',
+      referralCode: 'MEMBER01',
+      // Personalization profile (for goals feature)
+      experienceLevel: 'INTERMEDIATE',
+      bodyweightKg: 70.5,
+      heightCm: 175,
+      sessionMinutes: 60,
+      preferredTrainingDays: ['MON', 'TUE', 'WED', 'THU'],
+      sleepHoursAvg: 7.5,
+      primaryMotivation: 'STRENGTH',
+      injuryNotes: null,
+      onboardingCompletedAt: new Date(),
+    },
+    update: {
+      // Heal personalization fields on re-seed. Do NOT overwrite password,
+      // firstName, lastName, referralCode, or injuryNotes — a developer may
+      // have intentionally changed those locally.
+      experienceLevel: 'INTERMEDIATE',
+      bodyweightKg: 70.5,
+      heightCm: 175,
+      sessionMinutes: 60,
+      preferredTrainingDays: ['MON', 'TUE', 'WED', 'THU'],
+      sleepHoursAvg: 7.5,
+      primaryMotivation: 'STRENGTH',
+      onboardingCompletedAt: new Date(),
     },
   });
-  const member =
-    existingMember ??
-    (await prisma.user.create({
-      data: {
-        email: 'member@example.com',
-        password: hash,
-        firstName: 'Jane',
-        lastName: 'Member',
-        role: 'MEMBER',
-        referralCode: 'MEMBER01',
-      },
-    }));
 
   console.log('Seed data created: Member (member@example.com / password123)');
 

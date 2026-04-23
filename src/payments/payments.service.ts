@@ -117,19 +117,13 @@ export class PaymentsService {
       );
     }
 
-    // Expire any existing PENDING payment for this subscription
-    const existingPending = await this.prisma.payment.findFirst({
-      where: {
-        subscriptionId,
-        status: 'PENDING',
-      },
+    // Atomically expire any existing PENDING payment for this subscription.
+    // updateMany eliminates the findFirst → update race where two concurrent
+    // initialize calls could both read no PENDING row and then both create one.
+    await this.prisma.payment.updateMany({
+      where: { subscriptionId, status: 'PENDING' },
+      data: { status: 'EXPIRED' },
     });
-    if (existingPending) {
-      await this.prisma.payment.update({
-        where: { id: existingPending.id },
-        data: { status: 'EXPIRED' },
-      });
-    }
 
     const channelMap: Record<
       string,
@@ -238,7 +232,22 @@ export class PaymentsService {
       .createHmac('sha512', this.paystackSecretKey)
       .update(rawBody)
       .digest('hex');
-    if (hash !== signature) throw new BadRequestException('Invalid signature');
+
+    // Timing-safe signature comparison. `timingSafeEqual` throws on length
+    // mismatch, so short-circuit that case with the same BadRequest response.
+    const hashBuffer = Buffer.from(hash, 'hex');
+    let signatureBuffer: Buffer;
+    try {
+      signatureBuffer = Buffer.from(signature ?? '', 'hex');
+    } catch {
+      throw new BadRequestException('Invalid signature');
+    }
+    if (
+      hashBuffer.length !== signatureBuffer.length ||
+      !crypto.timingSafeEqual(hashBuffer, signatureBuffer)
+    ) {
+      throw new BadRequestException('Invalid signature');
+    }
 
     const body: PaystackWebhookBody = JSON.parse(
       rawBody.toString(),
@@ -249,65 +258,97 @@ export class PaymentsService {
       const subscriptionId = metadata?.subscriptionId;
       const paymentId = metadata?.paymentId;
 
-      // Idempotency: skip if this reference was already processed
-      if (reference) {
-        const existing = await this.prisma.payment.findFirst({
-          where: { paystackReference: reference },
-        });
-        if (existing) {
-          this.logger.warn(
-            `Duplicate webhook for reference ${reference}, skipping`,
-          );
-          return { received: true };
-        }
+      if (!paymentId) {
+        this.logger.warn(
+          `charge.success webhook missing paymentId metadata (reference=${reference})`,
+        );
+        return { received: true };
       }
 
-      if (paymentId) {
-        const updatedPayment = await this.prisma.payment.update({
-          where: { id: paymentId },
-          data: {
-            status: 'PAID',
-            paystackReference: reference,
-          },
-          include: {
-            subscription: {
-              include: {
-                primaryMember: {
-                  select: {
-                    id: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true,
+      // Claim the payment and activate the subscription inside a single
+      // transaction. With the claim outside the tx, a process crash between
+      // claim-commit and activation-commit would leave the payment PAID but
+      // the subscription unactivated — Paystack retries would then see
+      // claim.count === 0 and silently skip activation. Keeping both in one
+      // tx means any crash rolls back the claim so retries can re-run the
+      // full flow cleanly.
+      try {
+        const afterCommit: Array<() => void> = [];
+
+        await this.prisma.$transaction(async (tx) => {
+          // Atomic claim — two concurrent webhooks for the same reference
+          // race here; only one sees count === 1, the other exits as no-op.
+          const claim = await tx.payment.updateMany({
+            where: { id: paymentId, status: 'PENDING' },
+            data: { status: 'PAID', paystackReference: reference },
+          });
+
+          if (claim.count === 0) {
+            this.logger.warn(
+              `Duplicate or already-processed webhook for reference ${reference}, skipping`,
+            );
+            return;
+          }
+
+          const updatedPayment = await tx.payment.findUnique({
+            where: { id: paymentId },
+            include: {
+              subscription: {
+                include: {
+                  primaryMember: {
+                    select: {
+                      id: true,
+                      email: true,
+                      firstName: true,
+                      lastName: true,
+                    },
                   },
                 },
               },
             },
-          },
-        });
+          });
 
-        const member = updatedPayment.subscription.primaryMember;
-        const memberName = `${member.firstName} ${member.lastName}`;
-        this.eventEmitter.emit('activity.payment', {
-          type: 'payment',
-          description: `${memberName} made a payment of ${updatedPayment.amount} ${updatedPayment.currency}`,
-          timestamp: new Date().toISOString(),
-          metadata: {
-            paymentId,
-            amount: updatedPayment.amount,
-            status: 'PAID',
-          },
-        });
-      }
+          if (updatedPayment?.subscription?.primaryMember) {
+            const member = updatedPayment.subscription.primaryMember;
+            const memberName = `${member.firstName} ${member.lastName}`;
+            const amount = updatedPayment.amount;
+            const currency = updatedPayment.currency;
+            afterCommit.push(() => {
+              this.eventEmitter.emit('activity.payment', {
+                type: 'payment',
+                description: `${memberName} made a payment of ${amount} ${currency}`,
+                timestamp: new Date().toISOString(),
+                metadata: {
+                  paymentId,
+                  amount,
+                  status: 'PAID',
+                },
+              });
+            });
+          }
 
-      if (subscriptionId) {
-        const subscription = await this.prisma.memberSubscription.findUnique({
-          where: { id: subscriptionId },
-          include: { plan: true },
-        });
+          if (!subscriptionId) return;
 
-        if (subscription) {
-          // If subscription is still active with remaining time, extend from
-          // current endDate so early renewals don't lose leftover days.
+          // Activation + referral reward in the same tx: either both commit
+          // or neither does.
+          const subscription = await tx.memberSubscription.findUnique({
+            where: { id: subscriptionId },
+            include: { plan: true },
+          });
+
+          if (!subscription) {
+            // Subscription was cleaned up (H11 race — cleanup cron deleted
+            // the PENDING sub before this activation could run). Log loudly
+            // and return so Paystack doesn't retry. Ops must reconcile the
+            // paid-but-no-subscription case manually.
+            this.logger.error(
+              `Paid payment ${paymentId} references subscription ${subscriptionId} that no longer exists — manual reconciliation required`,
+            );
+            return;
+          }
+
+          // If subscription is still active with remaining time, extend
+          // from current endDate so early renewals don't lose leftover days.
           const now = new Date();
           const baseDate =
             subscription.status === 'ACTIVE' && subscription.endDate > now
@@ -318,18 +359,32 @@ export class PaymentsService {
             subscription.plan.billingInterval,
           );
 
-          const updateData: Prisma.MemberSubscriptionUpdateInput = {
+          // L7 — only reset freeze counters on a genuine cycle advance.
+          // A cycle advance is defined as `nextBillingDate` strictly moving
+          // forward past the current endDate. On first activation the
+          // counters are already zero so either behaviour is safe; on
+          // renewal this guards against a replayed webhook silently
+          // re-zeroing counters the member has already consumed.
+          const isCycleAdvance =
+            nextBillingDate.getTime() > subscription.endDate.getTime();
+
+          const updateData: Prisma.MemberSubscriptionUpdateManyMutationInput = {
             status: 'ACTIVE',
             endDate: nextBillingDate,
             nextBillingDate,
-            frozenDaysUsed: 0,
-            freezeCount: 0,
-            // Clear discount fields after first payment so renewals charge full price
+            // Clear discount fields after first payment so renewals
+            // charge full price.
             discountAmount: null,
             originalPlanPrice: null,
           };
 
-          // Update subscription to the online payment method so billing
+          if (isCycleAdvance) {
+            updateData.frozenDaysUsed = 0;
+            updateData.freezeCount = 0;
+            updateData.freezeCycleAnchor = nextBillingDate;
+          }
+
+          // Update subscription to the online payment method so the billing
           // cron picks it up for auto-charges / reminders going forward.
           const channelToMethod: Record<string, PaymentMethod> = {
             card: PaymentMethod.CARD,
@@ -341,32 +396,79 @@ export class PaymentsService {
           }
 
           // Enable auto-renewal for all successful payments so the billing
-          // cron can auto-charge card users and send reminders to non-card users.
+          // cron can auto-charge card users and send reminders to non-card
+          // users.
           updateData.autoRenew = true;
 
-          // Save card authorization for future auto-charges
+          // Save card authorization for future auto-charges. We refuse to
+          // persist the raw code without encryption — if no key is configured
+          // (dev/test), skip the field rather than storing plaintext.
           if (channel === 'card' && authorization?.authorization_code) {
-            updateData.paystackAuthorizationCode = this.encryptionKey
-              ? encrypt(authorization.authorization_code, this.encryptionKey)
-              : authorization.authorization_code;
+            if (this.encryptionKey) {
+              updateData.paystackAuthorizationCode = encrypt(
+                authorization.authorization_code,
+                this.encryptionKey,
+              );
+            } else {
+              this.logger.warn(
+                `Skipping paystackAuthorizationCode persistence for subscription ${subscriptionId} — no ENCRYPTION_KEY configured`,
+              );
+            }
           }
 
-          await this.prisma.memberSubscription.update({
+          // Status-guarded updateMany so a concurrent cleanup cron that
+          // deleted this sub between the findUnique above and here produces
+          // count=0 rather than a P2025 crash.
+          const activation = await tx.memberSubscription.updateMany({
             where: { id: subscriptionId },
             data: updateData,
           });
 
-          // Process referral reward if applicable
-          this.processReferralReward(subscription.primaryMemberId).catch(
-            (err) =>
-              this.logger.error(`Failed to process referral reward: ${err}`),
-          );
-        }
-      }
+          if (activation.count === 0) {
+            this.logger.error(
+              `Subscription ${subscriptionId} disappeared between read and activation — paid payment ${paymentId} requires manual reconciliation`,
+            );
+            return;
+          }
 
-      this.logger.log(
-        `Webhook charge.success processed for reference ${reference}`,
-      );
+          // Process referral reward inside the same tx. An atomic
+          // referral.updateMany claim prevents double-rewarding; if the tx
+          // rolls back the referral claim rolls back with it.
+          await this.processReferralReward(
+            tx,
+            subscription.primaryMemberId,
+            afterCommit,
+          );
+        });
+
+        // Tx committed — flush deferred side effects (activity events, push,
+        // email). These must not run inside the tx because network IO inside a
+        // tx holds DB connections. Individual failures are swallowed — the
+        // payment is already activated.
+        for (const fn of afterCommit) {
+          try {
+            fn();
+          } catch (err) {
+            this.logger.error(
+              `afterCommit side effect failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        this.logger.log(
+          `Webhook charge.success processed for reference ${reference}`,
+        );
+      } catch (err) {
+        // Rethrow so Nest returns 500 and Paystack retries. Because the
+        // claim is inside the transaction, a failure rolls back the PAID
+        // status so the retry re-enters the full flow rather than hitting
+        // a stale PAID gate.
+        this.logger.error(
+          `Webhook charge.success failed for reference ${reference}: ${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+        throw err;
+      }
     }
 
     if (body.event === 'charge.failed') {
@@ -505,16 +607,40 @@ export class PaymentsService {
     return { data: sanitized, total, page, limit };
   }
 
-  private async processReferralReward(payingUserId: string) {
-    // Atomically claim the referral to prevent double-rewarding on duplicate webhooks
-    const claimed = await this.prisma.referral.updateMany({
+  /**
+   * Process referral reward for a paying member. Runs INSIDE the caller's
+   * transaction (typically the webhook claim tx) so a roll-back rolls the
+   * reward back with it. Out-of-tx side effects (push notification, email)
+   * are appended to `afterCommit` and must be fired by the caller only
+   * after the tx commits.
+   *
+   * Uses two atomic claim gates:
+   *   1. `referral.updateMany({ referredId, status: 'PENDING' })` — a
+   *      duplicate webhook sees count=0 and returns without extending the
+   *      referrer's subscription (H13 double-reward fix).
+   *   2. `memberSubscription.updateMany({ id })` for the referrer's
+   *      subscription extension — tolerates the referrer's sub being
+   *      cancelled mid-flight without crashing.
+   *
+   * Per-cycle cap (configurable via GymSettings.maxReferralsPerCycle,
+   * default 3) is re-evaluated inside the tx so it's still enforced.
+   */
+  private async processReferralReward(
+    tx: Prisma.TransactionClient,
+    payingUserId: string,
+    afterCommit: Array<() => void>,
+  ) {
+    // Atomically claim the referral to prevent double-rewarding on
+    // duplicate webhooks. `status: 'PENDING'` in the filter is the claim
+    // gate: only one concurrent caller sees count=1.
+    const claimed = await tx.referral.updateMany({
       where: { referredId: payingUserId, status: 'PENDING' },
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
 
     if (claimed.count === 0) return;
 
-    const referral = await this.prisma.referral.findUnique({
+    const referral = await tx.referral.findUnique({
       where: { referredId: payingUserId },
       include: {
         referrer: {
@@ -542,15 +668,13 @@ export class PaymentsService {
       return;
     }
 
-    const referrerSubscription = await this.prisma.memberSubscription.findFirst(
-      {
-        where: {
-          primaryMemberId: referral.referrerId,
-          status: { in: ['ACTIVE', 'FROZEN'] },
-        },
-        include: { plan: true },
+    const referrerSubscription = await tx.memberSubscription.findFirst({
+      where: {
+        primaryMemberId: referral.referrerId,
+        status: { in: ['ACTIVE', 'FROZEN'] },
       },
-    );
+      include: { plan: true },
+    });
 
     const settings = await this.gymSettingsService.getCachedSettings();
     const rewardDays = settings?.referralRewardDays ?? 7;
@@ -565,7 +689,15 @@ export class PaymentsService {
         referrerSubscription.plan.billingInterval,
       );
 
-      const completedInCycle = await this.prisma.referral.count({
+      // KNOWN RACE: under READ COMMITTED isolation, two concurrent first
+      // payments by different referred members of the same referrer can both
+      // read completedInCycle before either commits, both pass the cap check,
+      // and the referrer earns one extra reward cycle. Proper fix: embed the
+      // count inside an atomic SQL UPDATE ... WHERE (SELECT COUNT(...)) < cap.
+      // Deferred — the race requires two referred members of the same referrer
+      // paying within milliseconds; consequence is one extra free week for the
+      // referrer, not a financial loss.
+      const completedInCycle = await tx.referral.count({
         where: {
           referrerId: referral.referrerId,
           status: 'COMPLETED',
@@ -587,7 +719,9 @@ export class PaymentsService {
           newBillingDate.setDate(newBillingDate.getDate() + rewardDays);
         }
 
-        await this.prisma.memberSubscription.update({
+        // updateMany (not update) so a concurrent cancellation/deletion
+        // of the referrer's subscription doesn't crash this tx.
+        await tx.memberSubscription.updateMany({
           where: { id: referrerSubscription.id },
           data: {
             endDate: newEndDate,
@@ -598,40 +732,50 @@ export class PaymentsService {
     }
 
     // Update reward days on the already-claimed referral
-    await this.prisma.referral.update({
+    await tx.referral.update({
       where: { id: referral.id },
       data: { rewardDays: earnedDays },
     });
 
     if (earnedDays > 0) {
       const referredName = `${referral.referred.firstName} ${referral.referred.lastName}`;
+      const referrerId = referral.referrerId;
+      const referredId = referral.referredId;
+      const referrerEmail = referral.referrer.email;
+      const referrerFirstName = referral.referrer.firstName;
+      const days = earnedDays;
 
-      this.notificationsService
-        .create({
-          userId: referral.referrerId,
-          title: 'Referral reward earned!',
-          body: `${referredName} joined — you earned ${earnedDays} free days!`,
-          type: NotificationType.REFERRAL_REWARD,
-          metadata: {
-            referredId: referral.referredId,
+      // Defer notification + email until after the enclosing tx commits.
+      // These hit the network; running them inside the tx would hold DB
+      // connections open for the duration of each request.
+      afterCommit.push(() => {
+        this.notificationsService
+          .create({
+            userId: referrerId,
+            title: 'Referral reward earned!',
+            body: `${referredName} joined — you earned ${days} free days!`,
+            type: NotificationType.REFERRAL_REWARD,
+            metadata: {
+              referredId,
+              referredName,
+              rewardDays: days,
+            },
+          })
+          .catch((err) =>
+            this.logger.error(`Failed to send referral notification: ${err}`),
+          );
+
+        this.emailService
+          .sendReferralRewardEmail(
+            referrerEmail,
+            referrerFirstName,
             referredName,
-            rewardDays: earnedDays,
-          },
-        })
-        .catch((err) =>
-          this.logger.error(`Failed to send referral notification: ${err}`),
-        );
-
-      this.emailService
-        .sendReferralRewardEmail(
-          referral.referrer.email,
-          referral.referrer.firstName,
-          referredName,
-          earnedDays,
-        )
-        .catch((err) =>
-          this.logger.error(`Failed to send referral email: ${err}`),
-        );
+            days,
+          )
+          .catch((err) =>
+            this.logger.error(`Failed to send referral email: ${err}`),
+          );
+      });
     }
   }
 }

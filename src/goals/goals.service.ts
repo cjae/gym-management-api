@@ -26,6 +26,7 @@ import {
   CreateMilestoneDto,
   UpdateMilestoneDto,
 } from './dto/upsert-milestone.dto';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const NON_TERMINAL = [GoalStatus.ACTIVE, GoalStatus.PAUSED];
 
@@ -43,6 +44,7 @@ export class GoalsService {
     private readonly eventEmitter: EventEmitter2,
     private readonly attendance: AttendanceService,
     private readonly settings: GymSettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async create(memberId: string, dto: CreateGoalDto) {
@@ -51,6 +53,24 @@ export class GoalsService {
 
     if (dto.userDeadline && new Date(dto.userDeadline) <= new Date()) {
       throw new BadRequestException('userDeadline must be a future date');
+    }
+
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberId },
+      select: { onboardingCompletedAt: true },
+    });
+    if (!member?.onboardingCompletedAt) {
+      throw new BadRequestException(
+        'Complete onboarding before creating a goal',
+      );
+    }
+
+    const hasActiveSub =
+      await this.subscriptions.hasActiveSubscription(memberId);
+    if (!hasActiveSub) {
+      throw new BadRequestException(
+        'An active subscription is required to create a goal',
+      );
     }
 
     const currentGymFrequency = await this.attendance.getAvgDaysPerWeek(

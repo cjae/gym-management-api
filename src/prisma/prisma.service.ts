@@ -20,8 +20,8 @@ export class PrismaService
       throw new Error('Database URL is not configured');
     }
     const appConfig = configService.get<AppConfig>(getAppConfigName());
-    const useSSL =
-      url.includes('sslmode=') || appConfig?.nodeEnv === 'production';
+    const isProduction = appConfig?.nodeEnv === 'production';
+    const useSSL = url.includes('sslmode=') || isProduction;
     // Strip sslmode from URL — pg treats sslmode=require as verify-full,
     // which rejects self-signed certs. We handle SSL explicitly instead.
     const cleanUrl = url
@@ -29,9 +29,18 @@ export class PrismaService
         match.startsWith('?') ? '?' : '',
       )
       .replace(/\?$/, '');
+    // In production, enforce TLS cert validation against the DB.
+    // In non-prod, keep `rejectUnauthorized: false` so local/staging
+    // self-signed certs keep working.
+    // Ops follow-up: if the production DB uses a self-signed cert, bundle
+    // the CA and pass `sslrootcert=/path/to/ca.pem` in DATABASE_URL so
+    // validation still passes.
+    const sslOption = useSSL
+      ? { ssl: { rejectUnauthorized: isProduction } }
+      : {};
     const pool = new pg.Pool({
       connectionString: cleanUrl,
-      ...(useSSL && { ssl: { rejectUnauthorized: false } }),
+      ...sslOption,
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

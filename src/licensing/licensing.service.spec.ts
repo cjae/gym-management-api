@@ -18,11 +18,15 @@ describe('LicensingService', () => {
   let service: LicensingService;
   let prisma: DeepMockProxy<PrismaClient>;
 
+  const defaultConfig = {
+    licenseKey: 'test-license-key',
+    licenseServerUrl: 'https://license.example.com',
+    telemetryMemberCount: true,
+    appVersion: '9.9.9-test',
+  };
+
   const mockConfigService: MockConfig = {
-    get: jest.fn().mockReturnValue({
-      licenseKey: 'test-license-key',
-      licenseServerUrl: 'https://license.example.com',
-    }),
+    get: jest.fn().mockReturnValue(defaultConfig),
   };
 
   beforeEach(async () => {
@@ -38,10 +42,7 @@ describe('LicensingService', () => {
     prisma = module.get(PrismaService);
     jest.clearAllMocks();
     // Re-set the default mock after clearAllMocks
-    mockConfigService.get.mockReturnValue({
-      licenseKey: 'test-license-key',
-      licenseServerUrl: 'https://license.example.com',
-    });
+    mockConfigService.get.mockReturnValue(defaultConfig);
   });
 
   describe('isActive', () => {
@@ -151,6 +152,158 @@ describe('LicensingService', () => {
             features: ['referrals', 'analytics'],
           }),
         }),
+      );
+    });
+
+    describe('phone-home payload', () => {
+      const configuredMemberCount = async (count: number) => {
+        prisma.user.count.mockResolvedValue(count);
+        mockedAxios.post.mockResolvedValue({
+          status: 200,
+          data: {
+            status: 'ACTIVE',
+            gymName: 'Test Gym',
+            tierName: 'Growth',
+            maxMembers: 100,
+            features: [],
+          },
+        });
+        prisma.licenseCache.upsert.mockResolvedValue({} as any);
+      };
+
+      it('sends only the documented allowlist of fields', async () => {
+        await configuredMemberCount(25);
+
+        await service.validateLicense();
+
+        const body = mockedAxios.post.mock.calls[0][1] as Record<
+          string,
+          unknown
+        >;
+        expect(Object.keys(body).sort()).toEqual(
+          ['appVersion', 'currentMemberCount', 'instanceFingerprint'].sort(),
+        );
+      });
+
+      it('includes configured appVersion and a stable instanceFingerprint', async () => {
+        await configuredMemberCount(25);
+
+        await service.validateLicense();
+
+        expect(mockedAxios.post).toHaveBeenCalledWith(
+          'https://license.example.com/api/v1/licenses/validate',
+          expect.objectContaining({
+            appVersion: '9.9.9-test',
+            instanceFingerprint: expect.stringMatching(/^[a-f0-9]{16}$/),
+          }),
+          expect.anything(),
+        );
+
+        // Fingerprint is deterministic for the same license key.
+        const first = (
+          mockedAxios.post.mock.calls[0][1] as { instanceFingerprint: string }
+        ).instanceFingerprint;
+        mockedAxios.post.mockClear();
+        await service.validateLicense();
+        const second = (
+          mockedAxios.post.mock.calls[0][1] as { instanceFingerprint: string }
+        ).instanceFingerprint;
+        expect(second).toBe(first);
+      });
+
+      it('does NOT send revenue, attendance, PII, or other commercial fields', async () => {
+        await configuredMemberCount(25);
+
+        await service.validateLicense();
+
+        expect(mockedAxios.post).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.not.objectContaining({
+            revenue: expect.anything(),
+            totalRevenue: expect.anything(),
+            mrr: expect.anything(),
+            monthlyRecurringRevenue: expect.anything(),
+            subscriptionStats: expect.anything(),
+            payments: expect.anything(),
+            paymentsTotal: expect.anything(),
+            checkIns: expect.anything(),
+            checkInCount: expect.anything(),
+            attendance: expect.anything(),
+            emails: expect.anything(),
+            memberEmails: expect.anything(),
+            users: expect.anything(),
+            licenseKey: expect.anything(),
+            gymSettings: expect.anything(),
+            discountCodes: expect.anything(),
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('sends the raw license key only in the X-License-Key header, not the body', async () => {
+        await configuredMemberCount(25);
+
+        await service.validateLicense();
+
+        const [, body, options] = mockedAxios.post.mock.calls[0];
+        expect(JSON.stringify(body)).not.toContain('test-license-key');
+        expect(
+          (options as { headers: Record<string, string> }).headers[
+            'X-License-Key'
+          ],
+        ).toBe('test-license-key');
+      });
+
+      it('sends a bucket string instead of the exact count when telemetryMemberCount is false', async () => {
+        mockConfigService.get.mockReturnValue({
+          ...defaultConfig,
+          telemetryMemberCount: false,
+        });
+        const bucketedService = new LicensingService(
+          prisma as unknown as PrismaService,
+          mockConfigService as unknown as ConfigService,
+        );
+        await configuredMemberCount(342);
+
+        await bucketedService.validateLicense();
+
+        expect(mockedAxios.post).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ currentMemberCount: '<500' }),
+          expect.anything(),
+        );
+      });
+
+      it.each([
+        [0, '<100'],
+        [99, '<100'],
+        [100, '<500'],
+        [499, '<500'],
+        [500, '<1000'],
+        [999, '<1000'],
+        [1000, '>=1000'],
+        [50000, '>=1000'],
+      ])(
+        'buckets %d into %s when telemetryMemberCount=false',
+        async (count, bucket) => {
+          mockConfigService.get.mockReturnValue({
+            ...defaultConfig,
+            telemetryMemberCount: false,
+          });
+          const bucketedService = new LicensingService(
+            prisma as unknown as PrismaService,
+            mockConfigService as unknown as ConfigService,
+          );
+          await configuredMemberCount(count);
+
+          await bucketedService.validateLicense();
+
+          expect(mockedAxios.post).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({ currentMemberCount: bucket }),
+            expect.anything(),
+          );
+        },
       );
     });
 

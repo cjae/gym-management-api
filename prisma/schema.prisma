@@ -91,6 +91,7 @@ enum AuditAction {
   PASSWORD_RESET_REQUEST
   PASSWORD_RESET
   PASSWORD_CHANGE
+  AUTH_REFRESH_REUSE
 }
 
 enum ReferralStatus {
@@ -159,6 +160,21 @@ enum GoalMetric {
   KM
 }
 
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum PrimaryMotivation {
+  APPEARANCE
+  STRENGTH
+  HEALTH
+  SPORT_PERFORMANCE
+  EVENT_SPECIFIC
+  OTHER
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -172,9 +188,25 @@ model User {
   gender             Gender?
   displayPicture     String?
   birthday           DateTime?  @db.Date
+
+  experienceLevel       ExperienceLevel?
+  bodyweightKg          Decimal?           @db.Decimal(5, 2)
+  heightCm              Int?
+  sessionMinutes        Int?
+  preferredTrainingDays String[]           @default([])
+  sleepHoursAvg         Decimal?           @db.Decimal(3, 1)
+  primaryMotivation     PrimaryMotivation?
+  injuryNotes           String?            @db.VarChar(500)
+  onboardingCompletedAt DateTime?
+
   tosAcceptedAt      DateTime?
   waiverAcceptedAt   DateTime?
   deletedAt          DateTime?
+  // Bumped on logout / refresh-reuse detection so all outstanding access
+  // and refresh tokens minted before this timestamp are considered invalid.
+  // Closes the race between logout writing to InvalidatedToken and a parallel
+  // /auth/refresh minting a new JTI. See M3/M4 in the 2026-04-22 security audit.
+  sessionsInvalidatedAt DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -207,6 +239,7 @@ model User {
   reviewedDeletionRequests   AccountDeletionRequest[] @relation("DeletionRequestReviewer")
   memberTags                 MemberTag[]
   goals                      Goal[]                   @relation("UserGoals")
+  refreshTokens              RefreshToken[]           @relation("UserRefreshTokens")
 }
 
 model AccountDeletionRequest {
@@ -263,8 +296,22 @@ model MemberSubscription {
   discountCodeId            String?
   discountAmount            Float?
   originalPlanPrice         Float?
+  // Timestamp set when a billing operation flags the subscription for
+  // manual admin review (e.g., persistent card auth decrypt failure).
+  // Nullable — non-null means "needs ops attention".
+  billingFlaggedAt          DateTime?
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
+  // L7 — cycle-identity anchor for freeze counters. Stores the `endDate`
+  // value as of the most recent `frozenDaysUsed`/`freezeCount` reset. The
+  // counters are authoritative only for the cycle identified by this
+  // anchor. When `endDate` advances past the anchor (genuine renewal),
+  // counters reset and the anchor is updated atomically. When a webhook
+  // replays a payment that does NOT advance `endDate`, the counters are
+  // NOT reset — preventing churn across cycle boundaries that would
+  // otherwise let a member exceed `maxFreezeCount`/`maxFreezeDays` per
+  // billing period. See the 2026-04-22 security audit, finding L7.
+  freezeCycleAnchor         DateTime?
 
   primaryMember      User                 @relation("SubscriptionOwner", fields: [primaryMemberId], references: [id])
   plan               SubscriptionPlan     @relation(fields: [planId], references: [id])
@@ -337,17 +384,18 @@ model TrainerProfile {
 }
 
 model GymClass {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  dayOfWeek   Int
-  startTime   String
-  endTime     String
-  maxCapacity Int      @default(20)
-  trainerId   String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  title         String
+  description   String?
+  dayOfWeek     Int
+  startTime     String
+  endTime       String
+  maxCapacity   Int      @default(20)
+  enrolledCount Int      @default(0)
+  trainerId     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   trainer     TrainerProfile?   @relation(fields: [trainerId], references: [id])
   enrollments ClassEnrollment[]
@@ -439,6 +487,35 @@ model InvalidatedToken {
   jti       String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+// Persistent refresh-token records. Enables:
+//   1. Reuse detection — if a token's `usedAt` is already set and the same
+//      tokenHash is presented again, the whole family is assumed compromised.
+//   2. Family revocation — on reuse, every sibling token in the family is
+//      marked revoked and the owning user's sessionsInvalidatedAt is bumped.
+//   3. Legitimate rotation — /auth/refresh atomically claims the row
+//      (updateMany where usedAt=null) and issues the next token in the same
+//      family (linked via `replacedById`). See M4 in the 2026-04-22 audit.
+model RefreshToken {
+  id           String    @id @default(uuid())
+  userId       String
+  familyId     String
+  tokenHash    String    @unique
+  jti          String    @unique
+  usedAt       DateTime?
+  revokedAt    DateTime?
+  replacedById String?   @unique
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+
+  user       User          @relation("UserRefreshTokens", fields: [userId], references: [id])
+  replacedBy RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id])
+  replaces   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
 }
 
 model Payment {
@@ -770,6 +847,22 @@ model DiscountRedemption {
 
   @@unique([discountCodeId, memberId, subscriptionId])
   @@index([discountCodeId])
+  @@index([memberId])
+}
+
+// Tracks how many times a given (discountCode, member) pair has BENEFITED from the code.
+// A duo subscription benefits BOTH primary and secondary members, so redeemCode increments
+// the counter for every SubscriptionMember on the subscription — not just the redeemer.
+// The per-member cap is enforced atomically via a conditional `updateMany` on `uses`.
+model DiscountRedemptionCounter {
+  id             String   @id @default(uuid())
+  discountCodeId String
+  memberId       String
+  uses           Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([discountCodeId, memberId])
   @@index([memberId])
 }
 

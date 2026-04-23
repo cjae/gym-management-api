@@ -15,6 +15,17 @@ const safeUserSelect = {
   status: true,
 };
 
+// Fields safe to expose to a member about their assigned trainer.
+// Excludes contact info (email, phone) so members can't scrape trainer
+// contact details via the `my/trainer` endpoint. Members should contact
+// their trainer through in-app channels, not directly.
+const memberFacingTrainerUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  displayPicture: true,
+};
+
 @Injectable()
 export class TrainersService {
   constructor(private prisma: PrismaService) {}
@@ -107,10 +118,21 @@ export class TrainersService {
   async getMemberTrainer(memberId: string) {
     return this.prisma.trainerAssignment.findFirst({
       where: { memberId, endDate: null },
-      include: {
+      select: {
+        id: true,
+        trainerId: true,
+        memberId: true,
+        startDate: true,
+        endDate: true,
+        notes: true,
         trainer: {
-          include: {
-            user: { select: safeUserSelect },
+          select: {
+            id: true,
+            userId: true,
+            specialization: true,
+            bio: true,
+            availability: true,
+            user: { select: memberFacingTrainerUserSelect },
             classes: { where: { isActive: true } },
           },
         },

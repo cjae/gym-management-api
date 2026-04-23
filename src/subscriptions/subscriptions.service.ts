@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -434,11 +435,54 @@ export class SubscriptionsService {
       throw new NotFoundException(`User with email ${memberEmail} not found`);
     }
 
-    return this.prisma.subscriptionMember.create({
-      data: {
-        subscriptionId,
-        memberId: user.id,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.subscriptionMember.create({
+        data: { subscriptionId, memberId: user.id },
+      });
+
+      // M9 — if a discount code was applied to this subscription, credit the
+      // new member's benefit counter so the per-member cap is respected both
+      // now (block the add if they've already hit the cap) and in the future
+      // (prevent re-use on a different subscription).
+      if (subscription.discountCodeId) {
+        const discountCode = await tx.discountCode.findUniqueOrThrow({
+          where: { id: subscription.discountCodeId },
+          select: { maxUsesPerMember: true },
+        });
+
+        await tx.discountRedemptionCounter.createMany({
+          data: [
+            {
+              discountCodeId: subscription.discountCodeId,
+              memberId: user.id,
+              uses: 0,
+            },
+          ],
+          skipDuplicates: true,
+        });
+
+        const where: Prisma.DiscountRedemptionCounterWhereInput = {
+          discountCodeId: subscription.discountCodeId,
+          memberId: user.id,
+        };
+
+        if (discountCode.maxUsesPerMember !== null) {
+          where.uses = { lt: discountCode.maxUsesPerMember };
+        }
+
+        const { count } = await tx.discountRedemptionCounter.updateMany({
+          where,
+          data: { uses: { increment: 1 } },
+        });
+
+        if (count === 0 && discountCode.maxUsesPerMember !== null) {
+          throw new ConflictException(
+            'This member has already used this discount code the maximum number of times',
+          );
+        }
+      }
+
+      return member;
     });
   }
 
@@ -711,15 +755,30 @@ export class SubscriptionsService {
       throw new BadRequestException('This plan does not support freezing');
     }
 
+    // L7 — evaluate freeze caps against cycle-anchored counters. If the
+    // anchor is missing or pre-dates the current cycle's endDate, the
+    // persisted `frozenDaysUsed`/`freezeCount` belong to a prior cycle;
+    // treat them as zero for the cap check and atomically re-anchor so
+    // the cycle boundary that is supposed to reset the counters can't be
+    // replayed by a repeat renewal webhook. See the 2026-04-22 audit.
+    const anchorIsCurrent =
+      subscription.freezeCycleAnchor != null &&
+      subscription.freezeCycleAnchor.getTime() ===
+        subscription.endDate.getTime();
+    const effectiveFrozenDaysUsed = anchorIsCurrent
+      ? subscription.frozenDaysUsed
+      : 0;
+    const effectiveFreezeCount = anchorIsCurrent ? subscription.freezeCount : 0;
+
     const remainingFreezeDays =
-      subscription.plan.maxFreezeDays - subscription.frozenDaysUsed;
+      subscription.plan.maxFreezeDays - effectiveFrozenDaysUsed;
     if (days > remainingFreezeDays) {
       throw new BadRequestException(
         `Freeze duration cannot exceed ${remainingFreezeDays} remaining days (max ${subscription.plan.maxFreezeDays} per cycle)`,
       );
     }
 
-    if (subscription.freezeCount >= subscription.plan.maxFreezeCount) {
+    if (effectiveFreezeCount >= subscription.plan.maxFreezeCount) {
       throw new BadRequestException(
         `Maximum freeze count (${subscription.plan.maxFreezeCount}) reached this billing cycle`,
       );
@@ -738,13 +797,41 @@ export class SubscriptionsService {
     const freezeEndDate = new Date();
     freezeEndDate.setDate(freezeEndDate.getDate() + days);
 
-    const result = await this.prisma.memberSubscription.update({
+    // L7 — persist the lazy re-anchor + counter reset when the stored
+    // counters belong to a prior cycle. This is defence-in-depth: the
+    // authoritative reset happens on the webhook renewal path, but any
+    // subscription that predates this fix (or survived a webhook that
+    // failed the endDate-advance guard) will self-heal here the first
+    // time a freeze is attempted in its new cycle.
+    //
+    // M11 — status-guarded updateMany prevents a race where two concurrent
+    // freeze requests both pass the read-time ACTIVE check. The first UPDATE
+    // wins the row lock and sets FROZEN; the second finds count=0 (status is
+    // no longer ACTIVE) and throws ConflictException rather than overwriting
+    // the freeze dates.
+    const { count: frozeCount } =
+      await this.prisma.memberSubscription.updateMany({
+        where: { id: subscriptionId, status: SubscriptionStatus.ACTIVE },
+        data: {
+          status: SubscriptionStatus.FROZEN,
+          freezeStartDate,
+          freezeEndDate,
+          ...(anchorIsCurrent
+            ? {}
+            : {
+                frozenDaysUsed: 0,
+                freezeCount: 0,
+                freezeCycleAnchor: subscription.endDate,
+              }),
+        },
+      });
+    if (frozeCount === 0) {
+      throw new ConflictException(
+        'Subscription status changed before freeze could complete; please retry',
+      );
+    }
+    const result = await this.prisma.memberSubscription.findUniqueOrThrow({
       where: { id: subscriptionId },
-      data: {
-        status: SubscriptionStatus.FROZEN,
-        freezeStartDate,
-        freezeEndDate,
-      },
       include: { plan: true },
     });
 
@@ -829,17 +916,39 @@ export class SubscriptionsService {
       newNextBillingDate.setDate(newNextBillingDate.getDate() + frozenDays);
     }
 
-    const result = await this.prisma.memberSubscription.update({
+    // L7 — keep the freeze counter anchor aligned with the extended
+    // endDate. The cycle is the same logical cycle (unfreeze only extends
+    // it by the actual frozen days), so the incremented counters are
+    // authoritative for this cycle and we re-anchor to newEndDate.
+    // Without this, a subsequent freeze in the same cycle would see the
+    // anchor pointing at the pre-unfreeze endDate and incorrectly treat
+    // the counters as stale.
+    //
+    // M11 — status-guarded updateMany mirrors the freeze guard: a concurrent
+    // unfreeze that races past the FROZEN check will find count=0 on its
+    // UPDATE and receive a ConflictException rather than double-incrementing
+    // frozenDaysUsed or clobbering the already-restored dates.
+    const { count: unfrozeCount } =
+      await this.prisma.memberSubscription.updateMany({
+        where: { id: subscriptionId, status: SubscriptionStatus.FROZEN },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          endDate: newEndDate,
+          nextBillingDate: newNextBillingDate,
+          freezeStartDate: null,
+          freezeEndDate: null,
+          frozenDaysUsed: { increment: frozenDays },
+          freezeCount: { increment: 1 },
+          freezeCycleAnchor: newEndDate,
+        },
+      });
+    if (unfrozeCount === 0) {
+      throw new ConflictException(
+        'Subscription status changed before unfreeze could complete; please retry',
+      );
+    }
+    const result = await this.prisma.memberSubscription.findUniqueOrThrow({
       where: { id: subscriptionId },
-      data: {
-        status: SubscriptionStatus.ACTIVE,
-        endDate: newEndDate,
-        nextBillingDate: newNextBillingDate,
-        freezeStartDate: null,
-        freezeEndDate: null,
-        frozenDaysUsed: { increment: frozenDays },
-        freezeCount: { increment: 1 },
-      },
       include: { plan: true },
     });
 
@@ -878,6 +987,8 @@ export class SubscriptionsService {
   async cleanupPendingSubscriptions() {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
+    // Candidate list (non-authoritative — the atomic claim below is what
+    // actually owns the deletion).
     const staleSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
         status: 'PENDING' as SubscriptionStatus,
@@ -888,28 +999,92 @@ export class SubscriptionsService {
 
     if (staleSubscriptions.length === 0) return;
 
-    const ids = staleSubscriptions.map((s) => s.id);
+    // Per-id atomic cleanup: each id gets its own short transaction so a
+    // slow row doesn't hold a long-lived lock on the others. Inside the tx
+    // we atomically claim the subscription with a status-guarded
+    // `deleteMany({ id, status: 'PENDING' })`. If a webhook already flipped
+    // this subscription to ACTIVE (the race this fix is for), the claim
+    // returns count=0 and we skip the row without touching its payments,
+    // discount redemptions, or members. Conversely, once we've claimed
+    // (row deleted), the webhook's own status-guarded `updateMany`
+    // activation will see count=0 and gracefully no-op without activating
+    // a deleted sub — the "paid but no subscription" race is closed on
+    // both sides.
+    let cleaned = 0;
+    let racedLost = 0;
 
-    // Delete in order: reverse discounts → payments → subscription members → subscriptions (FK constraints)
-    await this.prisma.$transaction(async (tx) => {
-      // Reverse discount redemptions (decrements currentUses and deletes records)
-      for (const sub of staleSubscriptions) {
-        await this.discountCodesService.reverseRedemption(tx, sub.id);
-      }
+    for (const { id } of staleSubscriptions) {
+      const claimed = await this.prisma
+        .$transaction(async (tx) => {
+          // Dependent rows must be removed before the parent because of FK
+          // constraints. These are scoped by subscriptionId, so even if the
+          // parent claim fails below, a PENDING subscription's
+          // payments/members are always safe to remove — the sub is gone.
+          // BUT: we must not touch dependents unless we're certain we own
+          // the subscription. Order of operations:
+          //   1. Reverse discount redemption for this sub (uses the
+          //      redemption's subscriptionId — safe, scoped).
+          //   2. Delete payments scoped to this subscriptionId.
+          //   3. Delete subscriptionMember rows scoped to this
+          //      subscriptionId.
+          //   4. Atomically delete the subscription iff still PENDING.
+          // Because these all run in the same interactive transaction, if
+          // step 4's claim fails (count=0), the whole tx rolls back and
+          // the dependent rows stay intact — this is what protects an
+          // in-flight webhook's state.
+          await this.discountCodesService.reverseRedemption(tx, id);
 
-      await tx.payment.deleteMany({
-        where: { subscriptionId: { in: ids } },
-      });
-      await tx.subscriptionMember.deleteMany({
-        where: { subscriptionId: { in: ids } },
-      });
-      await tx.memberSubscription.deleteMany({
-        where: { id: { in: ids } },
-      });
-    });
+          await tx.payment.deleteMany({
+            where: { subscriptionId: id },
+          });
+          await tx.subscriptionMember.deleteMany({
+            where: { subscriptionId: id },
+          });
 
-    this.logger.log(
-      `Cleaned up ${staleSubscriptions.length} stale pending subscription(s)`,
-    );
+          const result = await tx.memberSubscription.deleteMany({
+            where: {
+              id,
+              status: 'PENDING' as SubscriptionStatus,
+            },
+          });
+
+          if (result.count === 0) {
+            // Race lost — a webhook activated this sub between our
+            // candidate scan and this claim. Throw to roll back the
+            // payment/subscriptionMember deletes above so we don't
+            // corrupt the now-ACTIVE subscription's state.
+            throw new PendingCleanupRaceLost();
+          }
+
+          return true;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof PendingCleanupRaceLost) return false;
+          throw err;
+        });
+
+      if (claimed) cleaned++;
+      else racedLost++;
+    }
+
+    if (cleaned > 0 || racedLost > 0) {
+      this.logger.log(
+        `Cleaned up ${cleaned} stale pending subscription(s); ${racedLost} raced lost to concurrent webhook(s)`,
+      );
+    }
+  }
+}
+
+/**
+ * Sentinel thrown inside the per-id cleanup transaction when the atomic
+ * status-guarded delete fails (count=0). Rolling back via throw ensures
+ * the dependent-row deletes (payments, subscriptionMembers, discount
+ * redemption reversal) are also rolled back when a concurrent webhook
+ * has already activated the subscription.
+ */
+class PendingCleanupRaceLost extends Error {
+  constructor() {
+    super('Pending cleanup raced lost');
+    this.name = 'PendingCleanupRaceLost';
   }
 }

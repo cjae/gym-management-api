@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -58,6 +59,16 @@ describe('PaymentsService', () => {
     service = module.get<PaymentsService>(PaymentsService);
     prisma = module.get(PrismaService);
     jest.clearAllMocks();
+
+    // The webhook handler wraps activation + referral reward in a
+    // `prisma.$transaction(async (tx) => ...)`. Route the tx callback to
+    // the same DeepMockProxy so `tx.xxx` calls land on the same spies as
+    // `prisma.xxx`. For array-form transactions, resolve each promise.
+    (prisma.$transaction as jest.Mock).mockImplementation((input: unknown) =>
+      typeof input === 'function'
+        ? (input as (tx: typeof prisma) => unknown)(prisma)
+        : Promise.all(input as Promise<unknown>[]),
+    );
   });
 
   it('should be defined', () => {
@@ -96,24 +107,15 @@ describe('PaymentsService', () => {
       mockedAxios.post.mockResolvedValue(mockPaystackResponse);
     });
 
-    it('should expire existing PENDING payment before creating a new one', async () => {
-      const existingPending = { id: 'old-pay-1', status: 'PENDING' };
-      prisma.payment.findFirst.mockResolvedValue(existingPending as any);
+    it('should atomically expire existing PENDING payment before creating a new one', async () => {
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
-        where: {
-          subscriptionId,
-          status: 'PENDING',
-        },
-      });
-
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'old-pay-1' },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { subscriptionId, status: 'PENDING' },
         data: { status: 'EXPIRED' },
       });
-
       expect(prisma.payment.create).toHaveBeenCalled();
     });
 
@@ -191,17 +193,14 @@ describe('PaymentsService', () => {
     });
 
     it('should create payment normally when no PENDING payment exists', async () => {
-      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
-        where: {
-          subscriptionId,
-          status: 'PENDING',
-        },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { subscriptionId, status: 'PENDING' },
+        data: { status: 'EXPIRED' },
       });
-
       expect(prisma.payment.update).not.toHaveBeenCalled();
       expect(prisma.payment.create).toHaveBeenCalled();
     });
@@ -235,11 +234,11 @@ describe('PaymentsService', () => {
       };
       const { raw, signature } = buildWebhookPayload(body);
 
-      // No duplicate reference
-      prisma.payment.findFirst.mockResolvedValue(null);
+      // Atomic claim succeeds
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
-      // Payment update
-      prisma.payment.update.mockResolvedValue({
+      // Post-claim read for activity event
+      prisma.payment.findUnique.mockResolvedValue({
         id: paymentId,
         amount: 2000,
         currency: 'KES',
@@ -264,15 +263,15 @@ describe('PaymentsService', () => {
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
-      // Subscription update
-      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      // Subscription activation (status-guarded updateMany inside tx)
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
 
       // Referral lookup (no pending referral)
       prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleWebhook(raw, signature);
 
-      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+      expect(prisma.memberSubscription.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: subscriptionId },
           data: expect.objectContaining({
@@ -299,9 +298,9 @@ describe('PaymentsService', () => {
       };
       const { raw, signature } = buildWebhookPayload(body);
 
-      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
-      prisma.payment.update.mockResolvedValue({
+      prisma.payment.findUnique.mockResolvedValue({
         id: paymentId,
         amount: 2500,
         currency: 'KES',
@@ -326,12 +325,12 @@ describe('PaymentsService', () => {
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
-      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
       prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleWebhook(raw, signature);
 
-      const updateCall = prisma.memberSubscription.update.mock.calls[0][0];
+      const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
       const newEndDate = updateCall.data.endDate as Date;
 
       // Should be ~1 month from futureEndDate (not from now)
@@ -356,9 +355,9 @@ describe('PaymentsService', () => {
       };
       const { raw, signature } = buildWebhookPayload(body);
 
-      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
-      prisma.payment.update.mockResolvedValue({
+      prisma.payment.findUnique.mockResolvedValue({
         id: paymentId,
         amount: 2500,
         currency: 'KES',
@@ -383,12 +382,12 @@ describe('PaymentsService', () => {
         plan: { price: 2500, billingInterval: 'MONTHLY' },
       } as any);
 
-      prisma.memberSubscription.update.mockResolvedValue({} as any);
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
       prisma.referral.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleWebhook(raw, signature);
 
-      const updateCall = prisma.memberSubscription.update.mock.calls[0][0];
+      const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
       const newEndDate = updateCall.data.endDate as Date;
 
       // Should be ~1 month from now (not from the past endDate)
@@ -398,6 +397,239 @@ describe('PaymentsService', () => {
       expect(
         Math.abs(newEndDate.getTime() - oneMonthFromNow.getTime()),
       ).toBeLessThan(60_000);
+    });
+
+    // C2 — timing-safe signature comparison
+    describe('signature verification (C2)', () => {
+      it('rejects a webhook with an invalid (same-length) signature', async () => {
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+        // A valid-hex string of same length as a SHA-512 hex digest (128 chars),
+        // but not the right digest.
+        const badSignature = 'a'.repeat(128);
+
+        await expect(service.handleWebhook(raw, badSignature)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('rejects a signature of different length with BadRequest (not TypeError)', async () => {
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+        // Wrong-length signature must not crash timingSafeEqual — we short-
+        // circuit before calling it.
+        const shortSignature = 'deadbeef';
+
+        await expect(
+          service.handleWebhook(raw, shortSignature),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('rejects an empty signature with BadRequest', async () => {
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+
+        await expect(service.handleWebhook(raw, '')).rejects.toThrow(
+          BadRequestException,
+        );
+      });
+    });
+
+    // C3 — atomic idempotency (no double side effects on concurrent webhooks)
+    describe('atomic idempotency (C3)', () => {
+      function buildSuccessWebhook() {
+        const subscriptionId = 'sub-race';
+        const paymentId = 'pay-race';
+        const reference = 'ref_race';
+        const body = {
+          event: 'charge.success',
+          data: {
+            reference,
+            metadata: { subscriptionId, paymentId },
+            channel: 'mobile_money',
+          },
+        };
+        return { subscriptionId, paymentId, reference, body };
+      }
+
+      it('runs side effects when updateMany claims the payment (count=1)', async () => {
+        const { subscriptionId, paymentId, body } = buildSuccessWebhook();
+        const { raw, signature } = buildWebhookPayload(body);
+
+        prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.payment.findUnique.mockResolvedValue({
+          id: paymentId,
+          amount: 2500,
+          currency: 'KES',
+          subscription: {
+            primaryMember: {
+              id: 'user-race',
+              email: 'race@test.com',
+              firstName: 'Race',
+              lastName: 'Winner',
+            },
+          },
+        } as any);
+        prisma.memberSubscription.findUnique.mockResolvedValue({
+          id: subscriptionId,
+          status: 'PENDING',
+          primaryMemberId: 'user-race',
+          endDate: new Date(),
+          plan: { price: 2500, billingInterval: 'MONTHLY' },
+        } as any);
+        prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
+        prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.handleWebhook(raw, signature);
+
+        expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+          where: { id: paymentId, status: 'PENDING' },
+          data: expect.objectContaining({ status: 'PAID' }),
+        });
+        // Activation uses status-guarded updateMany inside the tx.
+        expect(prisma.memberSubscription.updateMany).toHaveBeenCalled();
+        // Referral claim path is exercised (even if count is 0 it's called)
+        expect(prisma.referral.updateMany).toHaveBeenCalled();
+        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+          'activity.payment',
+          expect.any(Object),
+        );
+      });
+
+      it('skips all side effects on duplicate webhook (count=0)', async () => {
+        const { body } = buildSuccessWebhook();
+        const { raw, signature } = buildWebhookPayload(body);
+
+        // Simulate the losing side of the race — another invocation already
+        // flipped this payment from PENDING to PAID.
+        prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+        const result = await service.handleWebhook(raw, signature);
+
+        expect(result).toEqual({ received: true });
+        // No subscription lookup, no subscription update, no referral claim,
+        // no activity event.
+        expect(prisma.payment.findUnique).not.toHaveBeenCalled();
+        expect(prisma.memberSubscription.findUnique).not.toHaveBeenCalled();
+        expect(prisma.memberSubscription.updateMany).not.toHaveBeenCalled();
+        expect(prisma.referral.updateMany).not.toHaveBeenCalled();
+        expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      // M13 — internal failures after the atomic claim must propagate so
+      // Paystack retries. Returning 200 after a failed activation/referral
+      // would make Paystack stop retrying and silently drop the event.
+      it('propagates when post-claim activation throws (M13)', async () => {
+        const subscriptionId = 'sub-m13';
+        const paymentId = 'pay-m13';
+        const reference = 'ref_m13';
+        const body = {
+          event: 'charge.success',
+          data: {
+            reference,
+            metadata: { subscriptionId, paymentId },
+            channel: 'mobile_money',
+          },
+        };
+        const { raw, signature } = buildWebhookPayload(body);
+
+        // Atomic claim succeeds.
+        prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.payment.findUnique.mockResolvedValue({
+          id: paymentId,
+          amount: 2500,
+          currency: 'KES',
+          subscription: {
+            primaryMember: {
+              id: 'user-m13',
+              email: 'm13@test.com',
+              firstName: 'Retry',
+              lastName: 'Me',
+            },
+          },
+        } as any);
+        prisma.memberSubscription.findUnique.mockResolvedValue({
+          id: subscriptionId,
+          status: 'PENDING',
+          primaryMemberId: 'user-m13',
+          endDate: new Date(),
+          plan: { price: 2500, billingInterval: 'MONTHLY' },
+        } as any);
+
+        // Simulate subscription activation blowing up (e.g. DB outage
+        // mid-tx). The webhook must rethrow so Nest returns 500 and
+        // Paystack retries — NOT swallow to `{ received: true }`.
+        prisma.memberSubscription.updateMany.mockRejectedValue(
+          new Error('simulated DB failure'),
+        );
+
+        await expect(service.handleWebhook(raw, signature)).rejects.toThrow(
+          'simulated DB failure',
+        );
+      });
+
+      it('does not rethrow BadRequestException for invalid signature as 500 (M13 guard)', async () => {
+        // M13 must not accidentally convert signature failures (400) into
+        // 500s by over-broad try/catch. The signature check is outside
+        // the post-claim try/catch, so BadRequestException still surfaces
+        // as-is.
+        const body = { event: 'charge.success', data: {} };
+        const raw = Buffer.from(JSON.stringify(body));
+        const badSignature = 'a'.repeat(128);
+
+        await expect(service.handleWebhook(raw, badSignature)).rejects.toThrow(
+          BadRequestException,
+        );
+      });
+
+      it('simulated concurrent invocations: only one applies side effects', async () => {
+        const { subscriptionId, paymentId, body } = buildSuccessWebhook();
+        const { raw, signature } = buildWebhookPayload(body);
+
+        // First call wins the race, second loses.
+        prisma.payment.updateMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 });
+
+        prisma.payment.findUnique.mockResolvedValue({
+          id: paymentId,
+          amount: 2500,
+          currency: 'KES',
+          subscription: {
+            primaryMember: {
+              id: 'user-race',
+              email: 'race@test.com',
+              firstName: 'Race',
+              lastName: 'Winner',
+            },
+          },
+        } as any);
+        prisma.memberSubscription.findUnique.mockResolvedValue({
+          id: subscriptionId,
+          status: 'PENDING',
+          primaryMemberId: 'user-race',
+          endDate: new Date(),
+          plan: { price: 2500, billingInterval: 'MONTHLY' },
+        } as any);
+        prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
+        prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+        await Promise.all([
+          service.handleWebhook(raw, signature),
+          service.handleWebhook(raw, signature),
+        ]);
+
+        // updateMany called twice (both invocations attempted the claim)
+        expect(prisma.payment.updateMany).toHaveBeenCalledTimes(2);
+        // But subscription activation ran exactly once — the winner's path.
+        expect(prisma.memberSubscription.updateMany).toHaveBeenCalledTimes(1);
+        // Exactly one activity event fired.
+        expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
+        // Referral claim attempted exactly once (side-effect path gated by count).
+        expect(prisma.referral.updateMany).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

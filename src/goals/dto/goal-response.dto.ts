@@ -17,7 +17,11 @@ export class GoalPlanItemResponseDto {
   @ApiPropertyOptional() muscleGroup: string | null;
   @ApiPropertyOptional() sets: number | null;
   @ApiPropertyOptional() reps: number | null;
-  @ApiPropertyOptional() weight: number | null;
+  @ApiPropertyOptional({
+    description:
+      "Lift weight. Unit follows the parent goal's metric: lbs when metric is LBS, otherwise kg.",
+  })
+  weight: number | null;
   @ApiPropertyOptional() duration: number | null;
   @ApiPropertyOptional() restSeconds: number | null;
   @ApiPropertyOptional() distanceKm: number | null;
@@ -34,7 +38,11 @@ export class GoalMilestoneResponseDto {
   @ApiProperty() goalId: string;
   @ApiProperty() weekNumber: number;
   @ApiProperty() description: string;
-  @ApiPropertyOptional() targetValue: number | null;
+  @ApiPropertyOptional({
+    description:
+      "Milestone target value. Expressed in the parent goal's metric, so it can be compared directly against member-logged progress values.",
+  })
+  targetValue: number | null;
   @ApiProperty() completed: boolean;
   @ApiPropertyOptional() completedAt: Date | null;
   @ApiProperty() createdAt: Date;

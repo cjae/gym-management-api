@@ -19,4 +19,17 @@ describe('AppController', () => {
       expect(appController.getHello()).toBe('Hello World!');
     });
   });
+
+  describe('health', () => {
+    it('returns a minimal body with only a status field', () => {
+      const response = appController.getHealth();
+
+      // The health endpoint intentionally returns nothing more than
+      // { status: 'ok' }. Version strings, uptime, DB state, or module
+      // lists would leak environment info to unauthenticated callers
+      // (the endpoint bypasses LicenseGuard and all auth by design).
+      expect(response).toEqual({ status: 'ok' });
+      expect(Object.keys(response)).toEqual(['status']);
+    });
+  });
 });

@@ -9,6 +9,19 @@ export type PaymentConfig = {
 
 export const getPaymentConfigName = () => 'payment';
 
+const requireEncryptionKeyInSecureEnvs = (
+  value: string | undefined,
+): string => {
+  if (value) return value;
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv === 'development' || nodeEnv === 'test') {
+    return '';
+  }
+  throw new Error(
+    'ENCRYPTION_KEY must be set outside development/test environments to avoid storing Paystack authorization codes in plaintext',
+  );
+};
+
 export const getPaymentConfig = (): PaymentConfig => {
   const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
   if (!paystackSecretKey) {
@@ -16,7 +29,7 @@ export const getPaymentConfig = (): PaymentConfig => {
   }
   return {
     paystackSecretKey,
-    encryptionKey: process.env.ENCRYPTION_KEY ?? '',
+    encryptionKey: requireEncryptionKeyInSecureEnvs(process.env.ENCRYPTION_KEY),
     paystackCallbackUrl: process.env.PAYSTACK_CALLBACK_URL ?? '',
     paystackCancelUrl: process.env.PAYSTACK_CANCEL_URL ?? '',
   };

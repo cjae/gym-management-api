@@ -1,4 +1,58 @@
-import { formatCsv } from './csv.formatter';
+import { formatCsv, sanitizeCsvCell } from './csv.formatter';
+
+describe('sanitizeCsvCell', () => {
+  it('prefixes a leading `=` with a single quote', () => {
+    expect(sanitizeCsvCell('=SUM(A1:A2)')).toBe("'=SUM(A1:A2)");
+  });
+
+  it('prefixes a leading `+`', () => {
+    expect(sanitizeCsvCell('+1-2')).toBe("'+1-2");
+  });
+
+  it('prefixes a leading `-`', () => {
+    expect(sanitizeCsvCell('-5')).toBe("'-5");
+  });
+
+  it('prefixes a leading `@`', () => {
+    expect(sanitizeCsvCell('@foo')).toBe("'@foo");
+  });
+
+  it('prefixes a leading tab', () => {
+    expect(sanitizeCsvCell('\t=cmd')).toBe("'\t=cmd");
+  });
+
+  it('prefixes a leading carriage return', () => {
+    expect(sanitizeCsvCell('\r=cmd')).toBe("'\r=cmd");
+  });
+
+  it('prefixes whitespace-then-formula (Excel still parses these)', () => {
+    expect(sanitizeCsvCell(' =HYPERLINK("http://evil.com")')).toBe(
+      '\' =HYPERLINK("http://evil.com")',
+    );
+  });
+
+  it('leaves normal strings unchanged', () => {
+    expect(sanitizeCsvCell('John Doe')).toBe('John Doe');
+  });
+
+  it('leaves strings with internal formula chars unchanged', () => {
+    expect(sanitizeCsvCell('john+doe@example.com')).toBe(
+      'john+doe@example.com',
+    );
+  });
+
+  it('returns empty string for null', () => {
+    expect(sanitizeCsvCell(null)).toBe('');
+  });
+
+  it('returns empty string for undefined', () => {
+    expect(sanitizeCsvCell(undefined)).toBe('');
+  });
+
+  it('returns empty string for empty input without crashing', () => {
+    expect(sanitizeCsvCell('')).toBe('');
+  });
+});
 
 describe('formatCsv', () => {
   it('should generate CSV with headers and rows', async () => {
@@ -79,5 +133,15 @@ describe('formatCsv', () => {
     expect(csv).toContain("' =HYPERLINK");
     expect(csv).toContain("'\t=cmd");
     expect(csv).toContain("'\r=malicious");
+  });
+
+  it('should not alter numeric cell values', async () => {
+    const columns = [{ header: 'Amount', key: 'amount' }];
+    const data = [{ amount: 5000 }];
+
+    const buffer = await formatCsv(data, columns);
+    const csv = buffer.toString();
+
+    expect(csv).toContain('5000');
   });
 });

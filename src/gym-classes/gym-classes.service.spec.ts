@@ -234,53 +234,140 @@ describe('GymClassesService', () => {
   });
 
   describe('enroll', () => {
-    it('should enroll a member in a class', async () => {
-      prisma.gymClass.findUnique.mockResolvedValue({
-        ...mockGymClass,
-        _count: { enrollments: 5 },
-      } as any);
+    beforeEach(() => {
+      // Run the transaction callback using the same mocked prisma client.
+      prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
+    });
+
+    it('should enroll a member in a class (atomic counter increment)', async () => {
+      prisma.gymClass.findUnique
+        .mockResolvedValueOnce({
+          id: 'class-1',
+          isActive: true,
+        } as any)
+        .mockResolvedValueOnce({ maxCapacity: 20 } as any);
+      prisma.gymClass.updateMany.mockResolvedValue({ count: 1 });
       prisma.classEnrollment.create.mockResolvedValue(mockEnrollment as any);
 
       const result = await service.enroll('class-1', 'member-1');
 
       expect(result).toEqual(mockEnrollment);
+      // Conditional increment: only increments when enrolledCount < maxCapacity.
+      expect(prisma.gymClass.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'class-1',
+          isActive: true,
+          enrolledCount: { lt: 20 },
+        },
+        data: { enrolledCount: { increment: 1 } },
+      });
+      expect(prisma.classEnrollment.create).toHaveBeenCalledWith({
+        data: { classId: 'class-1', memberId: 'member-1' },
+      });
     });
 
     it('should throw NotFoundException for inactive class', async () => {
-      prisma.gymClass.findUnique.mockResolvedValue({
-        ...mockGymClass,
+      prisma.gymClass.findUnique.mockResolvedValueOnce({
+        id: 'class-1',
         isActive: false,
-        _count: { enrollments: 0 },
       } as any);
 
       await expect(service.enroll('class-1', 'member-1')).rejects.toThrow(
         NotFoundException,
       );
+      // Should short-circuit before opening a transaction.
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('should throw ConflictException when class is at capacity', async () => {
-      prisma.gymClass.findUnique.mockResolvedValue({
-        ...mockGymClass,
-        maxCapacity: 20,
-        _count: { enrollments: 20 },
-      } as any);
+      prisma.gymClass.findUnique
+        .mockResolvedValueOnce({ id: 'class-1', isActive: true } as any)
+        .mockResolvedValueOnce({ maxCapacity: 20 } as any);
+      // Atomic increment returns count:0 when enrolledCount >= maxCapacity.
+      prisma.gymClass.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.enroll('class-1', 'member-1')).rejects.toThrow(
         ConflictException,
       );
+      // No enrollment row is created when capacity check fails.
+      expect(prisma.classEnrollment.create).not.toHaveBeenCalled();
+    });
+
+    it('simulated race: two concurrent enrollments with capacity=1 — only one wins', async () => {
+      // Simulate the DB by sharing a counter across the two calls. The
+      // conditional updateMany is resolved atomically per call: only the
+      // first call observes enrolledCount < maxCapacity.
+      const CAPACITY = 1;
+      let enrolledCount = 0;
+
+      // Both pre-check findUnique calls see the class as active.
+      prisma.gymClass.findUnique.mockImplementation(((args: any) => {
+        if (args.select?.maxCapacity) {
+          return Promise.resolve({ maxCapacity: CAPACITY } as any);
+        }
+        return Promise.resolve({ id: 'class-1', isActive: true } as any);
+      }) as any);
+
+      // updateMany simulates the conditional atomic increment.
+      prisma.gymClass.updateMany.mockImplementation(((args: any) => {
+        const ltBound = args.where?.enrolledCount?.lt;
+        if (typeof ltBound === 'number' && enrolledCount < ltBound) {
+          enrolledCount += 1;
+          return Promise.resolve({ count: 1 });
+        }
+        return Promise.resolve({ count: 0 });
+      }) as any);
+
+      prisma.classEnrollment.create.mockResolvedValue(mockEnrollment as any);
+
+      const results = await Promise.allSettled([
+        service.enroll('class-1', 'member-1'),
+        service.enroll('class-1', 'member-2'),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(ConflictException);
+      expect(rejected[0].reason.message).toBe('Class is full');
+      // Only one enrollment row is actually created.
+      expect(prisma.classEnrollment.create).toHaveBeenCalledTimes(1);
+      // Counter lands exactly at capacity, never over.
+      expect(enrolledCount).toBe(CAPACITY);
     });
   });
 
   describe('unenroll', () => {
-    it('should remove enrollment', async () => {
+    beforeEach(() => {
+      prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
+    });
+
+    it('should remove enrollment and decrement counter atomically', async () => {
       prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
       prisma.classEnrollment.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.gymClass.updateMany.mockResolvedValue({ count: 1 });
 
       await service.unenroll('class-1', 'member-1');
 
       expect(prisma.classEnrollment.deleteMany).toHaveBeenCalledWith({
         where: { classId: 'class-1', memberId: 'member-1' },
       });
+      // Guarded decrement: gt: 0 prevents the counter from going negative.
+      expect(prisma.gymClass.updateMany).toHaveBeenCalledWith({
+        where: { id: 'class-1', enrolledCount: { gt: 0 } },
+        data: { enrolledCount: { decrement: 1 } },
+      });
+    });
+
+    it('should not decrement counter when no enrollment row was deleted', async () => {
+      prisma.gymClass.findUnique.mockResolvedValue(mockGymClass as any);
+      prisma.classEnrollment.deleteMany.mockResolvedValue({ count: 0 });
+
+      await service.unenroll('class-1', 'member-1');
+
+      expect(prisma.gymClass.updateMany).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when class not found', async () => {

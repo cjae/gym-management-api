@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { EmailService } from '../email/email.service';
@@ -13,6 +14,19 @@ import { decrypt } from '../common/utils/encryption.util';
 import { NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+
+// M16 — PostgreSQL advisory-lock IDs used to serialize billing crons across
+// API replicas. Each cron claims its own 64-bit lock via pg_try_advisory_lock;
+// a second replica whose lock attempt returns false skips that run. The IDs
+// are arbitrary but stable — changing them after deploy defeats the lock, so
+// treat these constants as part of the release artifact.
+//
+// Convention: 0xB111_xxxx (B=billing) with a 16-bit tag per cron handler.
+const ADVISORY_LOCK_CARD_RENEWALS = 0xb1110001n;
+const ADVISORY_LOCK_OVERDUE_EXPIRY = 0xb1110002n;
+const ADVISORY_LOCK_MOBILE_REMINDERS = 0xb1110003n;
+const ADVISORY_LOCK_BIRTHDAY_WISHES = 0xb1110004n;
+const ADVISORY_LOCK_AUTO_UNFREEZE = 0xb1110005n;
 
 @Injectable()
 export class BillingService {
@@ -37,37 +51,113 @@ export class BillingService {
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM, { timeZone: 'Africa/Nairobi' })
   async handleCardRenewals() {
-    this.logger.log('Starting card renewals');
-    await this.processCardRenewals();
-    this.logger.log('Card renewals complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_CARD_RENEWALS,
+      'card renewals',
+      () => this.processCardRenewals(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: 'Africa/Nairobi' })
   async handleOverdueExpiry() {
-    this.logger.log('Starting overdue subscription expiry');
-    await this.expireOverdueSubscriptions();
-    this.logger.log('Overdue subscription expiry complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_OVERDUE_EXPIRY,
+      'overdue subscription expiry',
+      () => this.expireOverdueSubscriptions(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Nairobi' })
   async handleMobileMoneyReminders() {
-    this.logger.log('Starting Mobile money reminders');
-    await this.processMobileMoneyReminders();
-    this.logger.log('Mobile money reminders complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_MOBILE_REMINDERS,
+      'mobile money reminders',
+      () => this.processMobileMoneyReminders(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Africa/Nairobi' })
   async handleBirthdayWishes() {
-    this.logger.log('Starting birthday wishes');
-    await this.sendBirthdayWishes();
-    this.logger.log('Birthday wishes complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_BIRTHDAY_WISHES,
+      'birthday wishes',
+      () => this.sendBirthdayWishes(),
+    );
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Africa/Nairobi' })
   async handleAutoUnfreeze() {
-    this.logger.log('Starting auto-unfreeze check');
-    await this.autoUnfreezeSubscriptions();
-    this.logger.log('Auto-unfreeze check complete');
+    await this.runWithAdvisoryLock(
+      ADVISORY_LOCK_AUTO_UNFREEZE,
+      'auto-unfreeze check',
+      () => this.autoUnfreezeSubscriptions(),
+    );
+  }
+
+  /**
+   * M16 — replica-safe cron wrapper.
+   *
+   * Uses PostgreSQL session-scoped advisory locks (`pg_try_advisory_lock`) to
+   * ensure that when multiple API replicas run the same cron schedule, only
+   * one instance actually performs the work. The loser returns immediately
+   * without side effects, so we never double-charge, double-email, or
+   * double-flip-expired.
+   *
+   * `pg_try_advisory_lock` is non-blocking: if another backend holds the
+   * lock, it returns `false` rather than waiting. Session-scoped locks are
+   * automatically released when the connection closes, so a crashed replica
+   * can't deadlock the lock indefinitely — we also explicitly unlock in a
+   * `finally` to release immediately under happy-path and thrown-error
+   * conditions.
+   *
+   * The lock ID is a BIGINT. We use BigInt literals and `Prisma.sql` tagged
+   * template interpolation so the driver sends them as parameters (no
+   * string concatenation into SQL).
+   *
+   * KNOWN LIMITATION: `pg_try_advisory_lock` is session-scoped, but Prisma's
+   * connection pool does not guarantee that the acquire call and the unlock
+   * call land on the same backend session. In practice, sequential awaited
+   * `$queryRaw` calls reuse the same pooled connection, so this works
+   * correctly in the common case. If they do land on different sessions, the
+   * unlock is a no-op and the lock persists until the acquiring connection's
+   * idle timeout elapses (typically ~10 min) — the next cron run is skipped
+   * for that window but no data is corrupted. A proper fix would wrap the
+   * acquire + work + unlock in a single Prisma interactive transaction (which
+   * pins to one connection), but that requires all billing work to accept a
+   * transaction client — a non-trivial refactor deferred for now.
+   */
+  private async runWithAdvisoryLock(
+    lockId: bigint,
+    label: string,
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const acquired = await this.prisma.$queryRaw<
+      Array<{ acquired: boolean }>
+    >`SELECT pg_try_advisory_lock(${lockId}) AS acquired`;
+
+    if (!acquired[0]?.acquired) {
+      this.logger.log(
+        `Another instance holds the ${label} billing lock; skipping this run`,
+      );
+      return;
+    }
+
+    this.logger.log(`Starting ${label}`);
+    try {
+      await work();
+      this.logger.log(`${label} complete`);
+    } finally {
+      try {
+        await this.prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})`;
+      } catch (err) {
+        // Releasing the lock should never fail under normal operation, but
+        // if it does we surface it — the session-scoped lock will be
+        // released anyway when the connection closes.
+        this.logger.warn(
+          `Failed to release ${label} advisory lock: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   async autoUnfreezeSubscriptions() {
@@ -96,8 +186,13 @@ export class BillingService {
         newNextBillingDate.setDate(newNextBillingDate.getDate() + frozenDays);
       }
 
-      await this.prisma.memberSubscription.update({
-        where: { id: sub.id },
+      // L7 — keep freeze counter anchor aligned with the extended endDate
+      // on auto-unfreeze. Same reasoning as unfreeze() in subscriptions
+      // service: the cycle identity is tracked via `freezeCycleAnchor`,
+      // and any operation that advances `endDate` within a cycle must
+      // re-anchor so the counters stay authoritative for this cycle.
+      const { count } = await this.prisma.memberSubscription.updateMany({
+        where: { id: sub.id, status: 'FROZEN' },
         data: {
           status: 'ACTIVE',
           endDate: newEndDate,
@@ -106,8 +201,16 @@ export class BillingService {
           freezeEndDate: null,
           frozenDaysUsed: { increment: frozenDays },
           freezeCount: { increment: 1 },
+          freezeCycleAnchor: newEndDate,
         },
       });
+
+      if (count === 0) {
+        this.logger.log(
+          `Skipped auto-unfreeze for ${sub.id}: no longer FROZEN (raced user-initiated unfreeze)`,
+        );
+        continue;
+      }
 
       this.logger.log(
         `Auto-unfroze subscription ${sub.id} after ${frozenDays} frozen days`,
@@ -162,9 +265,50 @@ export class BillingService {
         continue;
       }
 
-      const authCode = this.encryptionKey
-        ? decrypt(sub.paystackAuthorizationCode!, this.encryptionKey)
-        : sub.paystackAuthorizationCode!;
+      if (!this.encryptionKey) {
+        // Encryption is intentionally disabled — skip without touching the
+        // stored code. The webhook path also refuses to persist codes without
+        // an encryption key, so this branch is only reachable if the key was
+        // present when the code was stored and has since been removed (e.g.
+        // misconfiguration or key rotation). Clearing the code here would
+        // destroy a valid credential; just skip until the key is restored.
+        this.logger.warn(
+          `Skipping card renewal for subscription ${sub.id}: ENCRYPTION_KEY not configured`,
+        );
+        continue;
+      }
+
+      let authCode: string;
+      try {
+        authCode = decrypt(sub.paystackAuthorizationCode!, this.encryptionKey);
+      } catch (err) {
+        // Decryption failed with a configured key — code is corrupt or was
+        // written with a different key. Self-heal by clearing the code so
+        // the member can re-authorize; flag for ops via Sentry + DB timestamp.
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to decrypt paystackAuthorizationCode for subscription ${sub.id}; clearing stored code and flagging for manual review. Member will need to re-authorize. Error: ${errorMessage}`,
+        );
+        Sentry.captureMessage(
+          'Billing cron: paystackAuthorizationCode decrypt failed',
+          {
+            level: 'warning',
+            extra: {
+              subscriptionId: sub.id,
+              memberId: sub.primaryMember.id,
+              error: errorMessage,
+            },
+          },
+        );
+        await this.prisma.memberSubscription.update({
+          where: { id: sub.id },
+          data: {
+            paystackAuthorizationCode: null,
+            billingFlaggedAt: new Date(),
+          },
+        });
+        continue;
+      }
 
       await this.paymentsService.chargeAuthorization(
         sub.id,

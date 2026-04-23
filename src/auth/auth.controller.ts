@@ -33,10 +33,12 @@ import { BasicAuthGuard } from './guards/basic-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshAuthGuard } from './guards/jwt-refresh-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { AllowWhileMustChangePassword } from './decorators/allow-while-must-change-password.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { OnboardingDto } from './dto/onboarding.dto';
 import { CreateDeletionRequestDto } from './dto/create-deletion-request.dto';
 import { DeletionRequestResponseDto } from './dto/deletion-request-response.dto';
-import { UserResponseDto } from '../users/dto/user-response.dto';
+import { AuthMeResponseDto } from './dto/auth-me-response.dto';
 import { MessageResponseDto } from '../common/dto/message-response.dto';
 
 @ApiTags('Auth')
@@ -79,11 +81,15 @@ export class AuthController {
   refresh(
     @CurrentUser('id') userId: string,
     @CurrentUser('jti') jti: string,
+    // Raw opaque refresh token string — hashed inside the service to look up
+    // the RefreshToken row for reuse detection (M4). Populated by the refresh
+    // strategy's validate() from the request body.
+    @CurrentUser('rawRefreshToken') rawRefreshToken: string,
     // Body parsed by ValidationPipe; token extracted by Passport strategy
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     @Body() dto: RefreshTokenDto,
   ) {
-    return this.authService.refreshToken(userId, jti);
+    return this.authService.refreshToken(userId, jti, rawRefreshToken);
   }
 
   @Post('forgot-password')
@@ -113,8 +119,12 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @AllowWhileMustChangePassword()
   @ApiBearerAuth()
-  @ApiOkResponse({ type: UserResponseDto, description: 'Current user profile' })
+  @ApiOkResponse({
+    type: AuthMeResponseDto,
+    description: 'Current user profile with onboarding flag',
+  })
   getProfile(@CurrentUser('id') userId: string) {
     return this.authService.getProfile(userId);
   }
@@ -122,7 +132,10 @@ export class AuthController {
   @Patch('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOkResponse({ type: UserResponseDto, description: 'Updated user profile' })
+  @ApiOkResponse({
+    type: AuthMeResponseDto,
+    description: 'Updated user profile',
+  })
   updateProfile(
     @CurrentUser('id') userId: string,
     @Body() dto: UpdateProfileDto,
@@ -130,8 +143,24 @@ export class AuthController {
     return this.authService.updateProfile(userId, dto);
   }
 
+  @Post('me/onboarding')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({
+    type: AuthMeResponseDto,
+    description: 'Onboarding completed; personalization stored.',
+  })
+  @ApiBadRequestResponse({ description: 'Onboarding already completed' })
+  completeOnboarding(
+    @CurrentUser('id') userId: string,
+    @Body() dto: OnboardingDto,
+  ) {
+    return this.authService.completeOnboarding(userId, dto);
+  }
+
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
+  @AllowWhileMustChangePassword()
   @ApiBearerAuth()
   @ApiOkResponse({
     type: MessageResponseDto,
@@ -147,6 +176,7 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
+  @AllowWhileMustChangePassword()
   @ApiBearerAuth()
   @ApiOkResponse({
     type: MessageResponseDto,

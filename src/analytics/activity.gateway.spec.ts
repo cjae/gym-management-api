@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { Socket } from 'socket.io';
+import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
 
 describe('ActivityGateway', () => {
   let gateway: ActivityGateway;
@@ -117,6 +118,31 @@ describe('ActivityGateway', () => {
       gateway.handleRegistration(payload);
 
       expect(mockServer.emit).toHaveBeenCalledWith('activity', payload);
+    });
+  });
+
+  // M10 — WebSocket gateway must not accept connections from any origin.
+  // The `@WebSocketGateway` decorator stores its options via `Reflect.defineMetadata`
+  // under the `GATEWAY_OPTIONS` key, which we read back here to verify CORS shape.
+  describe('CORS configuration (M10)', () => {
+    it('does not use wildcard origin', () => {
+      const opts = Reflect.getMetadata(GATEWAY_OPTIONS, ActivityGateway) as {
+        cors?: { origin?: unknown; credentials?: boolean } | boolean;
+      };
+
+      expect(opts).toBeDefined();
+      expect(opts.cors).not.toBe(true);
+      expect(opts.cors).not.toEqual({ origin: '*' });
+      expect(
+        typeof opts.cors === 'object' && opts.cors && opts.cors.origin,
+      ).toBeDefined();
+      // Origin must be an explicit allowlist (array of strings), not '*'.
+      const origin = (opts.cors as { origin: unknown }).origin;
+      expect(Array.isArray(origin)).toBe(true);
+      expect(origin as string[]).not.toContain('*');
+      expect((origin as string[]).length).toBeGreaterThan(0);
+      // Credentials should be explicitly allowed for authenticated WS sessions.
+      expect((opts.cors as { credentials?: boolean }).credentials).toBe(true);
     });
   });
 });

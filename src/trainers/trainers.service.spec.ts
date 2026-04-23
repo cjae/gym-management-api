@@ -110,5 +110,36 @@ describe('TrainersService', () => {
       const result = await service.getMemberTrainer('member-1');
       expect(result).toEqual(mockAssignment);
     });
+
+    it('should select only non-sensitive trainer user fields (no email/phone/role)', async () => {
+      prisma.trainerAssignment.findFirst.mockResolvedValue(
+        mockAssignment as any,
+      );
+
+      await service.getMemberTrainer('member-1');
+
+      expect(prisma.trainerAssignment.findFirst).toHaveBeenCalledTimes(1);
+      const call = prisma.trainerAssignment.findFirst.mock.calls[0][0] as any;
+
+      // Must use `select` (not `include`) so the shape is a strict allowlist.
+      expect(call.select).toBeDefined();
+      expect(call.include).toBeUndefined();
+
+      const trainerUserSelect = call.select.trainer.select.user.select;
+      expect(trainerUserSelect).toEqual({
+        id: true,
+        firstName: true,
+        lastName: true,
+        displayPicture: true,
+      });
+      // Sensitive fields must not be requested from the DB.
+      expect(trainerUserSelect.email).toBeUndefined();
+      expect(trainerUserSelect.phone).toBeUndefined();
+      expect(trainerUserSelect.role).toBeUndefined();
+      expect(trainerUserSelect.status).toBeUndefined();
+
+      // The member-facing shape must NOT include other members' assignments.
+      expect(call.select.trainer.select.assignments).toBeUndefined();
+    });
   });
 });

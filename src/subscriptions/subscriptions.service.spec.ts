@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PaymentMethod, PrismaClient } from '@prisma/client';
@@ -261,7 +262,8 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         mockSubscription as any,
       );
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...mockSubscription,
         status: 'FROZEN',
       } as any);
@@ -296,6 +298,7 @@ describe('SubscriptionsService', () => {
         ...mockSubscription,
         frozenDaysUsed: 15,
         freezeCount: 1,
+        freezeCycleAnchor: futureDate,
         plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
       } as any);
 
@@ -308,6 +311,7 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce({
         ...mockSubscription,
         freezeCount: 1,
+        freezeCycleAnchor: futureDate,
       } as any);
 
       await expect(
@@ -320,9 +324,11 @@ describe('SubscriptionsService', () => {
         ...mockSubscription,
         frozenDaysUsed: 5,
         freezeCount: 1,
+        freezeCycleAnchor: futureDate,
         plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
       } as any);
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...mockSubscription,
         status: 'FROZEN',
       } as any);
@@ -346,7 +352,8 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         mockSubscription as any,
       );
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...mockSubscription,
         status: 'FROZEN',
       } as any);
@@ -412,7 +419,8 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         frozenSub as any,
       );
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...frozenSub,
         status: 'ACTIVE',
         freezeStartDate: null,
@@ -423,8 +431,9 @@ describe('SubscriptionsService', () => {
       const result = await service.unfreeze('sub-1', 'user-1', 'MEMBER');
       expect(result.status).toBe('ACTIVE');
       expect(result.frozenDaysUsed).toBeGreaterThanOrEqual(5);
-      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+      expect(prisma.memberSubscription.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({ status: 'FROZEN' }),
           data: expect.objectContaining({
             freezeCount: { increment: 1 },
             frozenDaysUsed: { increment: expect.any(Number) },
@@ -911,6 +920,13 @@ describe('SubscriptionsService', () => {
   describe('cleanupPendingSubscriptions', () => {
     beforeEach(() => {
       jest.clearAllMocks();
+      // jest.clearAllMocks wipes the $transaction implementation set in
+      // the outer beforeEach, so re-install it for this describe block.
+      (prisma.$transaction as jest.Mock).mockImplementation((input: unknown) =>
+        typeof input === 'function'
+          ? (input as (tx: typeof prisma) => unknown)(prisma)
+          : Promise.all(input as Promise<unknown>[]),
+      );
     });
 
     it('should delete PENDING subscriptions older than 1 hour and their payments', async () => {
@@ -919,12 +935,14 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findMany.mockResolvedValueOnce(
         staleSubscriptions as any,
       );
-      prisma.payment.deleteMany.mockResolvedValueOnce({ count: 2 });
-      prisma.subscriptionMember.deleteMany.mockResolvedValueOnce({
-        count: 2,
+      // Cleanup runs one tx per stale id; each tx deletes payments,
+      // subscriptionMembers, and status-guarded deletes the subscription.
+      prisma.payment.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.subscriptionMember.deleteMany.mockResolvedValue({
+        count: 1,
       } as any);
-      prisma.memberSubscription.deleteMany.mockResolvedValueOnce({
-        count: 2,
+      prisma.memberSubscription.deleteMany.mockResolvedValue({
+        count: 1,
       } as any);
 
       await service.cleanupPendingSubscriptions();
@@ -937,14 +955,28 @@ describe('SubscriptionsService', () => {
         select: { id: true },
       });
 
+      // One reverseRedemption + one delete trio per id.
+      expect(mockDiscountCodesService.reverseRedemption).toHaveBeenCalledTimes(
+        2,
+      );
       expect(prisma.payment.deleteMany).toHaveBeenCalledWith({
-        where: { subscriptionId: { in: ['sub-1', 'sub-2'] } },
+        where: { subscriptionId: 'sub-1' },
+      });
+      expect(prisma.payment.deleteMany).toHaveBeenCalledWith({
+        where: { subscriptionId: 'sub-2' },
       });
       expect(prisma.subscriptionMember.deleteMany).toHaveBeenCalledWith({
-        where: { subscriptionId: { in: ['sub-1', 'sub-2'] } },
+        where: { subscriptionId: 'sub-1' },
+      });
+      expect(prisma.subscriptionMember.deleteMany).toHaveBeenCalledWith({
+        where: { subscriptionId: 'sub-2' },
+      });
+      // Status-guarded atomic claim on the subscription itself.
+      expect(prisma.memberSubscription.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'sub-1', status: 'PENDING' },
       });
       expect(prisma.memberSubscription.deleteMany).toHaveBeenCalledWith({
-        where: { id: { in: ['sub-1', 'sub-2'] } },
+        where: { id: 'sub-2', status: 'PENDING' },
       });
     });
 
@@ -954,6 +986,102 @@ describe('SubscriptionsService', () => {
       await service.cleanupPendingSubscriptions();
 
       expect(prisma.payment.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addDuoMember', () => {
+    const subscriptionId = 'sub-1';
+    const requesterId = 'owner-1';
+    const duoEmail = 'duo@gym.co.ke';
+    const duoUserId = 'duo-user-1';
+
+    const mockSubscriptionBase = {
+      id: subscriptionId,
+      primaryMemberId: requesterId,
+      discountCodeId: null,
+      plan: { maxMembers: 2 },
+      members: [{ memberId: requesterId }],
+    };
+
+    const mockDuoUser = { id: duoUserId, email: duoEmail };
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(mockDuoUser as any);
+      prisma.subscriptionMember.create.mockResolvedValue({
+        subscriptionId,
+        memberId: duoUserId,
+      } as any);
+    });
+
+    it('creates the subscription member when no discount code is applied', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValue(
+        mockSubscriptionBase as any,
+      );
+
+      await service.addDuoMember(subscriptionId, duoEmail, requesterId);
+
+      expect(prisma.subscriptionMember.create).toHaveBeenCalledWith({
+        data: { subscriptionId, memberId: duoUserId },
+      });
+      expect(
+        prisma.discountRedemptionCounter.createMany,
+      ).not.toHaveBeenCalled();
+      expect(
+        prisma.discountRedemptionCounter.updateMany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('credits the discount benefit counter for the new duo member when a discount was applied', async () => {
+      const discountCodeId = 'dc-1';
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        ...mockSubscriptionBase,
+        discountCodeId,
+      } as any);
+      prisma.discountCode.findUniqueOrThrow.mockResolvedValue({
+        maxUsesPerMember: 1,
+      } as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValue({
+        count: 1,
+      } as any);
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValue({
+        count: 1,
+      });
+
+      await service.addDuoMember(subscriptionId, duoEmail, requesterId);
+
+      expect(prisma.discountRedemptionCounter.createMany).toHaveBeenCalledWith({
+        data: [{ discountCodeId, memberId: duoUserId, uses: 0 }],
+        skipDuplicates: true,
+      });
+      expect(prisma.discountRedemptionCounter.updateMany).toHaveBeenCalledWith({
+        where: {
+          discountCodeId,
+          memberId: duoUserId,
+          uses: { lt: 1 },
+        },
+        data: { uses: { increment: 1 } },
+      });
+    });
+
+    it('throws ConflictException when the new duo member has already hit the per-member cap', async () => {
+      const discountCodeId = 'dc-1';
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        ...mockSubscriptionBase,
+        discountCodeId,
+      } as any);
+      prisma.discountCode.findUniqueOrThrow.mockResolvedValue({
+        maxUsesPerMember: 1,
+      } as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValue({
+        count: 0,
+      } as any);
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(
+        service.addDuoMember(subscriptionId, duoEmail, requesterId),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });

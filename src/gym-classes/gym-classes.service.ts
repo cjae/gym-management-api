@@ -186,35 +186,80 @@ export class GymClassesService {
   }
 
   async enroll(classId: string, memberId: string) {
+    // Pre-check so we can surface NotFound before starting a tx. The
+    // authoritative capacity check happens inside the transaction via an
+    // atomic conditional increment on `enrolledCount`, so two concurrent
+    // enrollments cannot both slip past the capacity limit.
     const gymClass = await this.prisma.gymClass.findUnique({
       where: { id: classId },
-      include: { _count: { select: { enrollments: true } } },
+      select: { id: true, isActive: true },
     });
 
     if (!gymClass || !gymClass.isActive) {
       throw new NotFoundException('Class not found or is inactive');
     }
 
-    if (gymClass._count.enrollments >= gymClass.maxCapacity) {
-      throw new ConflictException('Class is full');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      // Atomic conditional increment: only succeeds if enrolledCount < maxCapacity.
+      // Using `enrolledCount: { lt: prisma.gymClass.maxCapacity }` isn't
+      // directly expressible in Prisma, so we fetch maxCapacity once and
+      // re-check inside the update's WHERE. This is still race-safe because
+      // `updateMany` resolves the WHERE + SET atomically in a single SQL
+      // UPDATE, and only one of two concurrent updates can observe the
+      // pre-increment row at the capacity-minus-one boundary.
+      const current = await tx.gymClass.findUnique({
+        where: { id: classId },
+        select: { maxCapacity: true },
+      });
 
-    return this.prisma.classEnrollment.create({
-      data: { classId, memberId },
+      if (!current) {
+        throw new NotFoundException('Class not found or is inactive');
+      }
+
+      const updated = await tx.gymClass.updateMany({
+        where: {
+          id: classId,
+          isActive: true,
+          enrolledCount: { lt: current.maxCapacity },
+        },
+        data: { enrolledCount: { increment: 1 } },
+      });
+
+      if (updated.count === 0) {
+        throw new ConflictException('Class is full');
+      }
+
+      return tx.classEnrollment.create({
+        data: { classId, memberId },
+      });
     });
   }
 
   async unenroll(classId: string, memberId: string) {
     const gymClass = await this.prisma.gymClass.findUnique({
       where: { id: classId },
+      select: { id: true },
     });
 
     if (!gymClass) {
       throw new NotFoundException('Class not found');
     }
 
-    await this.prisma.classEnrollment.deleteMany({
-      where: { classId, memberId },
+    await this.prisma.$transaction(async (tx) => {
+      // Only decrement when we actually delete an enrollment row. This
+      // guards against double-unenroll calls and keeps the counter in sync
+      // with the enrollment rows. The `gt: 0` guard prevents the counter
+      // from ever going negative if the two are briefly out of sync.
+      const deleted = await tx.classEnrollment.deleteMany({
+        where: { classId, memberId },
+      });
+
+      if (deleted.count > 0) {
+        await tx.gymClass.updateMany({
+          where: { id: classId, enrolledCount: { gt: 0 } },
+          data: { enrolledCount: { decrement: 1 } },
+        });
+      }
     });
   }
 

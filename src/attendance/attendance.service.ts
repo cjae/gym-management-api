@@ -117,53 +117,27 @@ export class AttendanceService {
       await this.validateOffPeakWindow(memberId, entranceId);
     }
 
-    // 3. Record attendance (idempotent per day)
+    // 3. Record attendance (idempotent per day).
+    //
+    // Race safety: the @@unique([memberId, checkInDate]) on Attendance is the
+    // atomic gate. Two concurrent check-ins (e.g., simultaneous scans at two
+    // entrances) both attempt tx.attendance.create; the DB serialises them via
+    // the unique index. The loser hits P2002 and we short-circuit to the
+    // "already checked in today" path WITHOUT touching streak or emitting
+    // side-effect events — so streak/milestone updates fire exactly once per
+    // day per member.
     const timezone = await this.getTimezone();
     const today = this.getToday(timezone);
 
-    const existing = await this.prisma.attendance.findUnique({
-      where: { memberId_checkInDate: { memberId, checkInDate: today } },
-    });
+    let txResult: {
+      streak: Awaited<ReturnType<AttendanceService['updateStreak']>>;
+      totalCheckIns: number;
+      isFirstCheckIn: boolean;
+    } | null = null;
 
-    if (existing) {
-      const streak = await this.prisma.streak.findUnique({
-        where: { memberId },
-      });
-      const existingMember = await this.prisma.user.findUnique({
-        where: { id: memberId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          displayPicture: true,
-        },
-      });
-      this.eventEmitter.emit('check_in.result', {
-        type: 'check_in_result',
-        member: {
-          id: memberId,
-          firstName: existingMember?.firstName ?? null,
-          lastName: existingMember?.lastName ?? null,
-          displayPicture: existingMember?.displayPicture ?? null,
-        },
-        success: true,
-        message: 'Already checked in today',
-        entranceId,
-        timestamp: new Date().toISOString(),
-      });
-      return {
-        alreadyCheckedIn: true,
-        message: 'Already checked in today',
-        weeklyStreak: streak?.weeklyStreak ?? 0,
-        longestStreak: streak?.longestStreak ?? 0,
-        daysThisWeek: streak?.daysThisWeek ?? 0,
-        daysRequired: this.DAYS_REQUIRED_PER_WEEK,
-      };
-    }
-
-    // 3b. Atomic: create attendance + update streak + count check-ins
-    const { streak, totalCheckIns, isFirstCheckIn } =
-      await this.prisma.$transaction(async (tx) => {
+    try {
+      txResult = await this.prisma.$transaction(async (tx) => {
+        // Attendance create is the atomic gate — MUST run before streak writes.
         await tx.attendance.create({
           data: { memberId, checkInDate: today, entranceId },
         });
@@ -180,6 +154,22 @@ export class AttendanceService {
           isFirstCheckIn: txTotalCheckIns === 1,
         };
       });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        // Lost the race — another concurrent check-in already recorded today's
+        // attendance. Return the "already checked in today" shape without
+        // re-emitting activity / streak / milestone side effects.
+        return this.handleAlreadyCheckedIn(memberId, entranceId);
+      }
+      throw err;
+    }
+
+    const { streak, totalCheckIns, isFirstCheckIn } = txResult;
+
+    // --- Post-commit side effects: only fire for the winning transaction. ---
 
     // 4. Emit activity event
     const member = await this.prisma.user.findUnique({
@@ -252,6 +242,50 @@ export class AttendanceService {
       daysRequired: this.DAYS_REQUIRED_PER_WEEK,
       isFirstCheckIn,
       isNewStreakRecord: streak.longestStreak > streak.previousLongestStreak,
+    };
+  }
+
+  /**
+   * Response path for a check-in that lost the race (P2002) or was scanned a
+   * second time the same day. Emits only the "already checked in" result event
+   * — does NOT touch streak, does NOT emit activity.check_in or streak.updated,
+   * so milestones are not double-awarded and the activity feed is not spammed.
+   */
+  private async handleAlreadyCheckedIn(memberId: string, entranceId?: string) {
+    const [streak, existingMember] = await Promise.all([
+      this.prisma.streak.findUnique({ where: { memberId } }),
+      this.prisma.user.findUnique({
+        where: { id: memberId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          displayPicture: true,
+        },
+      }),
+    ]);
+
+    this.eventEmitter.emit('check_in.result', {
+      type: 'check_in_result',
+      member: {
+        id: memberId,
+        firstName: existingMember?.firstName ?? null,
+        lastName: existingMember?.lastName ?? null,
+        displayPicture: existingMember?.displayPicture ?? null,
+      },
+      success: true,
+      message: 'Already checked in today',
+      entranceId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      alreadyCheckedIn: true,
+      message: 'Already checked in today',
+      weeklyStreak: streak?.weeklyStreak ?? 0,
+      longestStreak: streak?.longestStreak ?? 0,
+      daysThisWeek: streak?.daysThisWeek ?? 0,
+      daysRequired: this.DAYS_REQUIRED_PER_WEEK,
     };
   }
 
@@ -371,6 +405,17 @@ export class AttendanceService {
 
     const previousLongestStreak = existingStreak?.longestStreak ?? 0;
     const previousBestWeek = existingStreak?.bestWeek ?? 0;
+
+    // Defence-in-depth idempotency: if the streak row says we already checked
+    // in today, return it unchanged. The Attendance unique index should have
+    // already caught this upstream; this guard ensures the streak is never
+    // double-counted even if somehow invoked twice for the same day.
+    if (
+      existingStreak?.lastCheckInDate &&
+      existingStreak.lastCheckInDate.getTime() === today.getTime()
+    ) {
+      return { ...existingStreak, previousLongestStreak, previousBestWeek };
+    }
 
     let weeklyStreak = 0;
     let longestStreak = 0;
