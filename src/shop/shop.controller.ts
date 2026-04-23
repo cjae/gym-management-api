@@ -19,6 +19,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -61,6 +62,7 @@ export class ShopController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopItemResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid input' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   createItem(@Body() dto: CreateShopItemDto) {
     return this.shopService.createItem(dto);
   }
@@ -91,6 +93,7 @@ export class ShopController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopItemResponseDto })
   @ApiNotFoundResponse({ description: 'Shop item not found' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   updateItem(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateShopItemDto,
@@ -106,6 +109,7 @@ export class ShopController {
   @ApiConflictResponse({
     description: 'Cannot delete item with existing orders',
   })
+  @ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
   removeItem(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.removeItem(id);
   }
@@ -116,6 +120,8 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopItemVariantResponseDto })
+  @ApiNotFoundResponse({ description: 'Shop item not found' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   addVariant(
     @Param('id', ParseUUIDPipe) itemId: string,
     @Body() dto: CreateShopItemVariantDto,
@@ -127,6 +133,8 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopItemVariantResponseDto })
+  @ApiNotFoundResponse({ description: 'Variant not found' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   updateVariant(
     @Param('id', ParseUUIDPipe) itemId: string,
     @Param('vid', ParseUUIDPipe) variantId: string,
@@ -139,9 +147,11 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ description: 'Variant deleted' })
+  @ApiNotFoundResponse({ description: 'Variant not found' })
   @ApiConflictResponse({
     description: 'Cannot delete variant with existing orders',
   })
+  @ApiForbiddenResponse({ description: 'Requires SUPER_ADMIN role' })
   removeVariant(
     @Param('id', ParseUUIDPipe) itemId: string,
     @Param('vid', ParseUUIDPipe) variantId: string,
@@ -159,6 +169,7 @@ export class ShopController {
     description: 'Item not found or payment initialization failed',
   })
   @ApiConflictResponse({ description: 'Insufficient stock' })
+  @ApiForbiddenResponse({ description: 'Requires MEMBER role' })
   createOrder(
     @Body() dto: CreateShopOrderDto,
     @CurrentUser('id') memberId: string,
@@ -175,6 +186,7 @@ export class ShopController {
   @ApiCreatedResponse({ type: ShopOrderResponseDto })
   @ApiBadRequestResponse({ description: 'Item not found or member not found' })
   @ApiConflictResponse({ description: 'Insufficient stock' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   createAdminOrder(@Body() dto: AdminCreateShopOrderDto) {
     return this.shopService.createAdminOrder(dto);
   }
@@ -183,6 +195,7 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: PaginatedShopOrdersResponseDto })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   findAllOrders(@Query() dto: FilterShopOrdersDto) {
     return this.shopService.findAllOrders(dto);
   }
@@ -193,6 +206,7 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiOkResponse({ type: PaginatedShopOrdersResponseDto })
+  @ApiForbiddenResponse({ description: 'Requires MEMBER role' })
   findMyOrders(
     @CurrentUser('id') memberId: string,
     @Query() query: PaginationQueryDto,
@@ -205,6 +219,7 @@ export class ShopController {
   @Roles('MEMBER')
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
+  @ApiForbiddenResponse({ description: 'Requires MEMBER role' })
   findMyOrder(
     @Param('id', ParseUUIDPipe) orderId: string,
     @CurrentUser('id') memberId: string,
@@ -218,6 +233,7 @@ export class ShopController {
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
   @ApiBadRequestResponse({ description: 'Order is not ready for collection' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   collectOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.collectOrder(id);
   }

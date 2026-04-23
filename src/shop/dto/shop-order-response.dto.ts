@@ -23,16 +23,20 @@ export class ShopOrderResponseDto {
   @ApiProperty() updatedAt: Date;
 }
 
+export class PaystackCheckoutDto {
+  @ApiProperty() authorization_url: string;
+  @ApiProperty() access_code: string;
+  @ApiProperty() reference: string;
+}
+
 export class CreateShopOrderResponseDto {
   @ApiProperty({ type: ShopOrderResponseDto }) order: ShopOrderResponseDto;
   @ApiPropertyOptional({
-    description: 'Paystack checkout URL — present for online orders',
+    type: PaystackCheckoutDto,
+    description:
+      'Paystack checkout data — present for online (card/mobile-money) orders',
   })
-  checkout?: {
-    authorization_url: string;
-    access_code: string;
-    reference: string;
-  };
+  checkout?: PaystackCheckoutDto;
 }
 
 export class PaginatedShopOrdersResponseDto {
