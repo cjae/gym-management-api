@@ -372,18 +372,33 @@ export class PaymentsService {
               subscription.plan.billingInterval,
             );
 
+            // L7 — only reset freeze counters on a genuine cycle advance.
+            // A cycle advance is defined as `nextBillingDate` (the new
+            // endDate) strictly moving forward past the current endDate.
+            // On first activation (PENDING → ACTIVE) the counters are
+            // already zero so either behaviour is safe; on renewal, this
+            // guards against a replayed / duplicate webhook silently
+            // re-zeroing counters that a member has already consumed in
+            // the current cycle. See the 2026-04-22 audit, finding L7.
+            const isCycleAdvance =
+              nextBillingDate.getTime() > subscription.endDate.getTime();
+
             const updateData: Prisma.MemberSubscriptionUpdateManyMutationInput =
               {
                 status: 'ACTIVE',
                 endDate: nextBillingDate,
                 nextBillingDate,
-                frozenDaysUsed: 0,
-                freezeCount: 0,
                 // Clear discount fields after first payment so renewals
                 // charge full price
                 discountAmount: null,
                 originalPlanPrice: null,
               };
+
+            if (isCycleAdvance) {
+              updateData.frozenDaysUsed = 0;
+              updateData.freezeCount = 0;
+              updateData.freezeCycleAnchor = nextBillingDate;
+            }
 
             // Update subscription to the online payment method so billing
             // cron picks it up for auto-charges / reminders going forward.

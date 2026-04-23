@@ -511,38 +511,185 @@ describe('AuthService', () => {
   });
 
   describe('refreshToken', () => {
-    it('should invalidate old JTI and return new tokens', async () => {
-      prisma.user.findUnique.mockResolvedValue({
+    // Wire $transaction so the reuse-detection path (which uses array-form)
+    // resolves without needing real DB.
+    const wireArrayTransaction = () => {
+      prisma.$transaction.mockImplementation((arg: any) => {
+        if (Array.isArray(arg)) return Promise.all(arg);
+        if (typeof arg === 'function') return arg(prisma);
+        return Promise.resolve([]);
+      });
+    };
+
+    it('atomically claims the refresh-token row and issues a new pair in the same family (M4)', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
         id: '1',
         email: 'test@test.com',
         role: 'MEMBER',
         status: 'ACTIVE',
         mustChangePassword: false,
       } as any);
+      // generateTokens fetches sessionsInvalidatedAt after the claim.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        sessionsInvalidatedAt: null,
+      } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        familyId: 'fam-1',
+        usedAt: null,
+        revokedAt: null,
+      } as any);
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 } as any);
+      prisma.refreshToken.create.mockResolvedValue({ id: 'rt-2' } as any);
+      prisma.refreshToken.update.mockResolvedValue({} as any);
       prisma.invalidatedToken.create.mockResolvedValue({} as any);
 
-      const result = await service.refreshToken('1', 'old-refresh-jti');
+      const result = await service.refreshToken('1', 'old-jti', 'raw-token');
 
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
 
+      // Atomic claim was gated on usedAt null AND revokedAt null.
+      const claim = prisma.refreshToken.updateMany.mock.calls[0][0] as any;
+      expect(claim.where).toMatchObject({
+        id: 'rt-1',
+        usedAt: null,
+        revokedAt: null,
+      });
+      expect(claim.data.usedAt).toBeInstanceOf(Date);
+
+      // New token row persisted in the SAME family as the predecessor.
+      const create = prisma.refreshToken.create.mock.calls[0][0] as any;
+      expect(create.data.familyId).toBe('fam-1');
+      expect(create.data.userId).toBe('1');
+      expect(create.data.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+
+      // Replacement link: old row → new row.
+      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
+        where: { id: 'rt-1' },
+        data: { replacedById: 'rt-2' },
+      });
+    });
+
+    it('detects reuse on an already-used refresh token, revokes the family, and bumps sessionsInvalidatedAt (M4)', async () => {
+      wireArrayTransaction();
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        familyId: 'fam-compromised',
+        usedAt: new Date(), // already used → this second presentation is the attacker
+        revokedAt: null,
+      } as any);
+
+      await expect(
+        service.refreshToken('1', 'reused-jti', 'stolen-token'),
+      ).rejects.toThrow(
+        new UnauthorizedException('Refresh token has already been used'),
+      );
+
+      // Entire family revoked.
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            familyId: 'fam-compromised',
+            revokedAt: null,
+          }) as Record<string, unknown>,
+          data: expect.objectContaining({
+            revokedAt: expect.any(Date) as Date,
+          }) as Record<string, unknown>,
+        }),
+      );
+
+      // User's sessionsInvalidatedAt bumped so outstanding access tokens
+      // across every session are rejected.
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: expect.objectContaining({
+          sessionsInvalidatedAt: expect.any(Date) as Date,
+        }) as Record<string, unknown>,
+      });
+
+      // New pair NOT issued on reuse.
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+
+      // AUTH_REFRESH_REUSE audit log emitted.
+      expect(mockAuditLogService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: '1',
+          action: 'AUTH_REFRESH_REUSE',
+          metadata: expect.objectContaining({
+            familyId: 'fam-compromised',
+            reusedJti: 'reused-jti',
+          }) as Record<string, unknown>,
+        }),
+      );
+    });
+
+    it('surfaces the SAME 401 error message on reuse as on legitimate expiry (no leak)', async () => {
+      wireArrayTransaction();
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        familyId: 'fam-1',
+        usedAt: new Date(),
+        revokedAt: null,
+      } as any);
+
+      // We assert the EXACT same string mobile clients would see from the
+      // legacy "P2002" path — must not diverge, otherwise attackers can
+      // distinguish "reuse detected" from "already rotated".
+      await expect(service.refreshToken('1', 'jti', 'raw')).rejects.toThrow(
+        'Refresh token has already been used',
+      );
+    });
+
+    it('falls through to legacy rotation when no RefreshToken row exists (backwards compat)', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      } as any);
+      prisma.user.findUnique.mockResolvedValueOnce({
+        sessionsInvalidatedAt: null,
+      } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue(null);
+      prisma.invalidatedToken.create.mockResolvedValue({} as any);
+      prisma.refreshToken.create.mockResolvedValue({ id: 'rt-new' } as any);
+
+      const result = await service.refreshToken('1', 'legacy-jti', 'legacy');
+
+      expect(result).toHaveProperty('accessToken');
       expect(prisma.invalidatedToken.create).toHaveBeenCalledWith({
         data: {
-          jti: 'old-refresh-jti',
+          jti: 'legacy-jti',
           expiresAt: expect.any(Date) as Date,
         },
       });
     });
 
-    it('should throw UnauthorizedException if user not found', async () => {
+    it('throws UnauthorizedException if user not found', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.refreshToken('nonexistent', 'some-jti'),
+        service.refreshToken('nonexistent', 'some-jti', 'raw'),
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should throw UnauthorizedException if user is suspended', async () => {
+    it('throws UnauthorizedException if user is suspended', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: '1',
         email: 'test@test.com',
@@ -551,12 +698,12 @@ describe('AuthService', () => {
         mustChangePassword: false,
       } as any);
 
-      await expect(service.refreshToken('1', 'some-jti')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.refreshToken('1', 'some-jti', 'raw'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should throw UnauthorizedException if user is inactive', async () => {
+    it('throws UnauthorizedException if user is inactive', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: '1',
         email: 'test@test.com',
@@ -565,26 +712,63 @@ describe('AuthService', () => {
         mustChangePassword: false,
       } as any);
 
-      await expect(service.refreshToken('1', 'some-jti')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.refreshToken('1', 'some-jti', 'raw'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should return mustChangePassword from user record', async () => {
-      prisma.user.findUnique.mockResolvedValue({
+    it('carries mustChangePassword from the user record into the rotated tokens', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
         id: '1',
         email: 'admin@gym.co.ke',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         mustChangePassword: true,
       } as any);
+      prisma.user.findUnique.mockResolvedValueOnce({
+        sessionsInvalidatedAt: null,
+      } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        familyId: 'fam-1',
+        usedAt: null,
+        revokedAt: null,
+      } as any);
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 } as any);
+      prisma.refreshToken.create.mockResolvedValue({ id: 'rt-2' } as any);
+      prisma.refreshToken.update.mockResolvedValue({} as any);
       prisma.invalidatedToken.create.mockResolvedValue({} as any);
 
-      const result = await service.refreshToken('1', 'old-jti');
+      const result = await service.refreshToken('1', 'old-jti', 'raw');
       expect(result.mustChangePassword).toBe(true);
     });
 
-    it('should throw UnauthorizedException on token replay (duplicate JTI)', async () => {
+    it('returns the same 401 when the atomic claim loses a parallel race (count 0)', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: '1',
+        email: 'test@test.com',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+      } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        familyId: 'fam-1',
+        usedAt: null,
+        revokedAt: null,
+      } as any);
+      // Another request beat us to the claim — count === 0 means no rows matched.
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 } as any);
+
+      await expect(service.refreshToken('1', 'jti', 'raw')).rejects.toThrow(
+        new UnauthorizedException('Refresh token has already been used'),
+      );
+
+      // No new pair issued — we lost the race.
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('legacy path still throws UnauthorizedException on P2002 (backwards compat)', async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: '1',
         email: 'test@test.com',
@@ -592,10 +776,11 @@ describe('AuthService', () => {
         status: 'ACTIVE',
         mustChangePassword: false,
       } as any);
+      prisma.refreshToken.findUnique.mockResolvedValue(null);
       prisma.invalidatedToken.create.mockRejectedValue({ code: 'P2002' });
 
       await expect(
-        service.refreshToken('1', 'already-used-jti'),
+        service.refreshToken('1', 'already-used-jti', 'raw'),
       ).rejects.toThrow(UnauthorizedException);
     });
   });
@@ -881,23 +1066,37 @@ describe('AuthService', () => {
   });
 
   describe('cancelDeletionRequest', () => {
-    it('should cancel a pending deletion request', async () => {
-      prisma.accountDeletionRequest.findFirst.mockResolvedValue({
-        id: 'dr-1',
-        userId: '1',
-        status: 'PENDING',
-      } as any);
-      prisma.accountDeletionRequest.update.mockResolvedValue({
-        id: 'dr-1',
-        status: 'CANCELLED',
+    it('should cancel a pending deletion request via atomic claim', async () => {
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 1,
       } as any);
 
       const result = await service.cancelDeletionRequest('1');
       expect(result.message).toContain('cancelled');
+      expect(prisma.accountDeletionRequest.updateMany).toHaveBeenCalledWith({
+        where: { userId: '1', status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
     });
 
-    it('should throw NotFoundException if no pending request', async () => {
-      prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException when no pending request exists', async () => {
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 0,
+      } as any);
+
+      await expect(service.cancelDeletionRequest('1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw a clean NotFoundException when admin approved concurrently (M9 race)', async () => {
+      // Admin approved PENDING → APPROVED at the same moment member hits
+      // cancel. The atomic claim sees 0 rows match (status is no longer
+      // PENDING) and we surface the same "not found" error the old
+      // check-then-write reported — no double transition, no 500.
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 0,
+      } as any);
 
       await expect(service.cancelDeletionRequest('1')).rejects.toThrow(
         NotFoundException,

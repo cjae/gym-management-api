@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import { ExportColumn } from './csv.formatter';
+import { ExportColumn, sanitizeCsvCell } from './csv.formatter';
 
 export async function formatExcel(
   data: Record<string, any>[],
@@ -22,7 +22,15 @@ export async function formatExcel(
     const values: Record<string, any> = {};
     for (const col of columns) {
       const val = row[col.key];
-      values[col.key] = val === null || val === undefined ? '' : val;
+      // Formula injection works identically in xlsx — if a cell's string
+      // value starts with `=`, `+`, `-`, `@`, tab, or CR, Excel will parse
+      // it as a formula on open. Sanitize free text the same way we do for
+      // CSV. Numbers/booleans/dates flow through untouched.
+      if (typeof val === 'string' || val === null || val === undefined) {
+        values[col.key] = sanitizeCsvCell(val);
+      } else {
+        values[col.key] = val;
+      }
     }
     worksheet.addRow(values);
   }

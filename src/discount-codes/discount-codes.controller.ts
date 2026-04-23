@@ -138,11 +138,17 @@ export class DiscountCodesController {
     description: 'Discount code validation result',
     type: ValidateDiscountCodeResponseDto,
   })
-  @ApiNotFoundResponse({ description: 'Discount code or plan not found' })
   validate(
     @Body() dto: ValidateDiscountCodeDto,
     @CurrentUser('id') userId: string,
   ) {
-    return this.discountCodesService.validateCode(dto.code, dto.planId, userId);
+    // Probe endpoint uses the generic-error wrapper to prevent state
+    // enumeration (M6). Subscription creation calls `validateCode` directly
+    // and still surfaces specific, actionable errors to the checkout client.
+    return this.discountCodesService.validateCodeForProbe(
+      dto.code,
+      dto.planId,
+      userId,
+    );
   }
 }

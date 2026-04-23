@@ -261,18 +261,73 @@ describe('UsersService', () => {
   });
 
   describe('remove', () => {
-    it('should soft-delete a user by setting deletedAt', async () => {
+    beforeEach(() => {
+      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
+      prisma.pushToken.deleteMany.mockResolvedValue({ count: 0 } as any);
+    });
+
+    it('should soft-delete a user, null PII, scrub identity, rotate password, and delete push tokens', async () => {
       prisma.user.findUnique.mockResolvedValue(mockUserFromDb as any);
       prisma.user.update.mockResolvedValue(mockUserFromDb as any);
 
       await service.remove('user-1');
 
-      expect(prisma.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'user-1' },
-          data: { deletedAt: expect.any(Date) as Date },
-        }),
-      );
+      // Push tokens (1:N relation holding auth material) are deleted
+      expect(prisma.pushToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+
+      // User row scrubbed + deletedAt stamped
+      const updateCall = prisma.user.update.mock.calls[0]?.[0] as any;
+      expect(updateCall.where).toEqual({ id: 'user-1' });
+      const data = updateCall.data as Record<string, unknown>;
+
+      // deletedAt set
+      expect(data.deletedAt).toBeInstanceOf(Date);
+
+      // Identity scrubbed to sentinels (satisfies @unique)
+      expect(data.email).toBe('deleted-user-1@deleted.local');
+      expect(data.firstName).toBe('Deleted');
+      expect(data.lastName).toBe('User');
+      // Password rotated to a 60-char hex sentinel that is not a valid bcrypt hash
+      expect(typeof data.password).toBe('string');
+      expect((data.password as string).length).toBe(60);
+      expect(data.password).not.toMatch(/^\$2[aby]\$/); // no bcrypt prefix
+
+      // Nulled PII
+      expect(data.phone).toBeNull();
+      expect(data.displayPicture).toBeNull();
+      expect(data.birthday).toBeNull();
+      expect(data.gender).toBeNull();
+      expect(data.referralCode).toBeNull();
+
+      // Onboarding profile nulled / emptied
+      expect(data.onboardingCompletedAt).toBeNull();
+      expect(data.experienceLevel).toBeNull();
+      expect(data.bodyweightKg).toBeNull();
+      expect(data.heightCm).toBeNull();
+      expect(data.sessionMinutes).toBeNull();
+      expect(data.preferredTrainingDays).toEqual([]);
+      expect(data.sleepHoursAvg).toBeNull();
+      expect(data.primaryMotivation).toBeNull();
+      expect(data.injuryNotes).toBeNull();
+
+      // Scrub runs inside a transaction
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should preserve id and role so FK-reachable records (Payment, AuditLog, Attendance) still resolve', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockUserFromDb as any);
+      prisma.user.update.mockResolvedValue(mockUserFromDb as any);
+
+      await service.remove('user-1');
+
+      const updateCall = prisma.user.update.mock.calls[0]?.[0] as any;
+      const data = updateCall.data as Record<string, unknown>;
+      // id is in `where`, not `data` — never touched. role/status not scrubbed.
+      expect(data).not.toHaveProperty('id');
+      expect(data).not.toHaveProperty('role');
+      expect(data).not.toHaveProperty('status');
     });
 
     it('should throw NotFoundException if user does not exist', async () => {
@@ -327,13 +382,17 @@ describe('UsersService', () => {
   });
 
   describe('approveDeletionRequest', () => {
-    it('should approve request and soft-delete user', async () => {
+    beforeEach(() => {
+      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
+      prisma.pushToken.deleteMany.mockResolvedValue({ count: 0 } as any);
+    });
+
+    it('should approve request via atomic claim and scrub user PII', async () => {
       prisma.accountDeletionRequest.findUnique.mockResolvedValue({
         id: 'dr-1',
         userId: 'user-1',
         status: 'PENDING',
       } as any);
-      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
       prisma.accountDeletionRequest.updateMany.mockResolvedValue({
         count: 1,
       } as any);
@@ -342,11 +401,31 @@ describe('UsersService', () => {
       const result = await service.approveDeletionRequest('dr-1', 'admin-1');
       expect(result.message).toContain('approved');
       expect(prisma.$transaction).toHaveBeenCalled();
+
+      // Atomic claim: updateMany filtered on status=PENDING
       expect(prisma.accountDeletionRequest.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'dr-1', status: 'PENDING' },
+          data: expect.objectContaining({
+            status: 'APPROVED',
+            reviewedById: 'admin-1',
+          }),
         }),
       );
+
+      // PII scrub ran as part of the approval
+      expect(prisma.pushToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+      const updateCall = prisma.user.update.mock.calls[0]?.[0] as any;
+      const data = updateCall.data as Record<string, unknown>;
+      expect(data.deletedAt).toBeInstanceOf(Date);
+      expect(data.email).toBe('deleted-user-1@deleted.local');
+      expect(data.firstName).toBe('Deleted');
+      expect(data.lastName).toBe('User');
+      expect(data.phone).toBeNull();
+      expect(data.displayPicture).toBeNull();
+      expect(data.injuryNotes).toBeNull();
     });
 
     it('should throw NotFoundException if request not found', async () => {
@@ -357,13 +436,34 @@ describe('UsersService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw BadRequestException if request is not PENDING', async () => {
+    it('should be a no-op (no duplicate scrub) when losing the race to another admin or the member', async () => {
+      // M9 — two admins click approve in parallel, or member cancels at the
+      // same moment the admin approves. The atomic claim loses, and the
+      // PII scrub MUST NOT run a second time.
+      prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+        id: 'dr-1',
+        userId: 'user-1',
+        status: 'PENDING', // still PENDING at read time — race happens inside tx
+      } as any);
+      prisma.accountDeletionRequest.updateMany.mockResolvedValue({
+        count: 0, // lost the claim
+      } as any);
+
+      await expect(
+        service.approveDeletionRequest('dr-1', 'admin-1'),
+      ).rejects.toThrow(BadRequestException);
+
+      // No scrub side-effects on the losing path
+      expect(prisma.pushToken.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if request was already processed (APPROVED)', async () => {
       prisma.accountDeletionRequest.findUnique.mockResolvedValue({
         id: 'dr-1',
         userId: 'user-1',
         status: 'APPROVED',
       } as any);
-      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
       prisma.accountDeletionRequest.updateMany.mockResolvedValue({
         count: 0,
       } as any);
@@ -371,6 +471,8 @@ describe('UsersService', () => {
       await expect(
         service.approveDeletionRequest('dr-1', 'admin-1'),
       ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 

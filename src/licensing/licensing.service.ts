@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LicensingConfig, getLicensingConfigName } from './licensing.config';
 import { LicenseResponseDto } from './dto/license-response.dto';
@@ -8,11 +9,26 @@ import axios from 'axios';
 
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+/**
+ * Bucketed member count used when `LICENSE_TELEMETRY_MEMBER_COUNT=false`.
+ * The license server can still enforce tier caps against the upper bound
+ * of the bucket, but the exact customer-base size is not disclosed.
+ */
+const memberCountBucket = (count: number): string => {
+  if (count < 100) return '<100';
+  if (count < 500) return '<500';
+  if (count < 1000) return '<1000';
+  return '>=1000';
+};
+
 @Injectable()
 export class LicensingService implements OnModuleInit {
   private readonly logger = new Logger(LicensingService.name);
   private readonly licenseKey: string;
   private readonly licenseServerUrl: string;
+  private readonly telemetryMemberCount: boolean;
+  private readonly appVersion: string;
+  private readonly instanceFingerprint: string;
 
   private cachedFeatures: string[] | null = null;
   private featuresCachedAt: number = 0;
@@ -27,6 +43,14 @@ export class LicensingService implements OnModuleInit {
     )!;
     this.licenseKey = config.licenseKey;
     this.licenseServerUrl = config.licenseServerUrl;
+    this.telemetryMemberCount = config.telemetryMemberCount;
+    this.appVersion = config.appVersion;
+    // Stable, non-reversible per-instance identifier derived from the
+    // license key. Lets the vendor detect duplicate installs without
+    // needing the raw key in the body (it's already in the header).
+    this.instanceFingerprint = this.licenseKey
+      ? createHash('sha256').update(this.licenseKey).digest('hex').slice(0, 16)
+      : '';
   }
 
   private isConfigured(): boolean {
@@ -63,13 +87,52 @@ export class LicensingService implements OnModuleInit {
       where: { role: 'MEMBER', deletedAt: null },
     });
 
+    // -----------------------------------------------------------------
+    // LICENSE PHONE-HOME PAYLOAD — minimal-disclosure contract.
+    //
+    // Fields sent to ${LICENSE_SERVER_URL}/api/v1/licenses/validate:
+    //   - currentMemberCount : number | string
+    //       Either the exact active-member count (default) OR a coarse
+    //       bucket string ("<100", "<500", "<1000", ">=1000") when
+    //       LICENSE_TELEMETRY_MEMBER_COUNT=false. Used by the server
+    //       for tier-cap enforcement only.
+    //   - appVersion         : string
+    //       Installed API build version. Used so the vendor can warn
+    //       customers on known-vulnerable releases.
+    //   - instanceFingerprint: string
+    //       SHA-256(licenseKey) truncated to 16 hex chars. Non-reversible
+    //       per-install identifier; lets the vendor detect duplicate
+    //       installations without the raw key appearing in the body.
+    //
+    // Fields sent in headers:
+    //   - X-License-Key : raw license key (over TLS)
+    //
+    // FIELDS EXPLICITLY NOT SENT (commercial / personal intelligence):
+    //   - revenue / MRR / payment totals / per-subscription financials
+    //   - check-in counts, attendance stats, streak data
+    //   - user emails, names, phone numbers, or any PII
+    //   - gym-settings contents, discount codes, pricing
+    //   - referral graph, goal data, audit logs
+    //
+    // Any change to this contract MUST be reviewed — adding revenue or
+    // usage telemetry here would exfiltrate customer commercial data.
+    // -----------------------------------------------------------------
+    const payload: {
+      currentMemberCount: number | string;
+      appVersion: string;
+      instanceFingerprint: string;
+    } = {
+      currentMemberCount: this.telemetryMemberCount
+        ? memberCount
+        : memberCountBucket(memberCount),
+      appVersion: this.appVersion,
+      instanceFingerprint: this.instanceFingerprint,
+    };
+
     try {
       const response = await axios.post<LicenseResponseDto>(
         `${this.licenseServerUrl}/api/v1/licenses/validate`,
-        {
-          currentMemberCount: memberCount,
-          appVersion: '1.0.0',
-        },
+        payload,
         {
           headers: { 'X-License-Key': this.licenseKey },
           timeout: 10000,

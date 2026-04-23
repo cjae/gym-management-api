@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,8 +13,18 @@ import { DiscountType, Prisma } from '@prisma/client';
 
 const PAYSTACK_MIN_KES = 50;
 
+/**
+ * Generic, state-agnostic failure message used by the unauthenticated-ish
+ * probe endpoint (`POST /discount-codes/validate`). Prevents callers from
+ * enumerating code existence, activity, expiry, remaining global uses, or
+ * per-member cap via distinct error strings (M6).
+ */
+const GENERIC_VALIDATE_ERROR = 'This discount code cannot be applied';
+
 @Injectable()
 export class DiscountCodesService {
+  private readonly logger = new Logger(DiscountCodesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateDiscountCodeDto) {
@@ -324,6 +336,44 @@ export class DiscountCodesService {
       finalPrice,
       originalPrice: plan.price,
     };
+  }
+
+  /**
+   * Probe-endpoint wrapper around {@link validateCode}. Collapses every failure
+   * mode (unknown code, inactive, expired, not-yet-active, global cap hit,
+   * per-member cap hit, plan restriction, sub-minimum final price, etc.) into
+   * one generic message so an unauthenticated-ish caller cannot enumerate
+   * state via distinct error strings (M6).
+   *
+   * The real reason is logged at `debug` level so admins can diagnose support
+   * tickets from server logs. We intentionally do NOT report these to Sentry
+   * — this is normal user-input failure, not an incident.
+   *
+   * The success path is unchanged: same shape as `validateCode` on happy path.
+   *
+   * NOTE: The authenticated checkout flow (subscription creation) still calls
+   * {@link validateCode} directly and keeps its specific, actionable messages.
+   * A member committed to purchase should see a real reason so they can fix
+   * their input — the leak surface is only the standalone probe endpoint.
+   */
+  async validateCodeForProbe(code: string, planId: string, memberId: string) {
+    try {
+      return await this.validateCode(code, planId, memberId);
+    } catch (err) {
+      if (err instanceof HttpException) {
+        // Log the actual reason so ops can diagnose support tickets.
+        // Use `debug` so this doesn't spam info-level logs under normal use.
+        const reason = err.message;
+        this.logger.debug(
+          `Discount code probe rejected: code="${code.toUpperCase()}" ` +
+            `planId="${planId}" memberId="${memberId}" reason="${reason}"`,
+        );
+        throw new BadRequestException(GENERIC_VALIDATE_ERROR);
+      }
+      // Unexpected (non-HTTP) errors bubble up — these indicate bugs /
+      // infra faults and should not be masked or logged as probe failures.
+      throw err;
+    }
   }
 
   /**

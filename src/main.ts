@@ -84,7 +84,48 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: '1mb' });
   app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
 
-  app.use(helmet());
+  // Explicit, restrictive CSP. This is an API-only service (JSON responses),
+  // so the CSP does not protect the API contract itself — it exists to
+  // harden Swagger UI (gated behind Basic Auth in prod, see below) and any
+  // error / 404 HTML pages Express may surface.
+  //
+  // Directive choices:
+  //   default-src 'self'        — block anything not explicitly allowed
+  //   script-src 'self'         — no inline scripts; Swagger UI loads its
+  //                               init JS as an external /api/docs/*.js file,
+  //                               so this works without 'unsafe-inline'
+  //   style-src 'self' 'unsafe-inline'
+  //                             — Swagger UI's HTML template contains a
+  //                               <style> block and the widget injects inline
+  //                               styles at runtime, both of which require
+  //                               'unsafe-inline'
+  //   img-src 'self' data:      — Swagger UI embeds small SVG/PNG icons
+  //                               inline via data: URIs
+  //   font-src 'self' data:     — Swagger UI bundles fonts as data URIs
+  //   connect-src 'self'        — fetch/XHR only to this origin
+  //   object-src 'none'         — no Flash / plugins
+  //   frame-ancestors 'none'    — block iframing (clickjacking)
+  //   base-uri 'self'           — block <base> tag injection
+  //   form-action 'self'        — restrict where forms can submit
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          fontSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
+    }),
+  );
   app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
   app.useGlobalPipes(
     new ValidationPipe({

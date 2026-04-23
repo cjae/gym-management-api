@@ -174,6 +174,11 @@ export class BillingService {
         newNextBillingDate.setDate(newNextBillingDate.getDate() + frozenDays);
       }
 
+      // L7 — keep freeze counter anchor aligned with the extended endDate
+      // on auto-unfreeze. Same reasoning as unfreeze() in subscriptions
+      // service: the cycle identity is tracked via `freezeCycleAnchor`,
+      // and any operation that advances `endDate` within a cycle must
+      // re-anchor so the counters stay authoritative for this cycle.
       await this.prisma.memberSubscription.update({
         where: { id: sub.id },
         data: {
@@ -184,6 +189,7 @@ export class BillingService {
           freezeEndDate: null,
           frozenDaysUsed: { increment: frozenDays },
           freezeCount: { increment: 1 },
+          freezeCycleAnchor: newEndDate,
         },
       });
 

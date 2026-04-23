@@ -106,6 +106,8 @@ Sentry via `@sentry/nestjs`. `src/instrument.ts` must be imported first in `main
 - `PAYSTACK_CALLBACK_URL` — URL to redirect customer after successful payment (optional)
 - `PAYSTACK_CANCEL_URL` — URL to redirect customer when they cancel checkout (optional)
 - `LICENSE_SERVER_URL` — Control plane base URL for license validation (optional in dev)
+- `LICENSE_TELEMETRY_MEMBER_COUNT` — Set to `false` to bucket the member count (`<100`/`<500`/`<1000`/`>=1000`) in the license phone-home instead of sending the exact value (defaults to `true`)
+- `APP_VERSION` — Overrides the app version sent in the license phone-home (defaults to `npm_package_version`, then `0.0.0-unknown`)
 - `ANTHROPIC_API_KEY` — Anthropic API key for Claude (required when `goals` feature is licensed)
 - `LLM_MODEL` — Model id (defaults to `claude-sonnet-4-6`)
 - `LLM_MAX_TOKENS` — Max tokens for plan generation (defaults to 4096)

@@ -711,15 +711,30 @@ export class SubscriptionsService {
       throw new BadRequestException('This plan does not support freezing');
     }
 
+    // L7 — evaluate freeze caps against cycle-anchored counters. If the
+    // anchor is missing or pre-dates the current cycle's endDate, the
+    // persisted `frozenDaysUsed`/`freezeCount` belong to a prior cycle;
+    // treat them as zero for the cap check and atomically re-anchor so
+    // the cycle boundary that is supposed to reset the counters can't be
+    // replayed by a repeat renewal webhook. See the 2026-04-22 audit.
+    const anchorIsCurrent =
+      subscription.freezeCycleAnchor != null &&
+      subscription.freezeCycleAnchor.getTime() ===
+        subscription.endDate.getTime();
+    const effectiveFrozenDaysUsed = anchorIsCurrent
+      ? subscription.frozenDaysUsed
+      : 0;
+    const effectiveFreezeCount = anchorIsCurrent ? subscription.freezeCount : 0;
+
     const remainingFreezeDays =
-      subscription.plan.maxFreezeDays - subscription.frozenDaysUsed;
+      subscription.plan.maxFreezeDays - effectiveFrozenDaysUsed;
     if (days > remainingFreezeDays) {
       throw new BadRequestException(
         `Freeze duration cannot exceed ${remainingFreezeDays} remaining days (max ${subscription.plan.maxFreezeDays} per cycle)`,
       );
     }
 
-    if (subscription.freezeCount >= subscription.plan.maxFreezeCount) {
+    if (effectiveFreezeCount >= subscription.plan.maxFreezeCount) {
       throw new BadRequestException(
         `Maximum freeze count (${subscription.plan.maxFreezeCount}) reached this billing cycle`,
       );
@@ -738,12 +753,25 @@ export class SubscriptionsService {
     const freezeEndDate = new Date();
     freezeEndDate.setDate(freezeEndDate.getDate() + days);
 
+    // L7 — persist the lazy re-anchor + counter reset when the stored
+    // counters belong to a prior cycle. This is defence-in-depth: the
+    // authoritative reset happens on the webhook renewal path, but any
+    // subscription that predates this fix (or survived a webhook that
+    // failed the endDate-advance guard) will self-heal here the first
+    // time a freeze is attempted in its new cycle.
     const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
       data: {
         status: SubscriptionStatus.FROZEN,
         freezeStartDate,
         freezeEndDate,
+        ...(anchorIsCurrent
+          ? {}
+          : {
+              frozenDaysUsed: 0,
+              freezeCount: 0,
+              freezeCycleAnchor: subscription.endDate,
+            }),
       },
       include: { plan: true },
     });
@@ -829,6 +857,13 @@ export class SubscriptionsService {
       newNextBillingDate.setDate(newNextBillingDate.getDate() + frozenDays);
     }
 
+    // L7 — keep the freeze counter anchor aligned with the extended
+    // endDate. The cycle is the same logical cycle (unfreeze only extends
+    // it by the actual frozen days), so the incremented counters are
+    // authoritative for this cycle and we re-anchor to newEndDate.
+    // Without this, a subsequent freeze in the same cycle would see the
+    // anchor pointing at the pre-unfreeze endDate and incorrectly treat
+    // the counters as stale.
     const result = await this.prisma.memberSubscription.update({
       where: { id: subscriptionId },
       data: {
@@ -839,6 +874,7 @@ export class SubscriptionsService {
         freezeEndDate: null,
         frozenDaysUsed: { increment: frozenDays },
         freezeCount: { increment: 1 },
+        freezeCycleAnchor: newEndDate,
       },
       include: { plan: true },
     });

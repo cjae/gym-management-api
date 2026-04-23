@@ -1,4 +1,16 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Do not emit .map files for production builds. Sourcemaps leak original
+    // TS paths and full code structure, which is valuable reconnaissance
+    // data for attackers. We keep `sourceMap: true` in tsconfig.json so
+    // `yarn start:dev` / tests / debuggers still get useful stack traces.
+    //
+    // If you need to upload sourcemaps to Sentry for production symbolication
+    // (see `sentry:sourcemaps` in package.json), run a one-off build with
+    // --sourceMap=true in CI, upload to Sentry, then strip the .map files
+    // before building the final Docker image.
+    "sourceMap": false
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DeletionRequestStatus, Role } from '@prisma/client';
+import { DeletionRequestStatus, PrismaClient, Role } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,6 +20,12 @@ import {
 } from '../common/constants/safe-user-select';
 import { generateReferralCode } from '../common/utils/referral-code.util';
 
+// Prisma transaction client type (subset of PrismaClient available inside $transaction).
+type TxClient = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -27,6 +33,62 @@ export class UsersService {
     private emailService: EmailService,
     private licensingService: LicensingService,
   ) {}
+
+  /**
+   * Scrub PII from a User row as part of soft-delete. Runs inside the caller's
+   * transaction so scrub + `deletedAt` stamp + audit log land atomically.
+   *
+   * Fields are handled in three buckets:
+   *  - NULLED (nullable columns / scalar arrays): phone, displayPicture,
+   *    birthday, gender, referralCode, onboarding profile fields,
+   *    preferredTrainingDays.
+   *  - SCRUBBED (non-null columns, replaced with sentinels that satisfy
+   *    @unique / validation): email → `deleted-<id>@deleted.local`,
+   *    firstName → 'Deleted', lastName → 'User', password → unusable
+   *    60-char random sentinel (not a valid bcrypt hash so credentials
+   *    are permanently invalidated).
+   *  - DELETED (1:N relations holding auth material): PushToken rows.
+   *
+   * Kept intentionally: id (FK stability for Payment / AuditLog / Attendance
+   * / Referral history), role, status, createdAt, tosAcceptedAt,
+   * waiverAcceptedAt (evidence of consent), referredById (other users'
+   * referral-history integrity).
+   */
+  private async scrubUserPii(tx: TxClient, userId: string) {
+    // Invalidate auth: 60 random hex chars — not a valid bcrypt hash, cannot
+    // match any password via bcrypt.compare.
+    const unusablePassword = randomBytes(30).toString('hex');
+
+    await tx.pushToken.deleteMany({ where: { userId } });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt: new Date(),
+        // Identity scrub (non-null columns → sentinels)
+        email: `deleted-${userId}@deleted.local`,
+        firstName: 'Deleted',
+        lastName: 'User',
+        password: unusablePassword,
+        // Nulled PII
+        phone: null,
+        displayPicture: null,
+        birthday: null,
+        gender: null,
+        referralCode: null,
+        // Onboarding profile
+        onboardingCompletedAt: null,
+        experienceLevel: null,
+        bodyweightKg: null,
+        heightCm: null,
+        sessionMinutes: null,
+        preferredTrainingDays: [],
+        sleepHoursAvg: null,
+        primaryMotivation: null,
+        injuryNotes: null,
+      },
+    });
+  }
 
   async create(dto: CreateUserDto, callerRole: string) {
     // Role hierarchy enforcement
@@ -222,9 +284,14 @@ export class UsersService {
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.user.update({
+    // Soft-delete + PII scrub in a single transaction so we never leave a
+    // half-scrubbed row on the DB. See scrubUserPii() for the field-level
+    // contract (null / sentinel / delete).
+    await this.prisma.$transaction(async (tx) => {
+      await this.scrubUserPii(tx as unknown as TxClient, id);
+    });
+    return this.prisma.user.findUnique({
       where: { id },
-      data: { deletedAt: new Date() },
       select: safeUserSelect,
     });
   }
@@ -280,6 +347,10 @@ export class UsersService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      // Atomic claim — only one concurrent approver / member-canceller can win.
+      // If count === 0 the request is no longer PENDING (already approved /
+      // rejected / cancelled by another actor), so we abort before touching
+      // the user row. This keeps the soft-delete idempotent at the claim level.
       const result = await tx.accountDeletionRequest.updateMany({
         where: { id: requestId, status: 'PENDING' },
         data: {
@@ -291,10 +362,7 @@ export class UsersService {
       if (result.count !== 1) {
         throw new BadRequestException('Request is no longer pending');
       }
-      await tx.user.update({
-        where: { id: request.userId },
-        data: { deletedAt: new Date() },
-      });
+      await this.scrubUserPii(tx as unknown as TxClient, request.userId);
     });
 
     return {

@@ -81,11 +81,15 @@ export class AuthController {
   refresh(
     @CurrentUser('id') userId: string,
     @CurrentUser('jti') jti: string,
+    // Raw opaque refresh token string — hashed inside the service to look up
+    // the RefreshToken row for reuse detection (M4). Populated by the refresh
+    // strategy's validate() from the request body.
+    @CurrentUser('rawRefreshToken') rawRefreshToken: string,
     // Body parsed by ValidationPipe; token extracted by Passport strategy
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     @Body() dto: RefreshTokenDto,
   ) {
-    return this.authService.refreshToken(userId, jti);
+    return this.authService.refreshToken(userId, jti, rawRefreshToken);
   }
 
   @Post('forgot-password')

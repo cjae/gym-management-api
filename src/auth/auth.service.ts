@@ -216,21 +216,134 @@ export class AuthService {
     );
   }
 
-  async refreshToken(userId: string, oldRefreshJti: string) {
+  async refreshToken(
+    userId: string,
+    oldRefreshJti: string,
+    rawRefreshToken: string,
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
     if (!user || user.status !== 'ACTIVE' || user.deletedAt)
       throw new UnauthorizedException('User not found or inactive');
 
-    // Invalidate old refresh token (rotation)
+    // Look up the refresh token record by hash (M4). Rows inserted at issuance
+    // time carry the familyId for family-wide revocation on reuse.
+    const tokenHash = this.hashToken(rawRefreshToken);
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+    });
+
+    // Unknown refresh token — either legacy (pre-migration) issuance or a
+    // token whose row was never persisted. Fall through to the legacy
+    // InvalidatedToken rotation path so existing sessions keep working during
+    // the rollout window.
+    if (!stored) {
+      return this.legacyRefreshRotation(
+        user.id,
+        user.email,
+        user.role,
+        user.mustChangePassword,
+        oldRefreshJti,
+      );
+    }
+
+    // REUSE DETECTED (M4): this token has already been rotated. Treat the
+    // whole family as compromised — revoke every sibling and bump the user's
+    // session cutoff so every outstanding access/refresh token (including any
+    // new pair the attacker may have minted) is rejected on next use.
+    if (stored.usedAt !== null || stored.revokedAt !== null) {
+      await this.prisma.$transaction([
+        this.prisma.refreshToken.updateMany({
+          where: { familyId: stored.familyId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        }),
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: { sessionsInvalidatedAt: new Date() },
+        }),
+      ]);
+
+      this.auditLogService
+        .log({
+          userId: user.id,
+          action: AuditAction.AUTH_REFRESH_REUSE,
+          resource: 'Auth',
+          route: 'POST /api/v1/auth/refresh',
+          metadata: {
+            familyId: stored.familyId,
+            reusedJti: oldRefreshJti,
+          },
+        })
+        .catch(() => {});
+
+      // Same 401 the legitimate-user-with-expired-token path would get — do
+      // not leak "reuse detected" to clients.
+      throw new UnauthorizedException('Refresh token has already been used');
+    }
+
+    // Atomic claim: flip usedAt from null → now only if still null. Losers
+    // of any parallel race fall into the reuse path on their next attempt.
+    const claim = await this.prisma.refreshToken.updateMany({
+      where: { id: stored.id, usedAt: null, revokedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    if (claim.count === 0) {
+      // We lost the race — another parallel /auth/refresh beat us. Treat as
+      // reuse on the *next* attempt; for this one, fail with the same 401.
+      throw new UnauthorizedException('Refresh token has already been used');
+    }
+
+    // Old InvalidatedToken blocklist entry preserved for backwards compat —
+    // still effective for immediate single-JTI revocation.
+    try {
+      const invalidatedExpiresAt = new Date(
+        Date.now() + 7 * 24 * 60 * 60 * 1000,
+      );
+      await this.prisma.invalidatedToken.create({
+        data: { jti: oldRefreshJti, expiresAt: invalidatedExpiresAt },
+      });
+    } catch (error: unknown) {
+      // Blocklist insert is best-effort; the updateMany claim above is the
+      // authoritative single-use gate. A P2002 here means someone else already
+      // recorded this JTI as invalidated — not a reuse condition we can prove.
+      if (
+        !(error instanceof Object && 'code' in error && error.code === 'P2002')
+      ) {
+        throw error;
+      }
+    }
+
+    return this.generateTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.mustChangePassword,
+      {
+        familyId: stored.familyId,
+        replacesRefreshTokenId: stored.id,
+      },
+    );
+  }
+
+  // Legacy rotation path for tokens issued before the RefreshToken table
+  // existed. Keeps the previous InvalidatedToken-based single-use gate so
+  // clients with pre-migration refresh tokens can still rotate into the new
+  // family-aware scheme. Remove after the 7-day refresh lifetime elapses.
+  private async legacyRefreshRotation(
+    userId: string,
+    email: string,
+    role: string,
+    mustChangePassword: boolean,
+    oldRefreshJti: string,
+  ) {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     try {
       await this.prisma.invalidatedToken.create({
         data: { jti: oldRefreshJti, expiresAt },
       });
     } catch (error: unknown) {
-      // Unique constraint violation = token replay
       if (
         error instanceof Object &&
         'code' in error &&
@@ -241,12 +354,7 @@ export class AuthService {
       throw error;
     }
 
-    return this.generateTokens(
-      user.id,
-      user.email,
-      user.role,
-      user.mustChangePassword,
-    );
+    return this.generateTokens(userId, email, role, mustChangePassword);
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -458,9 +566,42 @@ export class AuthService {
     // We store until 7d to also cover refresh tokens that share the same jti pattern
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await this.prisma.invalidatedToken.create({
-      data: { jti, expiresAt },
-    });
+    // Bump the user's sessionsInvalidatedAt BEFORE writing the JTI blocklist
+    // entry. This closes the race between logout and a parallel /auth/refresh
+    // that's already minted a new token: the new token's stamped
+    // `sessionsInvalidatedAt` predates the user's current value, so it fails
+    // the JwtStrategy version check on its next request. See M3.
+    //
+    // We also revoke every outstanding refresh token in every family so the
+    // attacker can't continue rotating on stolen tokens.
+    if (userId) {
+      const now = new Date();
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: userId },
+          data: { sessionsInvalidatedAt: now },
+        }),
+        this.prisma.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: now },
+        }),
+      ]);
+    }
+
+    // InvalidatedToken is retained for immediate single-JTI revocation; the
+    // session-version check above is the authoritative gate.
+    try {
+      await this.prisma.invalidatedToken.create({
+        data: { jti, expiresAt },
+      });
+    } catch (error: unknown) {
+      // A duplicate write (e.g. double-tap logout) is idempotent — not a failure.
+      if (
+        !(error instanceof Object && 'code' in error && error.code === 'P2002')
+      ) {
+        throw error;
+      }
+    }
 
     if (userId) {
       this.auditLogService
@@ -501,17 +642,18 @@ export class AuthService {
   }
 
   async cancelDeletionRequest(userId: string) {
-    const request = await this.prisma.accountDeletionRequest.findFirst({
+    // Atomic claim: only the caller who flips PENDING → CANCELLED wins the
+    // race against a concurrent admin approve/reject. If count === 0 the
+    // request is no longer PENDING, so we report the same "not found" error
+    // the previous check-then-write used — no double-transition possible.
+    const result = await this.prisma.accountDeletionRequest.updateMany({
       where: { userId, status: 'PENDING' },
-    });
-    if (!request) {
-      throw new NotFoundException('No pending deletion request found');
-    }
-
-    await this.prisma.accountDeletionRequest.update({
-      where: { id: request.id },
       data: { status: 'CANCELLED' },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException('No pending deletion request found');
+    }
 
     return { message: 'Deletion request cancelled successfully.' };
   }
@@ -525,20 +667,79 @@ export class AuthService {
     email: string,
     role: string,
     mustChangePassword: boolean,
+    rotation?: {
+      familyId: string;
+      replacesRefreshTokenId: string;
+    },
   ) {
     const authConfig = this.configService.get<AuthConfig>(getAuthConfigName())!;
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
+
+    // Stamp the current session-version cutoff into both tokens. Any
+    // subsequent logout / reuse-detection event bumps the user row's
+    // `sessionsInvalidatedAt` beyond this stamp, causing both strategies to
+    // reject this pair on the next request. See M3.
+    const userRow = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { sessionsInvalidatedAt: true },
+    });
+    const sessionsInvalidatedAt =
+      userRow?.sessionsInvalidatedAt?.getTime() ?? 0;
+
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: userId, email, role, jti: accessJti, mustChangePassword },
+        {
+          sub: userId,
+          email,
+          role,
+          jti: accessJti,
+          mustChangePassword,
+          sessionsInvalidatedAt,
+        },
         { expiresIn: '30m' },
       ),
       this.jwtService.signAsync(
-        { sub: userId, email, role, jti: refreshJti, mustChangePassword },
+        {
+          sub: userId,
+          email,
+          role,
+          jti: refreshJti,
+          mustChangePassword,
+          sessionsInvalidatedAt,
+        },
         { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
       ),
     ]);
+
+    // Persist the refresh token row (M4). Login/register start a new family;
+    // /auth/refresh rotations carry the family forward and link back via
+    // `replacedById`, so the full rotation chain is auditable.
+    const refreshTokenRow = await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        familyId: rotation?.familyId ?? randomUUID(),
+        tokenHash: this.hashToken(refreshToken),
+        jti: refreshJti,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    if (rotation?.replacesRefreshTokenId) {
+      // Best-effort link — unique constraint on replacedById means a second
+      // rotation attempt against the same predecessor will fail, which is
+      // the desired behavior (only one successor per ancestor).
+      await this.prisma.refreshToken
+        .update({
+          where: { id: rotation.replacesRefreshTokenId },
+          data: { replacedById: refreshTokenRow.id },
+        })
+        .catch(() => {
+          // Swallowed intentionally — the usedAt claim above already gates
+          // single-use, so a failed replacement link is non-fatal.
+        });
+    }
+
     const ACCESS_TOKEN_EXPIRY_SECONDS = 1800; // 30m
     return {
       accessToken,

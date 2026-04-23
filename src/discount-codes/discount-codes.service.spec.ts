@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   ConflictException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
@@ -409,6 +410,196 @@ describe('DiscountCodesService', () => {
       await expect(
         service.validateCode('SAVE20', planId, memberId),
       ).rejects.toThrow('below the minimum of 50 KES');
+    });
+  });
+
+  describe('validateCodeForProbe (M6 generic error)', () => {
+    // The probe endpoint (POST /discount-codes/validate) must NOT leak code
+    // existence/state via distinct error strings. Every failure mode — unknown
+    // code, inactive, expired, global cap, per-member cap, plan restriction,
+    // sub-minimum final price, missing plan — must collapse to the same
+    // generic "This discount code cannot be applied" message. The checkout
+    // flow uses validateCode directly and retains specific messages.
+    const memberId = 'member-1';
+    const planId = 'plan-1';
+    const GENERIC = 'This discount code cannot be applied';
+
+    const mockPlan = { id: planId, price: 3000 };
+
+    const makeDiscountCode = (overrides: Record<string, any> = {}) => ({
+      id: 'dc-1',
+      code: 'SAVE20',
+      discountType: DiscountType.PERCENTAGE,
+      discountValue: 20,
+      isActive: true,
+      startDate: new Date('2025-01-01'),
+      endDate: new Date('2027-12-31'),
+      maxUses: null,
+      currentUses: 0,
+      maxUsesPerMember: null,
+      plans: [],
+      ...overrides,
+    });
+
+    it('should return validation result on success (happy path unchanged)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode() as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
+
+      const result = await service.validateCodeForProbe(
+        'SAVE20',
+        planId,
+        memberId,
+      );
+
+      expect(result.originalPrice).toBe(3000);
+      expect(result.finalPrice).toBe(2400);
+      expect(result.discountCode.id).toBe('dc-1');
+    });
+
+    it('should return generic error for non-existent code (no "not found" leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.validateCodeForProbe('NOPE', planId, memberId),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.validateCodeForProbe('NOPE', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error for inactive code (no "inactive" leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ isActive: false }) as any,
+      );
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error for expired code (no "expired" leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ endDate: new Date('2020-01-01') }) as any,
+      );
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error for code not yet active (no "not yet valid" leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ startDate: new Date('2099-01-01') }) as any,
+      );
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error when global cap reached (no uses-remaining leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ maxUses: 10, currentUses: 10 }) as any,
+      );
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error when per-member cap reached (no "already used" leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ maxUsesPerMember: 1 }) as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce({
+        uses: 1,
+      } as any);
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error when code not valid for selected plan (no plan-restriction leak)', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ plans: [{ planId: 'other-plan' }] }) as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error when final price below Paystack minimum', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({
+          discountType: DiscountType.PERCENTAGE,
+          discountValue: 99,
+        }) as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(mockPlan as any);
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should return generic error (not 404) when plan missing', async () => {
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode() as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+    });
+
+    it('should log the real reason at debug level for diagnostics', async () => {
+      // Reason text is still available internally for admin support via
+      // server logs even though the client sees the generic message.
+      prisma.discountCode.findUnique.mockResolvedValueOnce(
+        makeDiscountCode({ maxUsesPerMember: 1 }) as any,
+      );
+      prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce({
+        uses: 1,
+      } as any);
+
+      const debugSpy = jest
+        .spyOn(Logger.prototype, 'debug')
+        .mockImplementation();
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow(GENERIC);
+
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringContaining('already used this discount code'),
+      );
+      expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('SAVE20'));
+
+      debugSpy.mockRestore();
+    });
+
+    it('should propagate unexpected (non-HTTP) errors unchanged', async () => {
+      // Infrastructure faults (DB down, etc.) must NOT be masked as generic
+      // "cannot be applied" — they indicate real bugs and should surface.
+      prisma.discountCode.findUnique.mockRejectedValueOnce(
+        new Error('connection refused'),
+      );
+
+      await expect(
+        service.validateCodeForProbe('SAVE20', planId, memberId),
+      ).rejects.toThrow('connection refused');
     });
   });
 

@@ -296,6 +296,7 @@ describe('SubscriptionsService', () => {
         ...mockSubscription,
         frozenDaysUsed: 15,
         freezeCount: 1,
+        freezeCycleAnchor: futureDate,
         plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
       } as any);
 
@@ -308,6 +309,7 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce({
         ...mockSubscription,
         freezeCount: 1,
+        freezeCycleAnchor: futureDate,
       } as any);
 
       await expect(
@@ -320,6 +322,7 @@ describe('SubscriptionsService', () => {
         ...mockSubscription,
         frozenDaysUsed: 5,
         freezeCount: 1,
+        freezeCycleAnchor: futureDate,
         plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
       } as any);
       prisma.memberSubscription.update.mockResolvedValueOnce({

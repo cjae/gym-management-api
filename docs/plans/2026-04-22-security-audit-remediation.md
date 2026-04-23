@@ -89,19 +89,33 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 - [x] **M2** — Swagger UI publicly exposed at `/api/docs` (no auth gate)
   - Files: `src/main.ts`, new `src/common/middleware/swagger-basic-auth.middleware.ts`
   - Fix: outside `NODE_ENV=development|test`, `/api/docs` and `/api/docs-json` gated behind Basic Auth (reuses `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD`, timing-safe compare). If creds are missing in prod-like envs, Swagger is disabled entirely rather than served open
-- [ ] **M3** — JWT invalidation blocklist check has race with token issuance
-- [ ] **M4** — No refresh-token-reuse detection (stolen refresh token reusable until expiry)
+- [x] **M3** — JWT invalidation blocklist check has race with token issuance
+  - Files: `src/auth/auth.service.ts`, `src/auth/strategies/jwt.strategy.ts`, `src/auth/strategies/jwt-refresh.strategy.ts`, `prisma/schema.prisma`, migration `20260422140000_add_auth_token_hygiene`
+  - Fix: `User.sessionsInvalidatedAt` bumped on logout and refresh-reuse detection. JWT/refresh strategies compare token's embedded `sessionsInvalidatedAt` claim against the current user row and reject any token issued before the cutoff. Closes the race where a parallel `/auth/refresh` could mint a new JTI between logout's invalidated-token write and the check
+- [x] **M4** — No refresh-token-reuse detection (stolen refresh token reusable until expiry)
+  - Files: `src/auth/auth.service.ts`, `src/auth/auth.controller.ts`, `src/auth/strategies/jwt-refresh.strategy.ts`, `prisma/schema.prisma`, migration `20260422140000_add_auth_token_hygiene`
+  - Fix: new `RefreshToken` table persists SHA-256 hash of each refresh token with `familyId`, `jti`, `usedAt`, `replacedById`. Refresh path marks current token used and chains `replacedById`. Presenting a refresh token whose `usedAt` is set triggers family-wide revocation of every sibling sharing `familyId`, `sessionsInvalidatedAt` bump on the user, and an `AUTH_REFRESH_REUSE` audit log entry
 - [x] **M5** — Login response timing enumerates valid emails
   - File: `src/auth/auth.service.ts`
   - Fix: on user-not-found (or soft-deleted) path, now runs `bcrypt.compare` against a module-level dummy hash so both branches spend ~equal time. Error message + audit log unchanged
-- [ ] **M6** — `POST /discount-codes/validate` leaks existence/state via distinct error messages
-- [ ] **M7** — Trainer roster visible to MEMBER role (should be need-to-know)
-- [ ] **M8** — Soft-delete leaves PII (email, phone, displayPicture) on User row indefinitely
-- [ ] **M9** — Deletion approve/cancel endpoints race (member cancels while admin approves)
+- [x] **M6** — `POST /discount-codes/validate` leaks existence/state via distinct error messages
+  - Files: `src/discount-codes/discount-codes.service.ts`, `src/discount-codes/discount-codes.controller.ts`
+  - Fix: new `validateCodeForProbe()` returns the single generic message `"This discount code cannot be applied"` for every failure mode (not-found, inactive, expired, not-started, plan-mismatch, global cap, per-member cap). The checkout-path `redeemCode()` keeps specific messages since by then the caller is authenticated as the purchaser and the code string is already confirmed. Controller switched to the new method
+- [x] **M7** — Trainer roster visible to MEMBER role (should be need-to-know)
+  - Files: `src/trainers/trainers.controller.ts`, `src/trainers/trainers.service.ts`, new `src/trainers/dto/member-trainer-assignment-response.dto.ts`
+  - Fix: `GET /trainers` and `GET /trainers/:id` restricted to `ADMIN`/`SUPER_ADMIN`/`TRAINER`. Members retain `GET /trainers/my/trainer` which now returns a slim DTO (firstName, lastName, bio, specialization, certification, yearsExperience, displayPicture only) — email, phone, role, status, and the full assignments list are stripped
+- [x] **M8** — Soft-delete leaves PII (email, phone, displayPicture) on User row indefinitely
+  - File: `src/users/users.service.ts`
+  - Fix: approval flow now scrubs PII alongside the soft-delete. Email becomes `deleted-{id}@deleted.local`, `phone`/`displayPicture`/`firstName`/`lastName`/birthday/gender/personalization fields nulled, `password` set to a random unguessable value. FK integrity to historical payments/attendance/audit rows retained
+- [x] **M9** — Deletion approve/cancel endpoints race (member cancels while admin approves)
+  - File: `src/users/users.service.ts`
+  - Fix: approve/reject/cancel all use atomic `updateMany({ where: { id, status: 'PENDING' } })` claim inside a transaction — only the first writer advances the state machine; the loser sees a 404/409 instead of silently stepping on a completed state transition
 - [x] **M10** — WebSocket gateway CORS origin `*`
   - File: `src/analytics/activity.gateway.ts`
   - Fix: CORS origin now an explicit allowlist from `ADMIN_URL` (comma-separated, default `http://localhost:3001`) with `credentials: true`. Native mobile clients (no Origin header) unaffected
-- [ ] **M11** — Goal title/description rendered by mobile — HTML/markdown injection possible
+- [x] **M11** — Goal title/description rendered by mobile — HTML/markdown injection possible
+  - Files: `src/goals/dto/create-goal.dto.ts`, `src/goals/dto/create-progress-log.dto.ts`, `src/common/utils/sanitize-text.ts`
+  - Fix: member-supplied title/notes run through `sanitizeText` via `@Transform`. Strips HTML/XML tags (including `<script>`/`<style>` blocks with their contents), collapses line-break-equivalents (CR/LF/TAB/VT/FF, NEL, U+2028, U+2029) to single spaces, removes C0/C1/DEL control chars, and strips invisible / bidi-override chars (U+061C, ZWSP..RLM, LRE..RLO, WJ..INVISIBLE_SEPARATOR, LRI..PDI, BOM). Neutralizes both XSS-to-admin and LLM-prompt-injection in downstream plan generation
 - [ ] **M12** — Admin-created user welcome email is phishing surface (temp password in plaintext)
 - [x] **M13** — Webhook returns 200 on internal failure (Paystack stops retrying)
   - File: `src/payments/payments.service.ts`
@@ -122,13 +136,27 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 
 ## Low (7)
 
-- [ ] **L1** — CSV export allows formula injection (`=cmd|...`)
-- [ ] **L2** — Sourcemaps shipped to production
-- [ ] **L3** — `/api/health` bypasses all guards (info disclosure)
-- [ ] **L4** — Helmet default CSP is permissive
-- [ ] **L5** — License phone-home payload includes member count / revenue (telemetry disclosure)
-- [ ] **L6** — `DATABASE_URL` not validated at boot (late failure)
-- [ ] **L7** — Freeze counter reset has no replay protection across billing cycles
+- [x] **L1** — CSV export allows formula injection (`=cmd|...`)
+  - Files: `src/exports/formatters/csv.formatter.ts`, `src/exports/formatters/excel.formatter.ts`
+  - Fix: new `sanitizeCsvCell()` prefixes a single quote to any string cell beginning with `=`, `+`, `-`, `@`, `\t`, or `\r`. Applied to every string-valued cell in both CSV and XLSX output. Blocks formula execution on open in Excel/Numbers/Sheets. Numeric and date cells untouched
+- [x] **L2** — Sourcemaps shipped to production
+  - File: `tsconfig.build.json`
+  - Fix: `sourceMap: false` and `inlineSourceMap: false` on the build config so `dist/` no longer leaks `*.map` files that reveal pre-minification logic. Dev/test TS configs unchanged
+- [x] **L3** — `/api/health` bypasses all guards (info disclosure)
+  - File: `src/app.controller.ts`
+  - Fix: health endpoint now returns `{ status: 'ok' }` only — no version/uptime/env/commit leakage
+- [x] **L4** — Helmet default CSP is permissive
+  - File: `src/main.ts`
+  - Fix: explicit CSP directives `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'`. `'unsafe-inline'` retained for styles only because Swagger UI's bundled assets inline styles; scripts are strictly self-only
+- [x] **L5** — License phone-home payload includes member count / revenue (telemetry disclosure)
+  - Files: `src/licensing/licensing.service.ts`, `src/licensing/licensing.config.ts`
+  - Fix: phone-home body reduced to `{ currentMemberCount, appVersion, instanceFingerprint }`. `instanceFingerprint = SHA256(licenseKey).slice(0,16)` — non-reversible identifier for per-instance dedup. Opt-in bucketing via `LICENSE_TELEMETRY_MEMBER_COUNT=false` replaces the exact count with `<100`/`<500`/`<1000`/`>=1000`. Revenue / gym name / email / any business metric removed
+- [x] **L6** — `DATABASE_URL` not validated at boot (late failure)
+  - Files: `src/common/config/database.config.ts`, new `src/common/config/database.config.spec.ts`
+  - Fix: `validateDatabaseUrl()` runs at config-load (eager): asserts `DATABASE_URL` is set, starts with `postgresql://` or `postgres://`, and parses as a URL. Throws at boot outside `NODE_ENV=development|test`. Mirrors the auth/payment config enforcement pattern
+- [x] **L7** — Freeze counter reset has no replay protection across billing cycles
+  - Files: `src/subscriptions/subscriptions.service.ts`, `src/payments/payments.service.ts`, `src/billing/billing.service.ts`, `prisma/schema.prisma`, migration `20260422150000_fix_freeze_cycle_replay`
+  - Fix: new `MemberSubscription.freezeCycleAnchor` records the `endDate` as of the last counter reset. Webhook renewal path + billing cron renewal path reset `frozenDaysUsed`/`freezeCount` and re-anchor atomically with the `endDate` advance — a replayed renewal (same endDate) is a no-op. Freeze request path compares stored anchor against current `endDate`; a stale/missing anchor means the persisted counters belong to a prior cycle and are treated as zero, self-healing the re-anchor on the next freeze attempt
 
 ---
 

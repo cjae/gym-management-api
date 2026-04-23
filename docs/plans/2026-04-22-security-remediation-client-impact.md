@@ -202,3 +202,88 @@ Flagged by the implementing agents, tracked separately:
 - **`sslrootcert` wiring is ops' responsibility** — M18 enforces `rejectUnauthorized: true` in prod, but if prod DB uses a self-signed cert you must bundle the CA and update `DATABASE_URL` before the deploy, otherwise connections fail.
 
 ---
+
+## PR 4 — Remaining Medium + Low (M3, M4, M6, M7, M8, M9, M11, L1, L2, L3, L4, L5, L6, L7)
+
+**Shipped:** 2026-04-23
+**Findings fixed:** 5 Medium + 7 Low. Auth token hygiene, info-disclosure reduction, deletion PII scrub, boot hardening, export sanitization, and freeze-counter replay protection. M12 and M17 deferred (see audit tracker).
+
+### API contract changes (flag to mobile/admin teams)
+
+1. **Refresh-token reuse detection is now active.** Any client that re-presents a refresh token it has already exchanged (replayed request, duplicate tab, stolen + replayed token) will have the **entire token family revoked** — the legitimate user is forcibly logged out on every device tied to that family, and must re-login. An `AUTH_REFRESH_REUSE` audit event is emitted to the SUPER_ADMIN audit log. Mobile clients should not retry `/auth/refresh` on transient network errors without idempotency — one successful exchange per token. On 401 from refresh, route user to login.
+2. **Sessions invalidated on logout now invalidate in-flight tokens too.** Previously, a token minted milliseconds before logout remained valid for up to 30 minutes. Now any access or refresh token whose embedded `sessionsInvalidatedAt` claim is older than the user's current value is rejected. Behavior is transparent to well-behaved clients — only affects the race window.
+3. **`POST /discount-codes/validate` now returns a single generic error for every failure mode.** Response body: `"This discount code cannot be applied"` for not-found, inactive, expired, not-yet-started, plan-mismatch, global-cap-reached, and per-member-cap-reached. The checkout path (apply at subscription creation) still returns specific messages since the user is authenticated and the code is already known-valid there. Admin/mobile UIs that branched on the error text must fall back to the generic message.
+4. **Trainer roster is no longer visible to members.** `GET /trainers` and `GET /trainers/:id` now return `403` for MEMBER role — restricted to `ADMIN`/`SUPER_ADMIN`/`TRAINER`. Members retain `GET /trainers/my/trainer`, but the response is now a slim DTO: firstName, lastName, bio, specialization, certification, yearsExperience, displayPicture only. Email, phone, role, status, and the full assignments list are stripped. Member-app screens that consumed the old payload must handle the narrower shape.
+5. **Approved deletion requests now scrub PII.** After admin approval, the User row's email is rewritten to `deleted-{id}@deleted.local`, `phone`/`displayPicture`/`firstName`/`lastName`/birthday/gender/personalization are nulled, and `password` is replaced with a random unguessable value. Historical FK integrity (payments, attendance, audit logs) is retained but the user can no longer be contacted or logged in as. Any admin UI rendering deleted-member names must handle `null` gracefully.
+6. **Deletion state transitions are now atomic.** Approve/reject/cancel endpoints use atomic claims on `status: 'PENDING'` — the first write wins; the loser receives `404`/`409` rather than silently overwriting a terminal state.
+7. **Goal titles and progress-log notes are sanitized before persistence.** HTML/XML tags (including `<script>`/`<style>` blocks with contents) are stripped; line-break-equivalents (CR/LF/TAB/VT/FF, NEL, U+2028, U+2029) collapse to single spaces; C0/C1/DEL controls and invisible/bidi-override chars are removed. Neutralizes self-XSS-to-admin and LLM-prompt-injection into the plan generator. Interior whitespace and emoji preserved. Already-submitted goals in the DB are unchanged.
+8. **`/api/health` no longer leaks version/env/commit info.** Response is now `{ status: 'ok' }` only. Any monitor that relied on version string parsing should key off a dedicated build info source (CI artifact, commit SHA header).
+9. **CSP is now strict.** `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'`. `'unsafe-inline'` retained for styles only because Swagger UI's bundled assets inline them. Scripts are strictly self-only. External analytics or CDN scripts would need explicit CSP additions — none currently present.
+
+### Operational / deployment changes
+
+**One new Prisma migration** — must run before the new code ships.
+
+| Migration | Change | Deploy impact |
+|---|---|---|
+| `20260422140000_add_auth_token_hygiene` | Adds `User.sessionsInvalidatedAt TIMESTAMP(3) NULL`, new `RefreshToken` table (tokenHash-unique, jti-unique, familyId index), and `AUTH_REFRESH_REUSE` AuditAction enum value. | Adds-only, no backfill. Safe to run online. Existing JWTs continue to validate until their 30m/7d expiry. First post-deploy refresh per user starts populating `RefreshToken` rows. |
+| `20260422150000_fix_freeze_cycle_replay` | Adds nullable `MemberSubscription.freezeCycleAnchor TIMESTAMP(3)`. Existing rows retain counters; they lazily re-anchor on the next freeze or renewal. | Adds-only, no backfill. Safe to run online. |
+
+| Change | Action required |
+|---|---|
+| `DATABASE_URL` now validated at boot (L6) | Must be set, start with `postgresql://` or `postgres://`, and parse as a URL outside `NODE_ENV=development|test`. App **throws at boot** if any of the three fails. |
+| `LICENSE_TELEMETRY_MEMBER_COUNT` env var (optional, default `true`) | Set to `false` to bucket the member count (`<100`/`<500`/`<1000`/`>=1000`) in the license phone-home instead of sending the exact value. |
+| `APP_VERSION` env var (optional) | Overrides the app version sent in the license phone-home (defaults to `npm_package_version`, then `0.0.0-unknown`). |
+| Sourcemaps removed from production build (L2) | `dist/` no longer emits `*.map` files. Sentry source-map upload tooling (if any) must be re-pointed at dev builds or CI-only sourcemap output. |
+
+**Deploy checklist for PR 4:**
+- [ ] Run `npx prisma migrate deploy` on staging (applies both new migrations) — verify both are idempotent re-runs
+- [ ] Run same on production, then deploy the new application code
+- [ ] Confirm `DATABASE_URL` in prod/staging is valid `postgresql://`/`postgres://` URL (most installs already are)
+- [ ] Decide on `LICENSE_TELEMETRY_MEMBER_COUNT` policy and set accordingly
+- [ ] Notify mobile/admin teams: refresh-token reuse now forcibly logs out on replay; generic discount validate error; trainer roster 403 for members; deleted members' PII is scrubbed
+- [ ] If Sentry source-map upload is configured, decouple it from `yarn build` since `dist/` no longer carries maps
+
+### Subtle behavior changes (no action needed, but be aware)
+
+1. **Login session invalidation propagates to in-flight tokens.** A user who hits logout and then has a very-slightly-older access token land at the API a millisecond later will see it rejected (was previously still valid up to 30m).
+2. **License phone-home payload changed shape.** Control-plane consumers now receive `{ currentMemberCount, appVersion, instanceFingerprint }` instead of `{ memberCount, revenue, gymName, ... }`. The fingerprint is a SHA-256 prefix of the license key — stable per instance, non-reversible.
+3. **Freeze counter replay protection is self-healing.** Any subscription that pre-dates this fix will have a null `freezeCycleAnchor`. On the next freeze or renewal, the code atomically anchors to the current `endDate` and resets counters. No data migration required, but the first post-deploy freeze for any existing subscription will log at info level that it re-anchored.
+4. **CSV/XLSX exports now include a leading apostrophe on any cell starting with `=`, `+`, `-`, `@`, `\t`, or `\r`.** Downstream consumers parsing exports programmatically should strip the leading apostrophe if present.
+
+### Files changed (~15 code files + 2 migrations + 2 new DTOs/utils)
+
+**Code:**
+- `src/auth/auth.service.ts`, `src/auth/auth.controller.ts`, `src/auth/strategies/jwt.strategy.ts`, `src/auth/strategies/jwt-refresh.strategy.ts` — M3, M4
+- `src/discount-codes/discount-codes.service.ts`, `src/discount-codes/discount-codes.controller.ts` — M6
+- `src/trainers/trainers.controller.ts`, `src/trainers/trainers.service.ts` — M7
+- `src/users/users.service.ts` — M8, M9
+- `src/goals/dto/create-goal.dto.ts`, `src/goals/dto/create-progress-log.dto.ts`, `src/common/utils/sanitize-text.ts` — M11
+- `src/exports/formatters/csv.formatter.ts`, `src/exports/formatters/excel.formatter.ts` — L1
+- `tsconfig.build.json` — L2
+- `src/app.controller.ts`, `src/main.ts` — L3, L4
+- `src/licensing/licensing.service.ts`, `src/licensing/licensing.config.ts` — L5
+- `src/common/config/database.config.ts` — L6
+- `src/subscriptions/subscriptions.service.ts`, `src/payments/payments.service.ts`, `src/billing/billing.service.ts` — L7
+
+**Schema:**
+- `prisma/schema.prisma` — `User.sessionsInvalidatedAt`, `RefreshToken` model, `AuditAction.AUTH_REFRESH_REUSE`, `MemberSubscription.freezeCycleAnchor`
+
+**Migrations:**
+- `prisma/migrations/20260422140000_add_auth_token_hygiene/`
+- `prisma/migrations/20260422150000_fix_freeze_cycle_replay/`
+
+**New DTOs / utils:**
+- `src/trainers/dto/member-trainer-assignment-response.dto.ts`
+- `src/common/config/database.config.spec.ts`, `src/goals/dto/create-goal.dto.spec.ts`, `src/trainers/trainers.controller.spec.ts`
+
+**Specs:** matching `.spec.ts` updated or added for every code file above.
+
+### Known follow-ups (not in this PR)
+
+- **M12** — Admin-created user welcome email with temp password in plaintext. Deferred pending product decision on magic-link vs. temp-password flow.
+- **M17** — License grace period trusts local clock. Deferred pending control-plane work to serve a signed timestamp the client can pin against.
+- `sanitizeText` is applied to goal title and progress-log notes only. If other member-writable text fields are added in the future (e.g., custom goal descriptions, group-chat messages), they should run through the same util.
+- `RefreshToken` rows accumulate indefinitely. A cleanup cron (sweep rows with `expiresAt < NOW() - INTERVAL '30 days'`) is a candidate follow-up but not urgent — rows are small and indexed.
+
+---
