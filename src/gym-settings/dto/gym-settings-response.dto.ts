@@ -64,6 +64,9 @@ export class GymSettingsResponseDto {
   @ApiProperty({ example: 4, description: 'Days per week required for streak' })
   streakDaysRequiredPerWeek: number;
 
+  @ApiProperty({ example: 'KES', description: 'ISO 4217 currency code' })
+  currency: string;
+
   @ApiProperty()
   createdAt: Date;
 

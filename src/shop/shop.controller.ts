@@ -186,6 +186,8 @@ export class ShopController {
   }
 
   @Get('orders/:id')
+  @UseGuards(RolesGuard)
+  @Roles('MEMBER')
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
   findMyOrder(

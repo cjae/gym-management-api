@@ -129,6 +129,16 @@ describe('ShopService', () => {
     updatedAt: new Date(),
   };
 
+  describe('removeItem', () => {
+    it('should throw ConflictException when item has existing orders', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue(mockItem as any);
+      prisma.shopOrderItem.count.mockResolvedValue(1);
+      await expect(service.removeItem('item-1')).rejects.toThrow(
+        'Cannot delete item that has existing orders',
+      );
+    });
+  });
+
   describe('addVariant', () => {
     it('should add a variant to an item', async () => {
       prisma.shopItem.findUnique.mockResolvedValue(mockItem as any);

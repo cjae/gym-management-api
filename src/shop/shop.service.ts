@@ -105,6 +105,14 @@ export class ShopService {
 
   async removeItem(id: string) {
     await this.findOneItem(id);
+    const orderCount = await this.prisma.shopOrderItem.count({
+      where: { shopItemId: id },
+    });
+    if (orderCount > 0) {
+      throw new ConflictException(
+        'Cannot delete item that has existing orders. Deactivate it instead.',
+      );
+    }
     return this.prisma.shopItem.delete({ where: { id } });
   }
 

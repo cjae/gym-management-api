@@ -1,4 +1,10 @@
-import { IsUUID, IsEnum, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsUUID,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+  ArrayMinSize,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { ADMIN_PAYMENT_METHODS } from '../../common/constants/payment-methods';
@@ -12,6 +18,7 @@ export class AdminCreateShopOrderDto {
 
   @ApiProperty({ type: [ShopOrderItemDto] })
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ShopOrderItemDto)
   items: ShopOrderItemDto[];
