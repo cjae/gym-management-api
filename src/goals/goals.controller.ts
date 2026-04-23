@@ -46,7 +46,7 @@ import {
   UpdateMilestoneDto,
 } from './dto/upsert-milestone.dto';
 
-@ApiTags('goals')
+@ApiTags('Goals')
 @ApiBearerAuth()
 @RequiresFeature('goals')
 @UseGuards(JwtAuthGuard, ActiveSubscriptionGuard, RolesGuard)
