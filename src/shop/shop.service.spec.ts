@@ -7,6 +7,7 @@ import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { ConfigService } from '@nestjs/config';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
+import axios from 'axios';
 
 describe('ShopService', () => {
   let service: ShopService;
@@ -199,6 +200,147 @@ describe('ShopService', () => {
           paymentMethod: 'CARD' as any,
         }),
       ).rejects.toThrow('Insufficient stock');
+    });
+
+    it('should create order with variant and return paystackReference', async () => {
+      const mockVariantItem = {
+        ...mockItem,
+        stock: 0,
+        variants: [
+          { id: 'variant-1', name: 'Large', priceOverride: 3000, stock: 5 },
+        ],
+      };
+      const mockOrder = {
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'PENDING',
+        totalAmount: 3000,
+        currency: 'KES',
+        paymentMethod: 'CARD',
+        paystackReference: 'shop_order-1_123',
+        orderItems: [
+          {
+            shopItemId: 'item-1',
+            variantId: 'variant-1',
+            quantity: 1,
+            unitPrice: 3000,
+          },
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      prisma.shopItem.findUnique.mockResolvedValue(mockVariantItem as any);
+      prisma.shopOrder.create.mockResolvedValue({
+        ...mockOrder,
+        paystackReference: null,
+      } as any);
+      prisma.shopItemVariant.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopOrder.update.mockResolvedValue(mockOrder as any);
+      prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
+
+      const axiosMock = jest.spyOn(axios, 'post').mockResolvedValueOnce({
+        data: {
+          data: {
+            authorization_url: 'https://paystack.com/pay/abc',
+            access_code: 'abc',
+            reference: 'shop_order-1_123',
+          },
+        },
+      });
+
+      const result = await service.createOrder('member-1', 'member@test.com', {
+        items: [{ shopItemId: 'item-1', variantId: 'variant-1', quantity: 1 }],
+        paymentMethod: 'CARD' as any,
+      });
+
+      expect(result.order.paystackReference).toBe('shop_order-1_123');
+      expect(result.checkout.authorization_url).toBeDefined();
+      axiosMock.mockRestore();
+    });
+
+    it('should throw ConflictException when concurrent order exhausts stock', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue({
+        ...mockItem,
+        stock: 1,
+        variants: [],
+      } as any);
+      prisma.shopOrder.create.mockResolvedValue({
+        id: 'order-1',
+        orderItems: [],
+      } as any);
+      // updateMany returns 0 — stock was grabbed by another request
+      prisma.shopItem.updateMany.mockResolvedValue({ count: 0 });
+      prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
+
+      await expect(
+        service.createOrder('member-1', 'member@test.com', {
+          items: [{ shopItemId: 'item-1', quantity: 1 }],
+          paymentMethod: 'CARD' as any,
+        }),
+      ).rejects.toThrow('Insufficient stock (concurrent order)');
+    });
+
+    it('should cancel order and restore stock when Paystack init fails', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue({
+        ...mockItem,
+        stock: 5,
+        variants: [],
+      } as any);
+      prisma.shopOrder.create.mockResolvedValue({
+        id: 'order-1',
+        orderItems: [],
+      } as any);
+      prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
+      prisma.shopOrder.update.mockResolvedValue({} as any);
+      prisma.shopItem.update.mockResolvedValue({} as any);
+
+      // Force axios to throw
+      const axiosMock = jest
+        .spyOn(axios, 'post')
+        .mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(
+        service.createOrder('member-1', 'member@test.com', {
+          items: [{ shopItemId: 'item-1', quantity: 1 }],
+          paymentMethod: 'CARD' as any,
+        }),
+      ).rejects.toThrow('Payment initialization failed');
+
+      // Order should be cancelled
+      expect(prisma.shopOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'order-1' },
+          data: { status: 'CANCELLED' },
+        }),
+      );
+      // Stock should be restored
+      expect(prisma.shopItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'item-1' },
+          data: { stock: { increment: 1 } },
+        }),
+      );
+
+      axiosMock.mockRestore();
+    });
+
+    it('should throw BadRequestException when item has variants but no variantId given', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue({
+        ...mockItem,
+        stock: 0,
+        variants: [
+          { id: 'variant-1', name: 'Large', priceOverride: null, stock: 5 },
+        ],
+      } as any);
+
+      await expect(
+        service.createOrder('member-1', 'member@test.com', {
+          items: [{ shopItemId: 'item-1', quantity: 1 }],
+          paymentMethod: 'CARD' as any,
+        }),
+      ).rejects.toThrow('has variants');
     });
   });
 

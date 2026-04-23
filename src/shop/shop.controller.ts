@@ -17,6 +17,8 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
+  ApiBadRequestResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -58,6 +60,7 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopItemResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid input' })
   createItem(@Body() dto: CreateShopItemDto) {
     return this.shopService.createItem(dto);
   }
@@ -100,6 +103,9 @@ export class ShopController {
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ description: 'Item deleted' })
   @ApiNotFoundResponse({ description: 'Shop item not found' })
+  @ApiConflictResponse({
+    description: 'Cannot delete item with existing orders',
+  })
   removeItem(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.removeItem(id);
   }
@@ -133,6 +139,9 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ description: 'Variant deleted' })
+  @ApiConflictResponse({
+    description: 'Cannot delete variant with existing orders',
+  })
   removeVariant(
     @Param('id', ParseUUIDPipe) itemId: string,
     @Param('vid', ParseUUIDPipe) variantId: string,
@@ -146,6 +155,10 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiCreatedResponse({ type: CreateShopOrderResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Item not found or payment initialization failed',
+  })
+  @ApiConflictResponse({ description: 'Insufficient stock' })
   createOrder(
     @Body() dto: CreateShopOrderDto,
     @CurrentUser('id') memberId: string,
@@ -160,6 +173,8 @@ export class ShopController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopOrderResponseDto })
+  @ApiBadRequestResponse({ description: 'Item not found or member not found' })
+  @ApiConflictResponse({ description: 'Insufficient stock' })
   createAdminOrder(@Body() dto: AdminCreateShopOrderDto) {
     return this.shopService.createAdminOrder(dto);
   }
@@ -202,6 +217,7 @@ export class ShopController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
+  @ApiBadRequestResponse({ description: 'Order is not ready for collection' })
   collectOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.collectOrder(id);
   }
