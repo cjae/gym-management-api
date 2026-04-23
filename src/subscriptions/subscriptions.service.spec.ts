@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
-import { PaymentMethod, PrismaClient } from '@prisma/client';
+import { PaymentMethod, Prisma, PrismaClient } from '@prisma/client';
 import { SubscriptionsService } from './subscriptions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -714,6 +714,37 @@ describe('SubscriptionsService', () => {
             paystackReference: undefined,
           }),
         }),
+      );
+    });
+
+    it('should throw ConflictException when paymentReference is already used', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(mockMember as any);
+      prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(
+        mockPlanActive as any,
+      );
+      prisma.subscriptionMember.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.findFirst.mockResolvedValueOnce(null);
+      prisma.memberSubscription.create.mockResolvedValueOnce({
+        id: 'sub-1',
+        primaryMemberId: 'member-1',
+        plan: mockPlanActive,
+        members: [],
+      } as any);
+
+      const dupRefError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`"paystackReference"`)',
+        {
+          code: 'P2002',
+          clientVersion: '7.8.0',
+          meta: { modelName: 'Payment' },
+        },
+      );
+      prisma.payment.create.mockRejectedValueOnce(dupRefError);
+
+      const rejection = service.adminCreate(adminId, baseDto);
+      await expect(rejection).rejects.toThrow(ConflictException);
+      await expect(rejection).rejects.toThrow(
+        'A payment with this reference already exists',
       );
     });
   });

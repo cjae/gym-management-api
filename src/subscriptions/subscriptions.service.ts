@@ -278,59 +278,72 @@ export class SubscriptionsService {
     const amount =
       dto.paymentMethod === PaymentMethod.COMPLIMENTARY ? 0 : plan.price;
 
-    const subscription = await this.prisma.$transaction(async (tx) => {
-      // Reverse any prior discount redemption on existing PENDING subscription
-      if (existingPending) {
-        await this.discountCodesService.reverseRedemption(
-          tx,
-          existingPending.id,
-        );
-      }
+    const subscription = await this.prisma
+      .$transaction(async (tx) => {
+        // Reverse any prior discount redemption on existing PENDING subscription
+        if (existingPending) {
+          await this.discountCodesService.reverseRedemption(
+            tx,
+            existingPending.id,
+          );
+        }
 
-      const txData = {
-        planId: dto.planId,
-        startDate,
-        endDate,
-        status: SubscriptionStatus.ACTIVE,
-        paymentMethod: dto.paymentMethod,
-        nextBillingDate: endDate,
-        autoRenew: false,
-        createdBy: adminId,
-        paymentNote: dto.paymentNote,
-      };
+        const txData = {
+          planId: dto.planId,
+          startDate,
+          endDate,
+          status: SubscriptionStatus.ACTIVE,
+          paymentMethod: dto.paymentMethod,
+          nextBillingDate: endDate,
+          autoRenew: false,
+          createdBy: adminId,
+          paymentNote: dto.paymentNote,
+        };
 
-      const sub = existingPending
-        ? await tx.memberSubscription.update({
-            where: { id: existingPending.id },
-            data: txData,
-            include: txInclude,
-          })
-        : await tx.memberSubscription.create({
-            data: {
-              ...txData,
-              primaryMemberId: dto.memberId,
-              members: {
-                create: {
-                  memberId: dto.memberId,
+        const sub = existingPending
+          ? await tx.memberSubscription.update({
+              where: { id: existingPending.id },
+              data: txData,
+              include: txInclude,
+            })
+          : await tx.memberSubscription.create({
+              data: {
+                ...txData,
+                primaryMemberId: dto.memberId,
+                members: {
+                  create: {
+                    memberId: dto.memberId,
+                  },
                 },
               },
-            },
-            include: txInclude,
-          });
+              include: txInclude,
+            });
 
-      await tx.payment.create({
-        data: {
-          subscriptionId: sub.id,
-          amount,
-          paymentMethod: dto.paymentMethod,
-          status: 'PAID',
-          paystackReference: dto.paymentReference,
-          paymentNote: dto.paymentNote,
-        },
+        await tx.payment.create({
+          data: {
+            subscriptionId: sub.id,
+            amount,
+            paymentMethod: dto.paymentMethod,
+            status: 'PAID',
+            paystackReference: dto.paymentReference,
+            paymentNote: dto.paymentNote,
+          },
+        });
+
+        return sub;
+      })
+      .catch((err: unknown) => {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002' &&
+          (err.meta as any)?.modelName === 'Payment'
+        ) {
+          throw new ConflictException(
+            'A payment with this reference already exists. Use a unique reference.',
+          );
+        }
+        throw err;
       });
-
-      return sub;
-    });
 
     const memberName = `${member.firstName} ${member.lastName}`;
     this.eventEmitter.emit('activity.subscription', {

@@ -200,8 +200,11 @@ export class LicensingService implements OnModuleInit {
         }
       }
 
+      const reason = axios.isAxiosError(error)
+        ? (error.message ?? 'unknown axios error')
+        : String(error);
       this.logger.warn(
-        'License validation failed (network/server error), retaining cached status',
+        `License validation failed (network/server error), retaining cached status — ${reason}`,
       );
     }
   }
