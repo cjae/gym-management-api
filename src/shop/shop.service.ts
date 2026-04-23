@@ -311,4 +311,36 @@ export class ShopService {
       throw new BadRequestException('Payment initialization failed');
     }
   }
+
+  async handlePaymentSuccess(orderId: string, reference: string) {
+    const updated = await this.prisma.shopOrder.updateMany({
+      where: { id: orderId, status: 'PENDING' },
+      data: { status: 'PAID', paystackReference: reference },
+    });
+
+    if (updated.count === 0) {
+      this.logger.warn(
+        `shop.payment.success: order ${orderId} not PENDING or already processed`,
+      );
+      return;
+    }
+
+    const order = await this.prisma.shopOrder.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true },
+    });
+    if (order) {
+      await this.checkAndNotifyLowStock(order.orderItems);
+    }
+  }
+
+  private async checkAndNotifyLowStock(
+    _orderItems: Array<{
+      shopItemId: string;
+      variantId: string | null;
+      quantity: number;
+    }>,
+  ) {
+    // implemented in Task 12
+  }
 }

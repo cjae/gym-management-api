@@ -191,4 +191,30 @@ describe('ShopService', () => {
       ).rejects.toThrow('Insufficient stock');
     });
   });
+
+  describe('handlePaymentSuccess', () => {
+    it('should update order to PAID', async () => {
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        orderItems: [],
+      } as any);
+
+      await service.handlePaymentSuccess('order-1', 'ref_123');
+
+      expect(prisma.shopOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', status: 'PENDING' },
+        data: { status: 'PAID', paystackReference: 'ref_123' },
+      });
+    });
+
+    it('should log warn when order not PENDING', async () => {
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
+      const logSpy = jest.spyOn((service as any).logger, 'warn');
+
+      await service.handlePaymentSuccess('order-1', 'ref_123');
+
+      expect(logSpy).toHaveBeenCalled();
+    });
+  });
 });
