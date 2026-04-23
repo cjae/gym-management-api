@@ -98,4 +98,14 @@ export class UpsertGymSettingsDto {
   @Min(1)
   @Max(52)
   loyalStreakWeeks?: number;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Days per week required to maintain a weekly streak',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  streakDaysRequiredPerWeek?: number;
 }

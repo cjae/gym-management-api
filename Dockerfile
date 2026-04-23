@@ -1,5 +1,5 @@
 # --- Build stage ---
-FROM node:22-alpine AS builder
+FROM node:22.22.2-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY . .
 RUN yarn build
 
 # --- Production stage ---
-FROM node:22-alpine AS production
+FROM node:22.22.2-alpine AS production
 
 WORKDIR /app
 
@@ -39,5 +39,7 @@ COPY src/email/templates ./dist/src/email/templates
 
 EXPOSE 3000
 
-# Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]
+# Run migrations then start.
+# If DATABASE_CA_CERT is set (base64-encoded PEM), decode it so Prisma's Rust
+# engine can verify the managed-database TLS certificate chain.
+CMD ["sh", "-c", "if [ -n \"$DATABASE_CA_CERT\" ]; then echo \"$DATABASE_CA_CERT\" | base64 -d > /tmp/db-ca.pem; fi && npx prisma migrate deploy && node dist/src/main"]

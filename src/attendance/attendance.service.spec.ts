@@ -50,9 +50,10 @@ describe('AttendanceService', () => {
         {
           provide: GymSettingsService,
           useValue: {
-            getCachedSettings: jest
-              .fn()
-              .mockResolvedValue({ timezone: 'Africa/Nairobi' }),
+            getCachedSettings: jest.fn().mockResolvedValue({
+              timezone: 'Africa/Nairobi',
+              streakDaysRequiredPerWeek: 4,
+            }),
           },
         },
       ],
@@ -478,6 +479,7 @@ describe('AttendanceService', () => {
     const mockGymSettingsService = {
       getCachedSettings: jest.fn().mockResolvedValue({
         timezone: 'Africa/Nairobi',
+        streakDaysRequiredPerWeek: 4,
         offPeakWindows: [
           { dayOfWeek: null, startTime: '06:00', endTime: '10:00' },
         ],
@@ -510,6 +512,7 @@ describe('AttendanceService', () => {
     const mockGymSettingsService = {
       getCachedSettings: jest.fn().mockResolvedValue({
         timezone: 'Africa/Nairobi',
+        streakDaysRequiredPerWeek: 4,
         offPeakWindows: [
           { dayOfWeek: null, startTime: '06:00', endTime: '10:00' },
         ],
@@ -746,6 +749,51 @@ describe('AttendanceService', () => {
       expect(result.weeklyStreak).toBe(0);
       expect(result.longestStreak).toBe(8);
     });
+
+    it('should use streakDaysRequiredPerWeek from settings when non-default', async () => {
+      // Override settings to require 3 days/week instead of 4.
+      (service as any).gymSettingsService = {
+        getCachedSettings: jest.fn().mockResolvedValue({
+          timezone: 'Africa/Nairobi',
+          streakDaysRequiredPerWeek: 3,
+        }),
+      };
+
+      setupCheckInMocks();
+      // Last week had exactly 3 days — should be enough to increment streak.
+      const prevMonday = new Date(currentMonday);
+      prevMonday.setDate(prevMonday.getDate() - 7);
+
+      prisma.streak.findUnique.mockResolvedValue({
+        memberId: 'member-1',
+        weeklyStreak: 1,
+        longestStreak: 1,
+        daysThisWeek: 3,
+        weekStart: prevMonday,
+        lastCheckInDate: prevMonday,
+      } as any);
+      prisma.streak.upsert.mockResolvedValue({
+        weeklyStreak: 2,
+        longestStreak: 2,
+        daysThisWeek: 1,
+        bestWeek: 3,
+        weekStart: currentMonday,
+      } as any);
+      prisma.attendance.count.mockResolvedValue(10);
+
+      const result = await service.checkIn('member-1', { qrCode: 'valid' });
+
+      // daysRequired should be 3 (from settings), not 4.
+      expect(result.daysRequired).toBe(3);
+      expect(result.weeklyStreak).toBe(2);
+      // 3 days last week >= daysRequired(3) → service computes weeklyStreak + 1.
+      expect(prisma.streak.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ weeklyStreak: 2, daysThisWeek: 1 }),
+          update: expect.objectContaining({ weeklyStreak: 2, daysThisWeek: 1 }),
+        }),
+      );
+    });
   });
 
   describe('getStreak', () => {
@@ -764,7 +812,7 @@ describe('AttendanceService', () => {
 
       const result = await service.getStreak('member-1');
 
-      expect(result).toEqual(streakRecord);
+      expect(result).toEqual({ ...streakRecord, daysRequired: 4 });
     });
 
     it('should return default fields when no streak exists', async () => {
@@ -780,6 +828,7 @@ describe('AttendanceService', () => {
         bestWeek: 0,
         weekStart: null,
         lastCheckInDate: null,
+        daysRequired: 4,
       });
     });
   });
