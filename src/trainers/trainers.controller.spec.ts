@@ -132,7 +132,7 @@ describe('TrainersController', () => {
         expect(result).toEqual(payload);
 
         // Sensitive trainer user fields must not leak to the member.
-        const trainerUser: Record<string, unknown> = result.trainer.user;
+        const trainerUser: Record<string, unknown> = result!.trainer.user;
         expect(trainerUser).not.toHaveProperty('email');
         expect(trainerUser).not.toHaveProperty('phone');
         expect(trainerUser).not.toHaveProperty('role');
