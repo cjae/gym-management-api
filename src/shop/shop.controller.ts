@@ -35,7 +35,13 @@ import {
   PaginatedShopItemsResponseDto,
 } from './dto/shop-item-response.dto';
 import { CreateShopOrderDto } from './dto/create-shop-order.dto';
-import { CreateShopOrderResponseDto } from './dto/shop-order-response.dto';
+import { AdminCreateShopOrderDto } from './dto/admin-create-shop-order.dto';
+import { FilterShopOrdersDto } from './dto/filter-shop-orders.dto';
+import {
+  ShopOrderResponseDto,
+  CreateShopOrderResponseDto,
+  PaginatedShopOrdersResponseDto,
+} from './dto/shop-order-response.dto';
 
 @ApiTags('Shop')
 @ApiBearerAuth()
@@ -146,5 +152,32 @@ export class ShopController {
     @CurrentUser('email') email: string,
   ) {
     return this.shopService.createOrder(memberId, email, dto);
+  }
+
+  // ── Admin Orders ──
+
+  @Post('orders/admin')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiCreatedResponse({ type: ShopOrderResponseDto })
+  createAdminOrder(@Body() dto: AdminCreateShopOrderDto) {
+    return this.shopService.createAdminOrder(dto);
+  }
+
+  @Get('orders')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: PaginatedShopOrdersResponseDto })
+  findAllOrders(@Query() dto: FilterShopOrdersDto) {
+    return this.shopService.findAllOrders(dto);
+  }
+
+  @Patch('orders/:id/collect')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: ShopOrderResponseDto })
+  @ApiNotFoundResponse({ description: 'Order not found' })
+  collectOrder(@Param('id', ParseUUIDPipe) id: string) {
+    return this.shopService.collectOrder(id);
   }
 }

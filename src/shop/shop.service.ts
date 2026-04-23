@@ -19,6 +19,9 @@ import { UpdateShopItemDto } from './dto/update-shop-item.dto';
 import { CreateShopItemVariantDto } from './dto/create-shop-item-variant.dto';
 import { UpdateShopItemVariantDto } from './dto/update-shop-item-variant.dto';
 import { CreateShopOrderDto } from './dto/create-shop-order.dto';
+import { AdminCreateShopOrderDto } from './dto/admin-create-shop-order.dto';
+import { FilterShopOrdersDto } from './dto/filter-shop-orders.dto';
+import { NotificationType } from '@prisma/client';
 import axios from 'axios';
 
 @Injectable()
@@ -332,6 +335,189 @@ export class ShopService {
     if (order) {
       await this.checkAndNotifyLowStock(order.orderItems);
     }
+  }
+
+  async createAdminOrder(dto: AdminCreateShopOrderDto) {
+    const settings = await this.gymSettingsService.getCachedSettings();
+    const currency = settings?.currency ?? 'KES';
+
+    const lineItems: Array<{
+      shopItemId: string;
+      variantId?: string;
+      quantity: number;
+      unitPrice: number;
+      hasVariant: boolean;
+    }> = [];
+
+    for (const line of dto.items) {
+      const item = await this.prisma.shopItem.findUnique({
+        where: { id: line.shopItemId },
+        include: { variants: true },
+      });
+      if (!item || !item.isActive) {
+        throw new BadRequestException(`Shop item ${line.shopItemId} not found`);
+      }
+
+      if (line.variantId) {
+        const variant = item.variants.find((v) => v.id === line.variantId);
+        if (!variant) {
+          throw new BadRequestException(`Variant ${line.variantId} not found`);
+        }
+        if (variant.stock < line.quantity) {
+          throw new ConflictException(
+            `Insufficient stock for variant ${variant.name}`,
+          );
+        }
+        lineItems.push({
+          shopItemId: line.shopItemId,
+          variantId: line.variantId,
+          quantity: line.quantity,
+          unitPrice: variant.priceOverride ?? item.price,
+          hasVariant: true,
+        });
+      } else {
+        if (item.stock < line.quantity) {
+          throw new ConflictException(
+            `Insufficient stock for item ${item.name}`,
+          );
+        }
+        lineItems.push({
+          shopItemId: line.shopItemId,
+          quantity: line.quantity,
+          unitPrice: item.price,
+          hasVariant: false,
+        });
+      }
+    }
+
+    const totalAmount = lineItems.reduce(
+      (sum, l) => sum + l.unitPrice * l.quantity,
+      0,
+    );
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.shopOrder.create({
+        data: {
+          memberId: dto.memberId,
+          status: 'COLLECTED',
+          totalAmount,
+          currency,
+          paymentMethod: dto.paymentMethod,
+          orderItems: {
+            create: lineItems.map((l) => ({
+              shopItemId: l.shopItemId,
+              variantId: l.variantId ?? null,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+            })),
+          },
+        },
+        include: { orderItems: true },
+      });
+
+      for (const l of lineItems) {
+        if (l.hasVariant && l.variantId) {
+          const result = await tx.shopItemVariant.updateMany({
+            where: { id: l.variantId, stock: { gte: l.quantity } },
+            data: { stock: { decrement: l.quantity } },
+          });
+          if (result.count === 0) {
+            throw new ConflictException(
+              'Insufficient stock (concurrent order)',
+            );
+          }
+        } else {
+          const result = await tx.shopItem.updateMany({
+            where: { id: l.shopItemId, stock: { gte: l.quantity } },
+            data: { stock: { decrement: l.quantity } },
+          });
+          if (result.count === 0) {
+            throw new ConflictException(
+              'Insufficient stock (concurrent order)',
+            );
+          }
+        }
+      }
+
+      return created;
+    });
+
+    await this.checkAndNotifyLowStock(order.orderItems);
+    return order;
+  }
+
+  async findAllOrders(dto: FilterShopOrdersDto) {
+    const where: Record<string, unknown> = {};
+    if (dto.status) where.status = dto.status;
+    if (dto.memberId) where.memberId = dto.memberId;
+    if (dto.from || dto.to) {
+      const createdAt: Record<string, Date> = {};
+      if (dto.from) createdAt.gte = new Date(dto.from);
+      if (dto.to) createdAt.lte = new Date(dto.to);
+      where.createdAt = createdAt;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.shopOrder.findMany({
+        where,
+        include: {
+          orderItems: true,
+          member: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: ((dto.page ?? 1) - 1) * (dto.limit ?? 20),
+        take: dto.limit ?? 20,
+      }),
+      this.prisma.shopOrder.count({ where }),
+    ]);
+
+    return { data, total, page: dto.page ?? 1, limit: dto.limit ?? 20 };
+  }
+
+  async collectOrder(orderId: string) {
+    const order = await this.prisma.shopOrder.findUnique({
+      where: { id: orderId },
+      include: {
+        member: { select: { id: true, firstName: true } },
+      },
+    });
+
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'PAID') {
+      throw new BadRequestException('Order is not ready for collection');
+    }
+
+    const updated = await this.prisma.shopOrder.update({
+      where: { id: orderId },
+      data: { status: 'COLLECTED' },
+      include: {
+        orderItems: true,
+        member: { select: { id: true, firstName: true } },
+      },
+    });
+
+    this.notificationsService
+      .create({
+        userId: order.member.id,
+        title: 'Order Ready for Pickup',
+        body: 'Your order is ready for collection at the gym entrance.',
+        type: NotificationType.SHOP_ORDER_COLLECTED,
+        metadata: { orderId },
+      })
+      .catch((err: Error) =>
+        this.logger.error(
+          `Failed to send order collected notification: ${err.message}`,
+        ),
+      );
+
+    return updated;
   }
 
   private async checkAndNotifyLowStock(

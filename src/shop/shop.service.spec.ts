@@ -192,6 +192,56 @@ describe('ShopService', () => {
     });
   });
 
+  describe('createAdminOrder', () => {
+    it('should create order with COLLECTED status', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue({
+        ...mockItem,
+        variants: [],
+      } as any);
+      prisma.shopOrder.create.mockResolvedValue({
+        id: 'order-1',
+        status: 'COLLECTED',
+        orderItems: [],
+      } as any);
+      prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
+
+      const gymSettingsServiceMock =
+        module.get<DeepMockProxy<GymSettingsService>>(GymSettingsService);
+      gymSettingsServiceMock.getCachedSettings.mockResolvedValue({
+        currency: 'KES',
+      } as any);
+
+      const result = await service.createAdminOrder({
+        memberId: 'member-1',
+        items: [{ shopItemId: 'item-1', quantity: 1 }],
+        paymentMethod: 'MOBILE_MONEY_IN_PERSON' as any,
+      });
+
+      expect(result.status).toBe('COLLECTED');
+    });
+  });
+
+  describe('collectOrder', () => {
+    it('should throw NotFoundException if order not found', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue(null);
+      await expect(service.collectOrder('order-1')).rejects.toThrow(
+        'Order not found',
+      );
+    });
+
+    it('should throw BadRequestException if order is not PAID', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        status: 'PENDING',
+        member: { id: 'member-1', firstName: 'Jane' },
+      } as any);
+      await expect(service.collectOrder('order-1')).rejects.toThrow(
+        'Order is not ready for collection',
+      );
+    });
+  });
+
   describe('handlePaymentSuccess', () => {
     it('should update order to PAID', async () => {
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
