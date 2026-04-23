@@ -158,6 +158,15 @@ export class ShopService {
     if (!variant || variant.shopItemId !== itemId) {
       throw new NotFoundException('Variant not found');
     }
+    // Guard: don't delete variant referenced by historical orders
+    const orderCount = await this.prisma.shopOrderItem.count({
+      where: { variantId },
+    });
+    if (orderCount > 0) {
+      throw new ConflictException(
+        'Cannot delete variant with existing orders. Set stock to 0 to prevent new orders.',
+      );
+    }
     return this.prisma.shopItemVariant.delete({ where: { id: variantId } });
   }
 
@@ -180,6 +189,12 @@ export class ShopService {
       });
       if (!item || !item.isActive) {
         throw new BadRequestException(`Shop item ${line.shopItemId} not found`);
+      }
+
+      if (item.variants.length > 0 && !line.variantId) {
+        throw new BadRequestException(
+          `Item "${item.name}" has variants — you must specify a variantId`,
+        );
       }
 
       if (line.variantId) {
@@ -307,13 +322,38 @@ export class ShopService {
         },
       });
 
-      await this.prisma.shopOrder.update({
+      const updatedOrder = await this.prisma.shopOrder.update({
         where: { id: order.id },
         data: { paystackReference: reference },
+        include: { orderItems: true },
       });
 
-      return { order, checkout: response.data.data };
+      return { order: updatedOrder, checkout: response.data.data };
     } catch (error) {
+      // Cancel the order and restore stock so inventory isn't locked
+      try {
+        await this.prisma.shopOrder.update({
+          where: { id: order.id },
+          data: { status: 'CANCELLED' },
+        });
+        for (const l of lineItems) {
+          if (l.hasVariant && l.variantId) {
+            await this.prisma.shopItemVariant.update({
+              where: { id: l.variantId },
+              data: { stock: { increment: l.quantity } },
+            });
+          } else {
+            await this.prisma.shopItem.update({
+              where: { id: l.shopItemId },
+              data: { stock: { increment: l.quantity } },
+            });
+          }
+        }
+      } catch (rollbackErr) {
+        this.logger.error(
+          `Failed to roll back stock for order ${order.id}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+        );
+      }
       if (axios.isAxiosError(error)) {
         this.logger.error('Paystack shop initialization failed', {
           status: error.response?.status,
@@ -350,6 +390,13 @@ export class ShopService {
     const settings = await this.gymSettingsService.getCachedSettings();
     const currency = settings?.currency ?? 'KES';
 
+    const member = await this.prisma.user.findFirst({
+      where: { id: dto.memberId, role: 'MEMBER', deletedAt: null },
+    });
+    if (!member) {
+      throw new NotFoundException('Member not found');
+    }
+
     const lineItems: Array<{
       shopItemId: string;
       variantId?: string;
@@ -365,6 +412,12 @@ export class ShopService {
       });
       if (!item || !item.isActive) {
         throw new BadRequestException(`Shop item ${line.shopItemId} not found`);
+      }
+
+      if (item.variants.length > 0 && !line.variantId) {
+        throw new BadRequestException(
+          `Item "${item.name}" has variants — you must specify a variantId`,
+        );
       }
 
       if (line.variantId) {

@@ -204,6 +204,11 @@ describe('ShopService', () => {
 
   describe('createAdminOrder', () => {
     it('should create order with COLLECTED status', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'member-1',
+        role: 'MEMBER',
+        deletedAt: null,
+      } as any);
       prisma.shopItem.findUnique.mockResolvedValue({
         ...mockItem,
         variants: [],
@@ -229,6 +234,24 @@ describe('ShopService', () => {
       });
 
       expect(result.status).toBe('COLLECTED');
+    });
+
+    it('should throw NotFoundException when memberId is not a valid MEMBER', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      const gymSettingsServiceMock =
+        module.get<DeepMockProxy<GymSettingsService>>(GymSettingsService);
+      gymSettingsServiceMock.getCachedSettings.mockResolvedValue({
+        currency: 'KES',
+      } as any);
+
+      await expect(
+        service.createAdminOrder({
+          memberId: 'bad-id',
+          items: [{ shopItemId: 'item-1', quantity: 1 }],
+          paymentMethod: 'MOBILE_MONEY_IN_PERSON' as any,
+        }),
+      ).rejects.toThrow('Member not found');
     });
   });
 

@@ -68,7 +68,7 @@ export class ShopController {
     @Query() query: PaginationQueryDto,
     @CurrentUser('role') role: string,
   ) {
-    const memberOnly = role === 'MEMBER';
+    const memberOnly = role !== 'ADMIN' && role !== 'SUPER_ADMIN';
     return this.shopService.findAllItems(query.page, query.limit, memberOnly);
   }
 
@@ -79,7 +79,7 @@ export class ShopController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('role') role: string,
   ) {
-    const memberOnly = role === 'MEMBER';
+    const memberOnly = role !== 'ADMIN' && role !== 'SUPER_ADMIN';
     return this.shopService.findOneItem(id, memberOnly);
   }
 
