@@ -398,8 +398,12 @@ export class BillingService {
   }
 
   async expireOverdueSubscriptions() {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    // Use midnight Nairobi (UTC+3) as the cutoff so subscriptions are expired
+    // on the correct calendar day regardless of the server's local timezone.
+    const nairobiDateStr = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Africa/Nairobi',
+    });
+    const now = new Date(`${nairobiDateStr}T00:00:00+03:00`);
 
     const overdueSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
