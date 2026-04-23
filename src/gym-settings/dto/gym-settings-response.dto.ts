@@ -61,6 +61,9 @@ export class GymSettingsResponseDto {
   @ApiProperty({ example: 4, description: 'Streak weeks to tag as loyal' })
   loyalStreakWeeks: number;
 
+  @ApiProperty({ example: 4, description: 'Days per week required for streak' })
+  streakDaysRequiredPerWeek: number;
+
   @ApiProperty()
   createdAt: Date;
 

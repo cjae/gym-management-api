@@ -15,8 +15,6 @@ type TxClient = Prisma.TransactionClient;
 @Injectable()
 export class AttendanceService {
   private static readonly DEFAULT_TIMEZONE = 'Africa/Nairobi';
-  private readonly DAYS_REQUIRED_PER_WEEK = 4;
-
   constructor(
     private prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
@@ -28,6 +26,11 @@ export class AttendanceService {
   private async getTimezone(): Promise<string> {
     const settings = await this.gymSettingsService.getCachedSettings();
     return settings?.timezone ?? AttendanceService.DEFAULT_TIMEZONE;
+  }
+
+  private async getDaysRequired(): Promise<number> {
+    const settings = await this.gymSettingsService.getCachedSettings();
+    return settings?.streakDaysRequiredPerWeek ?? 4;
   }
 
   /** Current calendar date in the given timezone as a UTC-midnight Date. */
@@ -127,6 +130,7 @@ export class AttendanceService {
     // side-effect events — so streak/milestone updates fire exactly once per
     // day per member.
     const timezone = await this.getTimezone();
+    const daysRequired = await this.getDaysRequired();
     const today = this.getToday(timezone);
 
     let txResult: {
@@ -142,7 +146,12 @@ export class AttendanceService {
           data: { memberId, checkInDate: today, entranceId },
         });
 
-        const txStreak = await this.updateStreak(memberId, today, tx);
+        const txStreak = await this.updateStreak(
+          memberId,
+          today,
+          daysRequired,
+          tx,
+        );
 
         const txTotalCheckIns = await tx.attendance.count({
           where: { memberId },
@@ -162,7 +171,7 @@ export class AttendanceService {
         // Lost the race — another concurrent check-in already recorded today's
         // attendance. Return the "already checked in today" shape without
         // re-emitting activity / streak / milestone side effects.
-        return this.handleAlreadyCheckedIn(memberId, entranceId);
+        return this.handleAlreadyCheckedIn(memberId, daysRequired, entranceId);
       }
       throw err;
     }
@@ -190,10 +199,7 @@ export class AttendanceService {
     });
 
     // 5. Streak nudge: "One more day this week!" (only if they have a streak to keep)
-    if (
-      streak.daysThisWeek === this.DAYS_REQUIRED_PER_WEEK - 1 &&
-      streak.weeklyStreak > 0
-    ) {
+    if (streak.daysThisWeek === daysRequired - 1 && streak.weeklyStreak > 0) {
       this.notificationsService
         .create({
           userId: memberId,
@@ -239,7 +245,7 @@ export class AttendanceService {
       weeklyStreak: streak.weeklyStreak,
       longestStreak: streak.longestStreak,
       daysThisWeek: streak.daysThisWeek,
-      daysRequired: this.DAYS_REQUIRED_PER_WEEK,
+      daysRequired,
       isFirstCheckIn,
       isNewStreakRecord: streak.longestStreak > streak.previousLongestStreak,
     };
@@ -251,7 +257,11 @@ export class AttendanceService {
    * — does NOT touch streak, does NOT emit activity.check_in or streak.updated,
    * so milestones are not double-awarded and the activity feed is not spammed.
    */
-  private async handleAlreadyCheckedIn(memberId: string, entranceId?: string) {
+  private async handleAlreadyCheckedIn(
+    memberId: string,
+    daysRequired: number,
+    entranceId?: string,
+  ) {
     const [streak, existingMember] = await Promise.all([
       this.prisma.streak.findUnique({ where: { memberId } }),
       this.prisma.user.findUnique({
@@ -285,7 +295,7 @@ export class AttendanceService {
       weeklyStreak: streak?.weeklyStreak ?? 0,
       longestStreak: streak?.longestStreak ?? 0,
       daysThisWeek: streak?.daysThisWeek ?? 0,
-      daysRequired: this.DAYS_REQUIRED_PER_WEEK,
+      daysRequired,
     };
   }
 
@@ -396,6 +406,7 @@ export class AttendanceService {
   private async updateStreak(
     memberId: string,
     today: Date,
+    daysRequired: number,
     tx: TxClient = this.prisma,
   ) {
     const currentMonday = this.getMondayOfWeek(today);
@@ -433,10 +444,7 @@ export class AttendanceService {
         const diffMs = currentMonday.getTime() - prevWeekStart.getTime();
         const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
 
-        if (
-          diffWeeks === 1 &&
-          existingStreak.daysThisWeek >= this.DAYS_REQUIRED_PER_WEEK
-        ) {
+        if (diffWeeks === 1 && existingStreak.daysThisWeek >= daysRequired) {
           weeklyStreak = existingStreak.weeklyStreak + 1;
         } else {
           weeklyStreak = 0;

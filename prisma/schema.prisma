@@ -608,8 +608,9 @@ model GymSettings {
   dormantDays             Int      @default(50)
   atRiskDays              Int      @default(20)
   loyalStreakWeeks        Int      @default(4)
-  maxActiveGoalsPerMember Int      @default(3)
-  createdAt               DateTime @default(now())
+  maxActiveGoalsPerMember   Int      @default(3)
+  streakDaysRequiredPerWeek Int      @default(4)
+  createdAt                 DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
   offPeakWindows OffPeakWindow[]

@@ -58,6 +58,9 @@ export class GymSettingsService {
         ...(dto.loyalStreakWeeks !== undefined && {
           loyalStreakWeeks: dto.loyalStreakWeeks,
         }),
+        ...(dto.streakDaysRequiredPerWeek !== undefined && {
+          streakDaysRequiredPerWeek: dto.streakDaysRequiredPerWeek,
+        }),
       },
       update: {
         ...(dto.timezone && { timezone: dto.timezone }),
@@ -78,6 +81,9 @@ export class GymSettingsService {
         ...(dto.atRiskDays !== undefined && { atRiskDays: dto.atRiskDays }),
         ...(dto.loyalStreakWeeks !== undefined && {
           loyalStreakWeeks: dto.loyalStreakWeeks,
+        }),
+        ...(dto.streakDaysRequiredPerWeek !== undefined && {
+          streakDaysRequiredPerWeek: dto.streakDaysRequiredPerWeek,
         }),
       },
       include: { offPeakWindows: true },
