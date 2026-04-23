@@ -10,9 +10,11 @@
 |---|---|---|---|---|
 | Critical | 4 | 4 | 0 | 0 |
 | High | 13 | 12 | 1 | 0 |
-| Medium | 18 | 9 | 0 | 9 |
-| Low | 7 | 0 | 0 | 7 |
-| **Total** | **42** | **25** | **1** | **16** |
+| Medium | 18 | 16 | 0 | 2 |
+| Low | 7 | 7 | 0 | 0 |
+| **Total** | **42** | **39** | **1** | **2** |
+
+Pending: M12 (welcome email temp password), M17 (license grace clock) — both deferred pending product/control-plane decisions.
 
 Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remediation-client-impact.md`.
 
@@ -181,25 +183,39 @@ Client/ops impact for shipped fixes: see `docs/plans/2026-04-22-security-remedia
 - 2026-04-22 — C2 timing-safe HMAC compare on Paystack webhook — 26c61b0 (PR 1)
 - 2026-04-22 — C3 atomic webhook idempotency via `updateMany` claim — 26c61b0 (PR 1)
 - 2026-04-22 — C4 require `ENCRYPTION_KEY`, self-heal legacy plaintext auth codes — 26c61b0 (PR 1)
-- 2026-04-22 — H6 atomic password-reset token claim — (uncommitted, PR 2)
-- 2026-04-22 — H9 per-member discount cap via counter table — (uncommitted, PR 2, **migration**)
-- 2026-04-22 — H10 duo-subscription discount bypass fixed via counter scope — (uncommitted, PR 2)
-- 2026-04-22 — H11 atomic PENDING-subscription cleanup cron — (uncommitted, PR 2)
-- 2026-04-22 — H12 gym-class enrollment capacity via counter column — (uncommitted, PR 2, **migration**)
-- 2026-04-22 — H13 referral reward moved into webhook tx with atomic claim — (uncommitted, PR 2)
+- 2026-04-22 — H6 atomic password-reset token claim — 73243d5 (PR 2)
+- 2026-04-22 — H9 per-member discount cap via counter table — 73243d5 (PR 2, **migration**)
+- 2026-04-22 — H10 duo-subscription discount bypass fixed via counter scope — 73243d5 (PR 2)
+- 2026-04-22 — H11 atomic PENDING-subscription cleanup cron — 73243d5 (PR 2)
+- 2026-04-22 — H12 gym-class enrollment capacity via counter column — 73243d5 (PR 2, **migration**)
+- 2026-04-22 — H13 referral reward moved into webhook tx with atomic claim — 73243d5 (PR 2)
 - 2026-04-22 — M14 atomic attendance check-in + streak + deferred events — 73243d5 (PR 2)
 - 2026-04-22 — M15 atomic goal generation state machine in listener — 73243d5 (PR 2)
-- 2026-04-22 — H1 Basic Auth timing-safe compare — (uncommitted, PR 3)
-- 2026-04-22 — H2 Basic Auth fail-closed + boot-time enforcement — (uncommitted, PR 3)
-- 2026-04-22 — H3 audit interceptor deep-redacts sensitive body keys — (uncommitted, PR 3)
-- 2026-04-22 — H4 Sentry user context drops email, keeps id+role — (uncommitted, PR 3)
-- 2026-04-22 — H5 mustChangePassword enforced via JwtAuthGuard with decorator opt-out — (uncommitted, PR 3)
+- 2026-04-22 — H1 Basic Auth timing-safe compare — a28dece (PR 3)
+- 2026-04-22 — H2 Basic Auth fail-closed + boot-time enforcement — a28dece (PR 3)
+- 2026-04-22 — H3 audit interceptor deep-redacts sensitive body keys — a28dece (PR 3)
+- 2026-04-22 — H4 Sentry user context drops email, keeps id+role — a28dece (PR 3)
+- 2026-04-22 — H5 mustChangePassword enforced via JwtAuthGuard with decorator opt-out — a28dece (PR 3)
 - 2026-04-22 — H7 wontfix — product contract question, not a security bug; original behavior (bill from `SubscriptionPlan.price`) is intentional for this single-tenant domain
-- 2026-04-22 — H8 billing decrypt failure now alerts on Sentry + flags subscription — (uncommitted, PR 3, **migration**)
-- 2026-04-22 — M1 trust proxy hops + throttler keyed on real client IP — (uncommitted, PR 3)
-- 2026-04-22 — M2 Swagger UI gated behind Basic Auth outside dev/test — (uncommitted, PR 3)
-- 2026-04-22 — M5 login timing parity via dummy bcrypt compare on miss — (uncommitted, PR 3)
-- 2026-04-22 — M10 WebSocket CORS narrowed to ADMIN_URL allowlist — (uncommitted, PR 3)
-- 2026-04-22 — M13 webhook propagates 5xx on post-claim failures (Paystack retries) — (uncommitted, PR 3)
-- 2026-04-22 — M16 billing crons wrapped in pg advisory lock (replica-safe) — (uncommitted, PR 3)
-- 2026-04-22 — M18 Prisma SSL cert validation enforced in production — (uncommitted, PR 3)
+- 2026-04-22 — H8 billing decrypt failure now alerts on Sentry + flags subscription — a28dece (PR 3, **migration**)
+- 2026-04-22 — M1 trust proxy hops + throttler keyed on real client IP — a28dece (PR 3)
+- 2026-04-22 — M2 Swagger UI gated behind Basic Auth outside dev/test — a28dece (PR 3)
+- 2026-04-22 — M5 login timing parity via dummy bcrypt compare on miss — a28dece (PR 3)
+- 2026-04-22 — M10 WebSocket CORS narrowed to ADMIN_URL allowlist — a28dece (PR 3)
+- 2026-04-22 — M13 webhook propagates 5xx on post-claim failures (Paystack retries) — a28dece (PR 3)
+- 2026-04-22 — M16 billing crons wrapped in pg advisory lock (replica-safe) — a28dece (PR 3)
+- 2026-04-22 — M18 Prisma SSL cert validation enforced in production — a28dece (PR 3)
+- 2026-04-23 — M3 sessionsInvalidatedAt claim + cutoff check on access/refresh strategies — c3262e0 (PR 4, **migration**)
+- 2026-04-23 — M4 RefreshToken table + family revocation on replay + AUTH_REFRESH_REUSE audit event — c3262e0 (PR 4, **migration**)
+- 2026-04-23 — M6 generic `"This discount code cannot be applied"` error on validate path — c3262e0 (PR 4)
+- 2026-04-23 — M7 trainer roster restricted to ADMIN/SUPER_ADMIN/TRAINER; members get slim `my/trainer` DTO — c3262e0 (PR 4)
+- 2026-04-23 — M8 deletion approval scrubs PII (email rewrite, null free-form fields, random password) — c3262e0 (PR 4)
+- 2026-04-23 — M9 atomic deletion-request state transitions via `updateMany({status:'PENDING'})` — c3262e0 (PR 4)
+- 2026-04-23 — M11 goal title + progress-log notes sanitized (HTML/controls/invisible chars stripped) — c3262e0 (PR 4)
+- 2026-04-23 — L1 CSV/XLSX exports neutralize formula-injection on cells starting with `=`, `+`, `-`, `@`, tab, CR — c3262e0 (PR 4)
+- 2026-04-23 — L2 sourcemaps disabled on production build — c3262e0 (PR 4)
+- 2026-04-23 — L3 `/api/health` response reduced to `{ status: 'ok' }` — c3262e0 (PR 4)
+- 2026-04-23 — L4 strict CSP directives set explicitly on helmet — c3262e0 (PR 4)
+- 2026-04-23 — L5 license phone-home payload minimized; SHA-256 instance fingerprint; optional member-count bucketing — c3262e0 (PR 4)
+- 2026-04-23 — L6 `DATABASE_URL` validated at boot (set, postgres scheme, parseable URL) — c3262e0 (PR 4)
+- 2026-04-23 — L7 freeze counter replay protection via `freezeCycleAnchor` — c3262e0 (PR 4, **migration**)
