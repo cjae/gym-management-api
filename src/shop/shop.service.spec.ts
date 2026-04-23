@@ -269,6 +269,31 @@ describe('ShopService', () => {
     });
   });
 
+  describe('cleanupPendingOrders', () => {
+    it('should cancel PENDING orders older than 1 hour and restore stock', async () => {
+      const staleOrder = {
+        id: 'order-1',
+        status: 'PENDING',
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2h ago
+        orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
+      };
+      prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.cleanupPendingOrders();
+
+      expect(prisma.shopOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+      expect(prisma.shopItem.updateMany).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { stock: { increment: 2 } },
+      });
+    });
+  });
+
   describe('handlePaymentSuccess', () => {
     it('should update order to PAID', async () => {
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });

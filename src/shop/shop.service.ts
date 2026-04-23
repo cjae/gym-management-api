@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -544,6 +545,46 @@ export class ShopService {
       throw new NotFoundException('Order not found');
     }
     return order;
+  }
+
+  @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Africa/Nairobi' })
+  async cleanupPendingOrders() {
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+
+    const staleOrders = await this.prisma.shopOrder.findMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: cutoff },
+      },
+      include: { orderItems: true },
+    });
+
+    for (const order of staleOrders) {
+      const result = await this.prisma.shopOrder.updateMany({
+        where: { id: order.id, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+
+      if (result.count === 0) continue; // already claimed by another process
+
+      for (const item of order.orderItems) {
+        if (item.variantId) {
+          await this.prisma.shopItemVariant.updateMany({
+            where: { id: item.variantId },
+            data: { stock: { increment: item.quantity } },
+          });
+        } else {
+          await this.prisma.shopItem.updateMany({
+            where: { id: item.shopItemId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+      }
+
+      this.logger.log(
+        `Cancelled stale shop order ${order.id} and restored stock`,
+      );
+    }
   }
 
   private async checkAndNotifyLowStock(
