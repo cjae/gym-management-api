@@ -69,10 +69,10 @@ export const buildGoalPrompt = (input: GoalPromptInput): string => {
   const showConservativePace =
     input.priorGoalsAbandoned > input.priorGoalsCompleted;
   const showAttendanceMismatch =
-    input.requestedFrequency != null &&
+    requestedFrequency != null &&
     input.memberTenureMonths != null &&
     input.memberTenureMonths >= 1 &&
-    input.actualAttendanceLast4Weeks / 4 < input.requestedFrequency;
+    input.actualAttendanceLast4Weeks / 4 < requestedFrequency;
 
   return `
 A gym member wants to achieve the following goal:

@@ -461,16 +461,21 @@ export class SubscriptionsService {
           skipDuplicates: true,
         });
 
+        const where: Prisma.DiscountRedemptionCounterWhereInput = {
+          discountCodeId: subscription.discountCodeId,
+          memberId: user.id,
+        };
+
+        if (discountCode.maxUsesPerMember !== null) {
+          where.uses = { lt: discountCode.maxUsesPerMember };
+        }
+
         const { count } = await tx.discountRedemptionCounter.updateMany({
-          where: {
-            discountCodeId: subscription.discountCodeId,
-            memberId: user.id,
-            uses: { lt: discountCode.maxUsesPerMember },
-          },
+          where,
           data: { uses: { increment: 1 } },
         });
 
-        if (count === 0) {
+        if (count === 0 && discountCode.maxUsesPerMember !== null) {
           throw new ConflictException(
             'This member has already used this discount code the maximum number of times',
           );
