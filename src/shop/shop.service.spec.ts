@@ -294,6 +294,34 @@ describe('ShopService', () => {
     });
   });
 
+  describe('checkAndNotifyLowStock', () => {
+    it('should email admins when item stock reaches zero', async () => {
+      prisma.shopItem.findUnique.mockResolvedValue({
+        ...mockItem,
+        stock: 0,
+        variants: [],
+      } as any);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'admin-1', email: 'admin@gym.com', firstName: 'Admin' },
+      ] as any);
+
+      const emailService: DeepMockProxy<EmailService> =
+        module.get(EmailService);
+      emailService.sendEmail.mockResolvedValue(undefined as any);
+
+      await (service as any).checkAndNotifyLowStock([
+        { shopItemId: 'item-1', variantId: null, quantity: 1 },
+      ]);
+
+      expect(emailService.sendEmail).toHaveBeenCalledWith(
+        'admin@gym.com',
+        expect.stringContaining('Out of Stock'),
+        'shop-low-stock',
+        expect.objectContaining({ itemName: 'Protein Shake' }),
+      );
+    });
+  });
+
   describe('handlePaymentSuccess', () => {
     it('should update order to PAID', async () => {
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });

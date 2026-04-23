@@ -588,12 +588,61 @@ export class ShopService {
   }
 
   private async checkAndNotifyLowStock(
-    _orderItems: Array<{
+    orderItems: Array<{
       shopItemId: string;
       variantId: string | null;
       quantity: number;
     }>,
   ) {
-    // implemented in Task 12
+    for (const line of orderItems) {
+      try {
+        if (line.variantId) {
+          const variant = await this.prisma.shopItemVariant.findUnique({
+            where: { id: line.variantId },
+            include: { item: true },
+          });
+          if (variant && variant.stock === 0) {
+            await this.notifyAdminsLowStock(variant.item.name, variant.name);
+          }
+        } else {
+          const item = await this.prisma.shopItem.findUnique({
+            where: { id: line.shopItemId },
+          });
+          if (item && item.stock === 0) {
+            await this.notifyAdminsLowStock(item.name);
+          }
+        }
+      } catch (err) {
+        this.logger.error(
+          `Failed to check low stock for item ${line.shopItemId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  private async notifyAdminsLowStock(itemName: string, variantName?: string) {
+    const admins = await this.prisma.user.findMany({
+      where: {
+        role: { in: ['ADMIN', 'SUPER_ADMIN'] },
+        deletedAt: null,
+      },
+      select: { email: true, firstName: true },
+    });
+
+    const subject = `Shop Item Out of Stock: ${itemName}${variantName ? ` — ${variantName}` : ''}`;
+
+    for (const admin of admins) {
+      this.emailService
+        .sendEmail(admin.email, subject, 'shop-low-stock', {
+          itemName,
+          variantName: variantName ?? null,
+          firstName: admin.firstName,
+        })
+        .catch((err: Error) =>
+          this.logger.error(
+            `Failed to send low-stock email to ${admin.email}: ${err.message}`,
+          ),
+        );
+    }
   }
 }
