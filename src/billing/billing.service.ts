@@ -14,6 +14,7 @@ import { decrypt } from '../common/utils/encryption.util';
 import { NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
 
 // M16 — PostgreSQL advisory-lock IDs used to serialize billing crons across
 // API replicas. Each cron claims its own 64-bit lock via pg_try_advisory_lock;
@@ -41,6 +42,7 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
     private readonly usersService: UsersService,
+    private readonly gymSettingsService: GymSettingsService,
   ) {
     this.memberAppUrl =
       this.configService.get<AppConfig>(getAppConfigName())!.memberAppUrl;
@@ -398,12 +400,8 @@ export class BillingService {
   }
 
   async expireOverdueSubscriptions() {
-    // Use midnight Nairobi (UTC+3) as the cutoff so subscriptions are expired
-    // on the correct calendar day regardless of the server's local timezone.
-    const nairobiDateStr = new Date().toLocaleDateString('en-CA', {
-      timeZone: 'Africa/Nairobi',
-    });
-    const now = new Date(`${nairobiDateStr}T00:00:00+03:00`);
+    const settings = await this.gymSettingsService.getSettings();
+    const now = this.getLocalMidnight(settings?.timezone ?? 'Africa/Nairobi');
 
     const overdueSubscriptions = await this.prisma.memberSubscription.findMany({
       where: {
@@ -443,5 +441,22 @@ export class BillingService {
 
       this.logger.log(`Expired overdue subscription ${sub.id}`);
     }
+  }
+
+  // Returns midnight of today in the given IANA timezone as a UTC Date.
+  private getLocalMidnight(tz: string): Date {
+    const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const offsetStr =
+      new Intl.DateTimeFormat('en', {
+        timeZone: tz,
+        timeZoneName: 'shortOffset',
+      })
+        .formatToParts(new Date())
+        .find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+0';
+    const m = /GMT([+-])(\d+)(?::(\d+))?/.exec(offsetStr);
+    const sign = m?.[1] ?? '+';
+    const hh = (m?.[2] ?? '0').padStart(2, '0');
+    const mm = (m?.[3] ?? '00').padStart(2, '0');
+    return new Date(`${dateStr}T00:00:00${sign}${hh}:${mm}`);
   }
 }
