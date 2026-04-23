@@ -5,12 +5,11 @@ import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { ConfigService } from '@nestjs/config';
-import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
+import { mockDeep } from 'jest-mock-extended';
 import { PrismaClient } from '@prisma/client';
 
 describe('ShopService', () => {
   let service: ShopService;
-  let prisma: DeepMockProxy<PrismaClient>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -40,8 +39,6 @@ describe('ShopService', () => {
     }).compile();
 
     service = module.get<ShopService>(ShopService);
-    prisma = module.get(PrismaService);
-    prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
   });
 
   it('should be defined', () => {

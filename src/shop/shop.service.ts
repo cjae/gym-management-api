@@ -8,6 +8,7 @@ import {
   PaymentConfig,
   getPaymentConfigName,
 } from '../common/config/payment.config';
+
 @Injectable()
 export class ShopService {
   private readonly paystackBaseUrl = 'https://api.paystack.co';
