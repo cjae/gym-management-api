@@ -785,9 +785,11 @@ describe('AttendanceService', () => {
 
       // daysRequired should be 3 (from settings), not 4.
       expect(result.daysRequired).toBe(3);
-      // 3 days last week >= daysRequired(3) → streak incremented.
+      expect(result.weeklyStreak).toBe(2);
+      // 3 days last week >= daysRequired(3) → service computes weeklyStreak + 1.
       expect(prisma.streak.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
+          create: expect.objectContaining({ weeklyStreak: 2, daysThisWeek: 1 }),
           update: expect.objectContaining({ weeklyStreak: 2, daysThisWeek: 1 }),
         }),
       );
@@ -810,7 +812,7 @@ describe('AttendanceService', () => {
 
       const result = await service.getStreak('member-1');
 
-      expect(result).toEqual(streakRecord);
+      expect(result).toEqual({ ...streakRecord, daysRequired: 4 });
     });
 
     it('should return default fields when no streak exists', async () => {
@@ -826,6 +828,7 @@ describe('AttendanceService', () => {
         bestWeek: 0,
         weekStart: null,
         lastCheckInDate: null,
+        daysRequired: 4,
       });
     });
   });

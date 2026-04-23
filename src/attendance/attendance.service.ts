@@ -22,15 +22,15 @@ export class AttendanceService {
     private readonly gymSettingsService: GymSettingsService,
   ) {}
 
-  /** Get the gym's configured timezone, falling back to Africa/Nairobi. */
-  private async getTimezone(): Promise<string> {
+  private async getCheckInSettings(): Promise<{
+    timezone: string;
+    daysRequired: number;
+  }> {
     const settings = await this.gymSettingsService.getCachedSettings();
-    return settings?.timezone ?? AttendanceService.DEFAULT_TIMEZONE;
-  }
-
-  private async getDaysRequired(): Promise<number> {
-    const settings = await this.gymSettingsService.getCachedSettings();
-    return settings?.streakDaysRequiredPerWeek ?? 4;
+    return {
+      timezone: settings?.timezone ?? AttendanceService.DEFAULT_TIMEZONE,
+      daysRequired: settings?.streakDaysRequiredPerWeek ?? 4,
+    };
   }
 
   /** Current calendar date in the given timezone as a UTC-midnight Date. */
@@ -129,8 +129,7 @@ export class AttendanceService {
     // "already checked in today" path WITHOUT touching streak or emitting
     // side-effect events — so streak/milestone updates fire exactly once per
     // day per member.
-    const timezone = await this.getTimezone();
-    const daysRequired = await this.getDaysRequired();
+    const { timezone, daysRequired } = await this.getCheckInSettings();
     const today = this.getToday(timezone);
 
     let txResult: {
@@ -488,9 +487,12 @@ export class AttendanceService {
   }
 
   async getStreak(memberId: string) {
-    const streak = await this.prisma.streak.findUnique({ where: { memberId } });
-    return (
-      streak ?? {
+    const [streak, { daysRequired }] = await Promise.all([
+      this.prisma.streak.findUnique({ where: { memberId } }),
+      this.getCheckInSettings(),
+    ]);
+    return {
+      ...(streak ?? {
         memberId,
         weeklyStreak: 0,
         longestStreak: 0,
@@ -498,8 +500,9 @@ export class AttendanceService {
         bestWeek: 0,
         weekStart: null,
         lastCheckInDate: null,
-      }
-    );
+      }),
+      daysRequired,
+    };
   }
 
   async getLeaderboard(page = 1, limit = 20) {
@@ -542,7 +545,7 @@ export class AttendanceService {
   }
 
   async getTodayAttendance(page = 1, limit = 20, search?: string) {
-    const timezone = await this.getTimezone();
+    const { timezone } = await this.getCheckInSettings();
     const today = this.getToday(timezone);
     const where: {
       checkInDate: Date;

@@ -199,16 +199,16 @@ model User {
   injuryNotes           String?            @db.VarChar(500)
   onboardingCompletedAt DateTime?
 
-  tosAcceptedAt      DateTime?
-  waiverAcceptedAt   DateTime?
-  deletedAt          DateTime?
+  tosAcceptedAt         DateTime?
+  waiverAcceptedAt      DateTime?
+  deletedAt             DateTime?
   // Bumped on logout / refresh-reuse detection so all outstanding access
   // and refresh tokens minted before this timestamp are considered invalid.
   // Closes the race between logout writing to InvalidatedToken and a parallel
   // /auth/refresh minting a new JTI. See M3/M4 in the 2026-04-22 security audit.
   sessionsInvalidatedAt DateTime?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   subscriptionsOwned         MemberSubscription[]     @relation("SubscriptionOwner")
   subscriptionMembers        SubscriptionMember[]
@@ -598,20 +598,20 @@ model AuditLog {
 }
 
 model GymSettings {
-  id                      String   @id @default("singleton")
-  timezone                String   @default("Africa/Nairobi")
-  referralRewardDays      Int      @default(7)
-  maxReferralsPerCycle    Int      @default(3)
-  newMemberDays           Int      @default(14)
-  activeDays              Int      @default(7)
-  inactiveDays            Int      @default(20)
-  dormantDays             Int      @default(50)
-  atRiskDays              Int      @default(20)
-  loyalStreakWeeks        Int      @default(4)
+  id                        String   @id @default("singleton")
+  timezone                  String   @default("Africa/Nairobi")
+  referralRewardDays        Int      @default(7)
+  maxReferralsPerCycle      Int      @default(3)
+  newMemberDays             Int      @default(14)
+  activeDays                Int      @default(7)
+  inactiveDays              Int      @default(20)
+  dormantDays               Int      @default(50)
+  atRiskDays                Int      @default(20)
+  loyalStreakWeeks          Int      @default(4)
   maxActiveGoalsPerMember   Int      @default(3)
   streakDaysRequiredPerWeek Int      @default(4)
   createdAt                 DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  updatedAt                 DateTime @updatedAt
 
   offPeakWindows OffPeakWindow[]
 }
