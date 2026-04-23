@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -434,11 +435,32 @@ export class SubscriptionsService {
       throw new NotFoundException(`User with email ${memberEmail} not found`);
     }
 
-    return this.prisma.subscriptionMember.create({
-      data: {
-        subscriptionId,
-        memberId: user.id,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.subscriptionMember.create({
+        data: { subscriptionId, memberId: user.id },
+      });
+
+      // M9 — if a discount code was applied to this subscription, credit the
+      // new member's benefit counter so the per-member cap is respected if
+      // they later try to redeem the same code on a different subscription.
+      if (subscription.discountCodeId) {
+        await tx.discountRedemptionCounter.upsert({
+          where: {
+            discountCodeId_memberId: {
+              discountCodeId: subscription.discountCodeId,
+              memberId: user.id,
+            },
+          },
+          create: {
+            discountCodeId: subscription.discountCodeId,
+            memberId: user.id,
+            uses: 1,
+          },
+          update: { uses: { increment: 1 } },
+        });
+      }
+
+      return member;
     });
   }
 
@@ -759,20 +781,35 @@ export class SubscriptionsService {
     // subscription that predates this fix (or survived a webhook that
     // failed the endDate-advance guard) will self-heal here the first
     // time a freeze is attempted in its new cycle.
-    const result = await this.prisma.memberSubscription.update({
+    //
+    // M11 — status-guarded updateMany prevents a race where two concurrent
+    // freeze requests both pass the read-time ACTIVE check. The first UPDATE
+    // wins the row lock and sets FROZEN; the second finds count=0 (status is
+    // no longer ACTIVE) and throws ConflictException rather than overwriting
+    // the freeze dates.
+    const { count: frozeCount } =
+      await this.prisma.memberSubscription.updateMany({
+        where: { id: subscriptionId, status: SubscriptionStatus.ACTIVE },
+        data: {
+          status: SubscriptionStatus.FROZEN,
+          freezeStartDate,
+          freezeEndDate,
+          ...(anchorIsCurrent
+            ? {}
+            : {
+                frozenDaysUsed: 0,
+                freezeCount: 0,
+                freezeCycleAnchor: subscription.endDate,
+              }),
+        },
+      });
+    if (frozeCount === 0) {
+      throw new ConflictException(
+        'Subscription status changed before freeze could complete; please retry',
+      );
+    }
+    const result = await this.prisma.memberSubscription.findUniqueOrThrow({
       where: { id: subscriptionId },
-      data: {
-        status: SubscriptionStatus.FROZEN,
-        freezeStartDate,
-        freezeEndDate,
-        ...(anchorIsCurrent
-          ? {}
-          : {
-              frozenDaysUsed: 0,
-              freezeCount: 0,
-              freezeCycleAnchor: subscription.endDate,
-            }),
-      },
       include: { plan: true },
     });
 
@@ -864,18 +901,32 @@ export class SubscriptionsService {
     // Without this, a subsequent freeze in the same cycle would see the
     // anchor pointing at the pre-unfreeze endDate and incorrectly treat
     // the counters as stale.
-    const result = await this.prisma.memberSubscription.update({
+    //
+    // M11 — status-guarded updateMany mirrors the freeze guard: a concurrent
+    // unfreeze that races past the FROZEN check will find count=0 on its
+    // UPDATE and receive a ConflictException rather than double-incrementing
+    // frozenDaysUsed or clobbering the already-restored dates.
+    const { count: unfrozeCount } =
+      await this.prisma.memberSubscription.updateMany({
+        where: { id: subscriptionId, status: SubscriptionStatus.FROZEN },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          endDate: newEndDate,
+          nextBillingDate: newNextBillingDate,
+          freezeStartDate: null,
+          freezeEndDate: null,
+          frozenDaysUsed: { increment: frozenDays },
+          freezeCount: { increment: 1 },
+          freezeCycleAnchor: newEndDate,
+        },
+      });
+    if (unfrozeCount === 0) {
+      throw new ConflictException(
+        'Subscription status changed before unfreeze could complete; please retry',
+      );
+    }
+    const result = await this.prisma.memberSubscription.findUniqueOrThrow({
       where: { id: subscriptionId },
-      data: {
-        status: SubscriptionStatus.ACTIVE,
-        endDate: newEndDate,
-        nextBillingDate: newNextBillingDate,
-        freezeStartDate: null,
-        freezeEndDate: null,
-        frozenDaysUsed: { increment: frozenDays },
-        freezeCount: { increment: 1 },
-        freezeCycleAnchor: newEndDate,
-      },
       include: { plan: true },
     });
 

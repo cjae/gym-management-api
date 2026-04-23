@@ -107,24 +107,15 @@ describe('PaymentsService', () => {
       mockedAxios.post.mockResolvedValue(mockPaystackResponse);
     });
 
-    it('should expire existing PENDING payment before creating a new one', async () => {
-      const existingPending = { id: 'old-pay-1', status: 'PENDING' };
-      prisma.payment.findFirst.mockResolvedValue(existingPending as any);
+    it('should atomically expire existing PENDING payment before creating a new one', async () => {
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
-        where: {
-          subscriptionId,
-          status: 'PENDING',
-        },
-      });
-
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'old-pay-1' },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { subscriptionId, status: 'PENDING' },
         data: { status: 'EXPIRED' },
       });
-
       expect(prisma.payment.create).toHaveBeenCalled();
     });
 
@@ -202,17 +193,14 @@ describe('PaymentsService', () => {
     });
 
     it('should create payment normally when no PENDING payment exists', async () => {
-      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
 
       await service.initializePayment(subscriptionId, email, userId);
 
-      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
-        where: {
-          subscriptionId,
-          status: 'PENDING',
-        },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { subscriptionId, status: 'PENDING' },
+        data: { status: 'EXPIRED' },
       });
-
       expect(prisma.payment.update).not.toHaveBeenCalled();
       expect(prisma.payment.create).toHaveBeenCalled();
     });

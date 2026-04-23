@@ -16,6 +16,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import {
   safeUserSelect,
+  safeUserDetailSelect,
   safeUserWithSubscriptionSelect,
 } from '../common/constants/safe-user-select';
 import { generateReferralCode } from '../common/utils/referral-code.util';
@@ -262,7 +263,7 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: safeUserWithSubscriptionSelect,
+      select: safeUserDetailSelect,
     });
     if (!user || user.deletedAt) {
       throw new NotFoundException(`User with id ${id} not found`);

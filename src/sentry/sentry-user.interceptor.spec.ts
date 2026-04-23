@@ -27,11 +27,13 @@ describe('SentryUserInterceptor', () => {
 
   const handler: CallHandler = { handle: () => of('ok') };
 
-  it('sets Sentry user with only id and role (no email)', async () => {
+  it('sets Sentry user with only id and role (no PII fields)', async () => {
     const ctx = createContext({
-      sub: 'user-1',
+      id: 'user-1',
       email: 'alice@example.com',
       role: 'ADMIN',
+      jti: 'token-jti-abc',
+      mustChangePassword: false,
     });
 
     await lastValueFrom(interceptor.intercept(ctx, handler));
@@ -41,6 +43,8 @@ describe('SentryUserInterceptor', () => {
     expect(payload).toEqual({ id: 'user-1', role: 'ADMIN' });
     expect(payload).not.toHaveProperty('email');
     expect(payload).not.toHaveProperty('username');
+    expect(payload).not.toHaveProperty('jti');
+    expect(payload).not.toHaveProperty('mustChangePassword');
   });
 
   it('does not call setUser when request has no user', async () => {
@@ -52,7 +56,13 @@ describe('SentryUserInterceptor', () => {
   });
 
   it('forwards the handler response unchanged', async () => {
-    const ctx = createContext({ sub: 'user-1', role: 'MEMBER' });
+    const ctx = createContext({
+      id: 'user-1',
+      role: 'MEMBER',
+      email: 'bob@example.com',
+      jti: 'jti-1',
+      mustChangePassword: false,
+    });
     const result = await lastValueFrom(interceptor.intercept(ctx, handler));
     expect(result).toBe('ok');
   });

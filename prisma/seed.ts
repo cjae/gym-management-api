@@ -19,6 +19,13 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  if (isProduction) {
+    throw new Error(
+      'Seed script must not run in production (NODE_ENV=production). ' +
+        'Aborting to prevent hardcoded dev credentials from being inserted.',
+    );
+  }
+
   const hash = await bcrypt.hash('password123', 10);
 
   const existingSuperAdmin = await prisma.user.findFirst({

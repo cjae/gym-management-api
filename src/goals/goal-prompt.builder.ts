@@ -64,7 +64,7 @@ export const buildGoalPrompt = (input: GoalPromptInput): string => {
     input.experienceLevel === 'BEGINNER' && input.bodyweightKg != null;
   const attendancePerWeek = (input.actualAttendanceLast4Weeks / 4).toFixed(1);
   const planLine = input.subscriptionPlanName
-    ? `${input.subscriptionPlanName} (off-peak: ${input.isOffPeakPlan ? 'yes' : 'no'})`
+    ? `${sanitizeText(input.subscriptionPlanName)} (off-peak: ${input.isOffPeakPlan ? 'yes' : 'no'})`
     : null;
   const showConservativePace =
     input.priorGoalsAbandoned > input.priorGoalsCompleted;

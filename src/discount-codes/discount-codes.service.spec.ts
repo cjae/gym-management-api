@@ -556,12 +556,9 @@ describe('DiscountCodesService', () => {
       prisma.discountRedemptionCounter.findUnique.mockResolvedValueOnce(null);
       prisma.subscriptionPlan.findUnique.mockResolvedValueOnce(null);
 
-      await expect(
-        service.validateCodeForProbe('SAVE20', planId, memberId),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.validateCodeForProbe('SAVE20', planId, memberId),
-      ).rejects.toThrow(GENERIC);
+      const result = service.validateCodeForProbe('SAVE20', planId, memberId);
+      await expect(result).rejects.toThrow(BadRequestException);
+      await expect(result).rejects.toThrow(GENERIC);
     });
 
     it('should log the real reason at debug level for diagnostics', async () => {

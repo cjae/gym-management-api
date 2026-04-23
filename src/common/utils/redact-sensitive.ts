@@ -41,17 +41,19 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !(v instanceof Date) &&
   Object.getPrototypeOf(v) === Object.prototype;
 
-export function redactSensitive<T>(value: T): T {
+export function redactSensitive<T>(value: T, seen = new WeakSet()): T {
   if (Array.isArray(value)) {
-    return value.map((item) => redactSensitive(item)) as unknown as T;
+    return value.map((item) => redactSensitive(item, seen)) as unknown as T;
   }
   if (isPlainObject(value)) {
+    if (seen.has(value)) return '[Circular]' as unknown as T;
+    seen.add(value);
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value)) {
       if (REDACTED_KEYS.has(key.toLowerCase())) {
         result[key] = REDACTED_PLACEHOLDER;
       } else {
-        result[key] = redactSensitive(val);
+        result[key] = redactSensitive(val, seen);
       }
     }
     return result as T;

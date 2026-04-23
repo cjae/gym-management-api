@@ -42,7 +42,7 @@ export interface QrRotatedEvent {
 // (which uses `ADMIN_URL`). Native mobile clients connect without an Origin
 // header and are unaffected by CORS — only browser clients are gated here.
 // Comma-separated values in `ADMIN_URL` are supported for multi-origin setups.
-const wsOrigins = (process.env.ADMIN_URL ?? 'http://localhost:3001')
+const wsOrigins = (process.env.ADMIN_URL || 'http://localhost:3001')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);

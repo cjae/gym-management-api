@@ -261,7 +261,8 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         mockSubscription as any,
       );
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...mockSubscription,
         status: 'FROZEN',
       } as any);
@@ -325,7 +326,8 @@ describe('SubscriptionsService', () => {
         freezeCycleAnchor: futureDate,
         plan: { ...mockSubscription.plan, maxFreezeCount: 3 },
       } as any);
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...mockSubscription,
         status: 'FROZEN',
       } as any);
@@ -349,7 +351,8 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         mockSubscription as any,
       );
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...mockSubscription,
         status: 'FROZEN',
       } as any);
@@ -415,7 +418,8 @@ describe('SubscriptionsService', () => {
       prisma.memberSubscription.findUnique.mockResolvedValueOnce(
         frozenSub as any,
       );
-      prisma.memberSubscription.update.mockResolvedValueOnce({
+      prisma.memberSubscription.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.memberSubscription.findUniqueOrThrow.mockResolvedValueOnce({
         ...frozenSub,
         status: 'ACTIVE',
         freezeStartDate: null,
@@ -426,8 +430,9 @@ describe('SubscriptionsService', () => {
       const result = await service.unfreeze('sub-1', 'user-1', 'MEMBER');
       expect(result.status).toBe('ACTIVE');
       expect(result.frozenDaysUsed).toBeGreaterThanOrEqual(5);
-      expect(prisma.memberSubscription.update).toHaveBeenCalledWith(
+      expect(prisma.memberSubscription.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({ status: 'FROZEN' }),
           data: expect.objectContaining({
             freezeCount: { increment: 1 },
             frozenDaysUsed: { increment: expect.any(Number) },
@@ -980,6 +985,63 @@ describe('SubscriptionsService', () => {
       await service.cleanupPendingSubscriptions();
 
       expect(prisma.payment.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addDuoMember', () => {
+    const subscriptionId = 'sub-1';
+    const requesterId = 'owner-1';
+    const duoEmail = 'duo@gym.co.ke';
+    const duoUserId = 'duo-user-1';
+
+    const mockSubscriptionBase = {
+      id: subscriptionId,
+      primaryMemberId: requesterId,
+      discountCodeId: null,
+      plan: { maxMembers: 2 },
+      members: [{ memberId: requesterId }],
+    };
+
+    const mockDuoUser = { id: duoUserId, email: duoEmail };
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(mockDuoUser as any);
+      prisma.subscriptionMember.create.mockResolvedValue({
+        subscriptionId,
+        memberId: duoUserId,
+      } as any);
+    });
+
+    it('creates the subscription member when no discount code is applied', async () => {
+      prisma.memberSubscription.findUnique.mockResolvedValue(
+        mockSubscriptionBase as any,
+      );
+
+      await service.addDuoMember(subscriptionId, duoEmail, requesterId);
+
+      expect(prisma.subscriptionMember.create).toHaveBeenCalledWith({
+        data: { subscriptionId, memberId: duoUserId },
+      });
+      expect(prisma.discountRedemptionCounter.upsert).not.toHaveBeenCalled();
+    });
+
+    it('credits the discount benefit counter for the new duo member when a discount was applied', async () => {
+      const discountCodeId = 'dc-1';
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        ...mockSubscriptionBase,
+        discountCodeId,
+      } as any);
+      prisma.discountRedemptionCounter.upsert.mockResolvedValue({} as any);
+
+      await service.addDuoMember(subscriptionId, duoEmail, requesterId);
+
+      expect(prisma.discountRedemptionCounter.upsert).toHaveBeenCalledWith({
+        where: {
+          discountCodeId_memberId: { discountCodeId, memberId: duoUserId },
+        },
+        create: { discountCodeId, memberId: duoUserId, uses: 1 },
+        update: { uses: { increment: 1 } },
+      });
     });
   });
 });

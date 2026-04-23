@@ -87,7 +87,7 @@ npx prisma generate
 
 **Step 5:** Commit:
 
-```
+```text
 feat(users): add personalization columns for AI goal generation
 ```
 
@@ -118,7 +118,7 @@ Decorators: `@IsEnum`, `@IsNumber`, `@Min`, `@Max`, `@IsArray`, `@ArrayUnique`, 
 
 Run — tests pass. Commit:
 
-```
+```text
 feat(auth): add OnboardingDto for member personalization capture
 ```
 
@@ -130,7 +130,7 @@ feat(auth): add OnboardingDto for member personalization capture
 
 Commit:
 
-```
+```text
 feat(auth): allow profile updates to modify personalization fields
 ```
 
@@ -155,7 +155,7 @@ Also: extend `GET /auth/me` response to include the personalization fields plus 
 
 Run — tests pass. Commit:
 
-```
+```text
 feat(auth): POST /auth/me/onboarding captures personalization data
 ```
 
@@ -169,7 +169,7 @@ feat(auth): POST /auth/me/onboarding captures personalization data
 
 Commit:
 
-```
+```text
 refactor(common): extract sanitizeText util for shared use
 ```
 
@@ -191,7 +191,7 @@ Also update the existing `CreateGoalDto` Swagger description to mention the prer
 
 Run — tests pass. Commit:
 
-```
+```text
 feat(goals): require onboarding completion before creating a goal
 ```
 
@@ -225,7 +225,7 @@ hasPersonalTrainer: boolean;
 
 Render a **Member profile** block above the existing goal block, with `not specified` fallbacks so missing fields never break the prompt:
 
-```
+```text
 Member profile:
 - Age: 28 years
 - Sex: FEMALE
@@ -265,7 +265,7 @@ Extend `base` with default null/empty values for every new field. Add focused te
 
 Run — passes. Commit:
 
-```
+```text
 feat(goals): inject member personalization profile into LLM prompt
 ```
 
@@ -287,7 +287,7 @@ priorGoalsAbandoned: number;
 
 Append below the member profile block:
 
-```
+```text
 System context:
 - Recent attendance: 10 days over the last 4 weeks (~2.5/week actual)
 - Subscription plan: Premium Monthly (off-peak: no)
@@ -304,7 +304,7 @@ Corresponding rules:
 
 Run — passes. Commit:
 
-```
+```text
 feat(goals): add derived system context (attendance, plan, tags, history) to prompt
 ```
 
@@ -385,7 +385,7 @@ Pass all of it into `buildGoalPrompt`.
 
 Run — tests pass. Commit:
 
-```
+```text
 feat(goals): enrich listener with derived member context for LLM prompt
 ```
 
@@ -408,7 +408,7 @@ feat(goals): enrich listener with derived member context for LLM prompt
 
 ### Task 7.3: Full test pass
 
-```
+```bash
 yarn lint && yarn typecheck && yarn test
 ```
 
@@ -421,7 +421,7 @@ All pass. Record new test count vs baseline.
 
 Commit:
 
-```
+```text
 chore(seed): populate personalization fields for dev members
 ```
 

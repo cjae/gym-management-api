@@ -322,6 +322,9 @@ describe('AuthService', () => {
 
     it('atomically claims the token and updates the password', async () => {
       wireInteractiveTransaction();
+      prisma.passwordResetToken.findFirst.mockResolvedValue({
+        id: 'token-id',
+      } as any);
       prisma.passwordResetToken.updateMany.mockResolvedValue({
         count: 1,
       } as any);
@@ -357,6 +360,11 @@ describe('AuthService', () => {
 
     it('rejects replay with the same error (claim returns count 0 on second call)', async () => {
       wireInteractiveTransaction();
+      // Both calls see a valid token at the pre-check; the atomic claim gate
+      // ensures only the first caller can claim it.
+      prisma.passwordResetToken.findFirst.mockResolvedValue({
+        id: 'token-id',
+      } as any);
       // First call: successful claim.
       prisma.passwordResetToken.updateMany
         .mockResolvedValueOnce({ count: 1 } as any)
@@ -432,8 +440,11 @@ describe('AuthService', () => {
 
     it('simulated race: second parallel caller gets count 0 and no password change', async () => {
       wireInteractiveTransaction();
-      // Both calls would have seen an unused+unexpired token via findUnique under the old flow,
-      // but updateMany's atomic where-clause means only ONE call can win.
+      // Both callers see a valid token at the pre-check (token not yet claimed).
+      // The atomic updateMany ensures only one wins the claim.
+      prisma.passwordResetToken.findFirst.mockResolvedValue({
+        id: 'token-id',
+      } as any);
       prisma.passwordResetToken.updateMany
         .mockResolvedValueOnce({ count: 1 } as any) // winner
         .mockResolvedValueOnce({ count: 0 } as any); // loser

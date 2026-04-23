@@ -9,6 +9,16 @@ export const safeUserSelect = {
   gender: true,
   displayPicture: true,
   birthday: true,
+  mustChangePassword: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+// Personalization fields are health data — only include where the context
+// warrants full member profile access (self-view, individual admin profile).
+// Never spread into broad list selects.
+export const safeUserPersonalizationSelect = {
   experienceLevel: true,
   bodyweightKg: true,
   heightCm: true,
@@ -18,14 +28,14 @@ export const safeUserSelect = {
   primaryMotivation: true,
   injuryNotes: true,
   onboardingCompletedAt: true,
-  mustChangePassword: true,
-  deletedAt: true,
-  createdAt: true,
-  updatedAt: true,
 };
 
-import { SubscriptionStatus } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+export const safeUserWithPersonalizationSelect = {
+  ...safeUserSelect,
+  ...safeUserPersonalizationSelect,
+};
+
+import { SubscriptionStatus, Prisma } from '@prisma/client';
 
 export const safeUserWithSubscriptionSelect =
   Prisma.validator<Prisma.UserSelect>()({
@@ -78,3 +88,10 @@ export const safeUserWithSubscriptionSelect =
       },
     },
   });
+
+// For admin single-user detail view: includes subscription context AND
+// personalization/health fields. Not used for list endpoints.
+export const safeUserDetailSelect = Prisma.validator<Prisma.UserSelect>()({
+  ...safeUserWithSubscriptionSelect,
+  ...safeUserPersonalizationSelect,
+});

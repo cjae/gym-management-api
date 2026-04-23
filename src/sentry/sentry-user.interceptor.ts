@@ -9,8 +9,11 @@ import { Observable } from 'rxjs';
 import * as Sentry from '@sentry/nestjs';
 
 interface JwtUser {
-  sub: string;
+  id: string;
+  email: string;
   role: string;
+  jti: string;
+  mustChangePassword: boolean;
 }
 
 interface AuthenticatedRequest extends Request {
@@ -27,7 +30,7 @@ export class SentryUserInterceptor implements NestInterceptor {
       // 3rd-party pipeline. Omitting `email`/`username` here prevents the
       // Sentry JS SDK from populating those fields on the event payload.
       Sentry.setUser({
-        id: user.sub,
+        id: user.id,
         role: user.role,
       });
     }

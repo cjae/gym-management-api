@@ -113,6 +113,18 @@ export class BillingService {
    * The lock ID is a BIGINT. We use BigInt literals and `Prisma.sql` tagged
    * template interpolation so the driver sends them as parameters (no
    * string concatenation into SQL).
+   *
+   * KNOWN LIMITATION: `pg_try_advisory_lock` is session-scoped, but Prisma's
+   * connection pool does not guarantee that the acquire call and the unlock
+   * call land on the same backend session. In practice, sequential awaited
+   * `$queryRaw` calls reuse the same pooled connection, so this works
+   * correctly in the common case. If they do land on different sessions, the
+   * unlock is a no-op and the lock persists until the acquiring connection's
+   * idle timeout elapses (typically ~10 min) — the next cron run is skipped
+   * for that window but no data is corrupted. A proper fix would wrap the
+   * acquire + work + unlock in a single Prisma interactive transaction (which
+   * pins to one connection), but that requires all billing work to accept a
+   * transaction client — a non-trivial refactor deferred for now.
    */
   private async runWithAdvisoryLock(
     lockId: bigint,
@@ -246,23 +258,26 @@ export class BillingService {
         continue;
       }
 
+      if (!this.encryptionKey) {
+        // Encryption is intentionally disabled — skip without touching the
+        // stored code. The webhook path also refuses to persist codes without
+        // an encryption key, so this branch is only reachable if the key was
+        // present when the code was stored and has since been removed (e.g.
+        // misconfiguration or key rotation). Clearing the code here would
+        // destroy a valid credential; just skip until the key is restored.
+        this.logger.warn(
+          `Skipping card renewal for subscription ${sub.id}: ENCRYPTION_KEY not configured`,
+        );
+        continue;
+      }
+
       let authCode: string;
       try {
-        // When no encryption key is configured (dev/test), the webhook path
-        // refuses to persist plaintext codes, so any stored value must be
-        // ciphertext. Decryption failures here indicate either a legacy
-        // plaintext row (from before the encryption-required fix) or
-        // tampered/corrupt data — in both cases we null the code so the
-        // member re-authorizes on next renewal rather than looping forever.
-        if (!this.encryptionKey) {
-          throw new Error('ENCRYPTION_KEY not configured');
-        }
         authCode = decrypt(sub.paystackAuthorizationCode!, this.encryptionKey);
       } catch (err) {
-        // H8 — self-heal is correct, but ops needs to know this happened.
-        // Emit a Sentry captureMessage at warning severity so on-call sees
-        // the count, and stamp `billingFlaggedAt` so the admin UI can
-        // surface these subscriptions for manual follow-up.
+        // Decryption failed with a configured key — code is corrupt or was
+        // written with a different key. Self-heal by clearing the code so
+        // the member can re-authorize; flag for ops via Sentry + DB timestamp.
         const errorMessage = err instanceof Error ? err.message : String(err);
         this.logger.warn(
           `Failed to decrypt paystackAuthorizationCode for subscription ${sub.id}; clearing stored code and flagging for manual review. Member will need to re-authorize. Error: ${errorMessage}`,

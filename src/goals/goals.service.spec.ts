@@ -17,6 +17,7 @@ import { GoalsService } from './goals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 describe('GoalsService.create', () => {
   let service: GoalsService;
@@ -28,6 +29,9 @@ describe('GoalsService.create', () => {
       .fn()
       .mockResolvedValue({ maxActiveGoalsPerMember: 3 }),
   };
+  const subscriptions = {
+    hasActiveSubscription: jest.fn().mockResolvedValue(true),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -38,11 +42,13 @@ describe('GoalsService.create', () => {
         { provide: EventEmitter2, useValue: emitter },
         { provide: AttendanceService, useValue: attendance },
         { provide: GymSettingsService, useValue: settings },
+        { provide: SubscriptionsService, useValue: subscriptions },
       ],
     }).compile();
     service = moduleRef.get(GoalsService);
     prisma = moduleRef.get(PrismaService);
     attendance.getAvgDaysPerWeek.mockResolvedValue(3);
+    subscriptions.hasActiveSubscription.mockResolvedValue(true);
     prisma.user.findUnique.mockResolvedValue({
       onboardingCompletedAt: new Date('2026-04-01'),
     } as never);
@@ -136,6 +142,9 @@ async function buildModule() {
       .fn()
       .mockResolvedValue({ maxActiveGoalsPerMember: 3 }),
   };
+  const subscriptions = {
+    hasActiveSubscription: jest.fn().mockResolvedValue(true),
+  };
   const moduleRef = await Test.createTestingModule({
     providers: [
       GoalsService,
@@ -143,6 +152,7 @@ async function buildModule() {
       { provide: EventEmitter2, useValue: emitter },
       { provide: AttendanceService, useValue: attendance },
       { provide: GymSettingsService, useValue: settings },
+      { provide: SubscriptionsService, useValue: subscriptions },
     ],
   }).compile();
 

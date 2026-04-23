@@ -61,6 +61,11 @@ export class TrainersController {
   }
 
   @Get('my/trainer')
+  @UseGuards(RolesGuard)
+  @Roles('MEMBER')
+  @ApiForbiddenResponse({
+    description: 'Only members can look up their trainer',
+  })
   @ApiOkResponse({ type: MemberTrainerAssignmentResponseDto })
   getMyTrainer(@CurrentUser('id') memberId: string) {
     return this.trainersService.getMemberTrainer(memberId);

@@ -86,18 +86,17 @@ describe('TrainersController', () => {
     );
 
     describe('GET /trainers/my/trainer (getMyTrainer)', () => {
-      it('has no roles metadata (open to any authenticated user)', () => {
+      it('is restricted to MEMBER role', () => {
         const reflector = new Reflector();
         const roles = reflector.get<string[]>(
           ROLES_KEY,
           controller.getMyTrainer,
         );
-        expect(roles).toBeUndefined();
+        expect(roles).toEqual(['MEMBER']);
       });
 
       it('allows MEMBER through RolesGuard', () => {
         const ctx = buildContext('getMyTrainer', 'MEMBER');
-        // No @Roles() metadata means the guard lets the request through.
         expect(rolesGuard.canActivate(ctx)).toBe(true);
       });
 

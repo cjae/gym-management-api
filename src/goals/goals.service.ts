@@ -26,6 +26,7 @@ import {
   CreateMilestoneDto,
   UpdateMilestoneDto,
 } from './dto/upsert-milestone.dto';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const NON_TERMINAL = [GoalStatus.ACTIVE, GoalStatus.PAUSED];
 
@@ -43,6 +44,7 @@ export class GoalsService {
     private readonly eventEmitter: EventEmitter2,
     private readonly attendance: AttendanceService,
     private readonly settings: GymSettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async create(memberId: string, dto: CreateGoalDto) {
@@ -60,6 +62,14 @@ export class GoalsService {
     if (!member?.onboardingCompletedAt) {
       throw new BadRequestException(
         'Complete onboarding before creating a goal',
+      );
+    }
+
+    const hasActiveSub =
+      await this.subscriptions.hasActiveSubscription(memberId);
+    if (!hasActiveSub) {
+      throw new BadRequestException(
+        'An active subscription is required to create a goal',
       );
     }
 

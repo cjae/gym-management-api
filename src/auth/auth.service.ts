@@ -23,7 +23,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { OnboardingDto } from './dto/onboarding.dto';
-import { safeUserSelect } from '../common/constants/safe-user-select';
+import { safeUserWithPersonalizationSelect } from '../common/constants/safe-user-select';
 import { generateReferralCode } from '../common/utils/referral-code.util';
 import { sanitizeText } from '../common/utils/sanitize-text';
 import * as bcrypt from 'bcrypt';
@@ -405,6 +405,22 @@ export class AuthService {
 
   async resetPassword(dto: ResetPasswordDto) {
     const hashedToken = this.hashToken(dto.token);
+
+    // Fail fast before the expensive bcrypt hash — if the token is already
+    // invalid or expired, no point burning CPU. The atomic claim below still
+    // handles the concurrent-use race correctly.
+    const tokenValid = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        token: hashedToken,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+    if (!tokenValid) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
 
     const userId = await this.prisma.$transaction(async (tx) => {
@@ -487,7 +503,7 @@ export class AuthService {
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: safeUserSelect,
+      select: safeUserWithPersonalizationSelect,
     });
     if (!user) throw new UnauthorizedException('User not found');
     return this.withOnboardingFlag(user);
@@ -507,7 +523,7 @@ export class AuthService {
               ? null
               : sanitizeText(dto.injuryNotes),
       },
-      select: safeUserSelect,
+      select: safeUserWithPersonalizationSelect,
     });
     return this.withOnboardingFlag(updated);
   }
@@ -542,7 +558,7 @@ export class AuthService {
 
     const updated = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: safeUserSelect,
+      select: safeUserWithPersonalizationSelect,
     });
     return this.withOnboardingFlag(updated);
   }
@@ -697,7 +713,7 @@ export class AuthService {
           mustChangePassword,
           sessionsInvalidatedAt,
         },
-        { expiresIn: '30m' },
+        { expiresIn: '30m', secret: authConfig.jwtSecret, algorithm: 'HS256' },
       ),
       this.jwtService.signAsync(
         {
@@ -708,7 +724,11 @@ export class AuthService {
           mustChangePassword,
           sessionsInvalidatedAt,
         },
-        { expiresIn: '7d', secret: authConfig.jwtRefreshSecret },
+        {
+          expiresIn: '7d',
+          secret: authConfig.jwtRefreshSecret,
+          algorithm: 'HS256',
+        },
       ),
     ]);
 
