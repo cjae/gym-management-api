@@ -441,23 +441,40 @@ export class SubscriptionsService {
       });
 
       // M9 — if a discount code was applied to this subscription, credit the
-      // new member's benefit counter so the per-member cap is respected if
-      // they later try to redeem the same code on a different subscription.
+      // new member's benefit counter so the per-member cap is respected both
+      // now (block the add if they've already hit the cap) and in the future
+      // (prevent re-use on a different subscription).
       if (subscription.discountCodeId) {
-        await tx.discountRedemptionCounter.upsert({
-          where: {
-            discountCodeId_memberId: {
+        const discountCode = await tx.discountCode.findUniqueOrThrow({
+          where: { id: subscription.discountCodeId },
+          select: { maxUsesPerMember: true },
+        });
+
+        await tx.discountRedemptionCounter.createMany({
+          data: [
+            {
               discountCodeId: subscription.discountCodeId,
               memberId: user.id,
+              uses: 0,
             },
-          },
-          create: {
+          ],
+          skipDuplicates: true,
+        });
+
+        const { count } = await tx.discountRedemptionCounter.updateMany({
+          where: {
             discountCodeId: subscription.discountCodeId,
             memberId: user.id,
-            uses: 1,
+            uses: { lt: discountCode.maxUsesPerMember },
           },
-          update: { uses: { increment: 1 } },
+          data: { uses: { increment: 1 } },
         });
+
+        if (count === 0) {
+          throw new ConflictException(
+            'This member has already used this discount code the maximum number of times',
+          );
+        }
       }
 
       return member;

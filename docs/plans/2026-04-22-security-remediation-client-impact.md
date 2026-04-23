@@ -222,7 +222,7 @@ Flagged by the implementing agents, tracked separately:
 
 ### Operational / deployment changes
 
-**One new Prisma migration** — must run before the new code ships.
+**Two new Prisma migrations** — must run before the new code ships.
 
 | Migration | Change | Deploy impact |
 |---|---|---|

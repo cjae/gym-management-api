@@ -5,7 +5,11 @@ import * as bcrypt from 'bcrypt';
 
 const dbUrl = process.env.DATABASE_URL;
 const isProduction = process.env.NODE_ENV === 'production';
-const useSSL = dbUrl?.includes('sslmode=') || isProduction;
+const sslModeMatch = dbUrl?.match(/[?&]sslmode=([^&]*)/);
+const sslMode = sslModeMatch?.[1];
+const useSSL =
+  isProduction ||
+  ['require', 'verify-ca', 'verify-full'].includes(sslMode ?? '');
 const cleanUrl = dbUrl
   ?.replace(/[?&]sslmode=[^&]*/g, (match) => (match.startsWith('?') ? '?' : ''))
   .replace(/\?$/, '');

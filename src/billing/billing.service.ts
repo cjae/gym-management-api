@@ -191,8 +191,8 @@ export class BillingService {
       // service: the cycle identity is tracked via `freezeCycleAnchor`,
       // and any operation that advances `endDate` within a cycle must
       // re-anchor so the counters stay authoritative for this cycle.
-      await this.prisma.memberSubscription.update({
-        where: { id: sub.id },
+      const { count } = await this.prisma.memberSubscription.updateMany({
+        where: { id: sub.id, status: 'FROZEN' },
         data: {
           status: 'ACTIVE',
           endDate: newEndDate,
@@ -204,6 +204,13 @@ export class BillingService {
           freezeCycleAnchor: newEndDate,
         },
       });
+
+      if (count === 0) {
+        this.logger.log(
+          `Skipped auto-unfreeze for ${sub.id}: no longer FROZEN (raced user-initiated unfreeze)`,
+        );
+        continue;
+      }
 
       this.logger.log(
         `Auto-unfroze subscription ${sub.id} after ${frozenDays} frozen days`,

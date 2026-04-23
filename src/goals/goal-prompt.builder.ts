@@ -164,7 +164,7 @@ ${showBodyweightScaling ? '- Scale starting loads to bodyweight when BEGINNER (e
 - If injury notes mention a specific region or movement, substitute safer variants and note the reason in that exercise's notes field.
 - Cap daily session duration at the member's sessionMinutes when provided. Reduce exercise count or trim rest if needed.
 - If primary motivation is APPEARANCE, bias toward hypertrophy rep ranges (8-12). If STRENGTH, bias toward 3-6. If HEALTH, mix modalities. If SPORT_PERFORMANCE, include power and conditioning. If EVENT_SPECIFIC, tighten timeline and increase specificity.
-${input.hasPersonalTrainer ? '- The member has a personal trainer — write reasoning so the plan reads as a complement trainer guidance, e.g. "discuss with your trainer before adjusting."' : ''}
+${input.hasPersonalTrainer ? '- The member has a personal trainer — write reasoning so the plan reads as a complement to the trainer\'s guidance, e.g. "discuss with your trainer before adjusting."' : ''}
 ${showAttendanceMismatch ? '- Use actual attendance as the honest baseline; currentGymFrequency is self-reported and may overstate reality. If actual is lower than requestedFrequency, flag the jump in reasoning.' : ''}
 ${input.isOffPeakPlan ? '- The member is on an off-peak plan: training must occur during off-peak hours (the gym restricts check-in outside that window).' : ''}
 ${showConservativePace ? '- The member has more abandoned goals than completed — acknowledge in reasoning that past plans may have been too aggressive and set a more conservative pace.' : ''}

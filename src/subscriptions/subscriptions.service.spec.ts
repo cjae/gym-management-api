@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DeepMockProxy, mockDeep } from 'jest-mock-extended';
 import { PaymentMethod, PrismaClient } from '@prisma/client';
@@ -1022,7 +1023,12 @@ describe('SubscriptionsService', () => {
       expect(prisma.subscriptionMember.create).toHaveBeenCalledWith({
         data: { subscriptionId, memberId: duoUserId },
       });
-      expect(prisma.discountRedemptionCounter.upsert).not.toHaveBeenCalled();
+      expect(
+        prisma.discountRedemptionCounter.createMany,
+      ).not.toHaveBeenCalled();
+      expect(
+        prisma.discountRedemptionCounter.updateMany,
+      ).not.toHaveBeenCalled();
     });
 
     it('credits the discount benefit counter for the new duo member when a discount was applied', async () => {
@@ -1031,17 +1037,51 @@ describe('SubscriptionsService', () => {
         ...mockSubscriptionBase,
         discountCodeId,
       } as any);
-      prisma.discountRedemptionCounter.upsert.mockResolvedValue({} as any);
+      prisma.discountCode.findUniqueOrThrow.mockResolvedValue({
+        maxUsesPerMember: 1,
+      } as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValue({
+        count: 1,
+      } as any);
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValue({
+        count: 1,
+      });
 
       await service.addDuoMember(subscriptionId, duoEmail, requesterId);
 
-      expect(prisma.discountRedemptionCounter.upsert).toHaveBeenCalledWith({
-        where: {
-          discountCodeId_memberId: { discountCodeId, memberId: duoUserId },
-        },
-        create: { discountCodeId, memberId: duoUserId, uses: 1 },
-        update: { uses: { increment: 1 } },
+      expect(prisma.discountRedemptionCounter.createMany).toHaveBeenCalledWith({
+        data: [{ discountCodeId, memberId: duoUserId, uses: 0 }],
+        skipDuplicates: true,
       });
+      expect(prisma.discountRedemptionCounter.updateMany).toHaveBeenCalledWith({
+        where: {
+          discountCodeId,
+          memberId: duoUserId,
+          uses: { lt: 1 },
+        },
+        data: { uses: { increment: 1 } },
+      });
+    });
+
+    it('throws ConflictException when the new duo member has already hit the per-member cap', async () => {
+      const discountCodeId = 'dc-1';
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        ...mockSubscriptionBase,
+        discountCodeId,
+      } as any);
+      prisma.discountCode.findUniqueOrThrow.mockResolvedValue({
+        maxUsesPerMember: 1,
+      } as any);
+      prisma.discountRedemptionCounter.createMany.mockResolvedValue({
+        count: 0,
+      } as any);
+      prisma.discountRedemptionCounter.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(
+        service.addDuoMember(subscriptionId, duoEmail, requesterId),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });
