@@ -242,6 +242,33 @@ describe('ShopService', () => {
     });
   });
 
+  describe('findMyOrders', () => {
+    it('should return paginated orders for member', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([]);
+      prisma.shopOrder.count.mockResolvedValue(0);
+      const result = await service.findMyOrders('member-1', 1, 20);
+      expect(prisma.shopOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { memberId: 'member-1' },
+        }),
+      );
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('findMyOrder', () => {
+    it('should throw NotFoundException when order belongs to another member', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'other-member',
+        orderItems: [],
+      } as any);
+      await expect(service.findMyOrder('order-1', 'member-1')).rejects.toThrow(
+        'Order not found',
+      );
+    });
+  });
+
   describe('handlePaymentSuccess', () => {
     it('should update order to PAID', async () => {
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });

@@ -172,6 +172,29 @@ export class ShopController {
     return this.shopService.findAllOrders(dto);
   }
 
+  // ── Member Orders ──
+
+  @Get('orders/mine')
+  @UseGuards(RolesGuard)
+  @Roles('MEMBER')
+  @ApiOkResponse({ type: PaginatedShopOrdersResponseDto })
+  findMyOrders(
+    @CurrentUser('id') memberId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.shopService.findMyOrders(memberId, query.page, query.limit);
+  }
+
+  @Get('orders/:id')
+  @ApiOkResponse({ type: ShopOrderResponseDto })
+  @ApiNotFoundResponse({ description: 'Order not found' })
+  findMyOrder(
+    @Param('id', ParseUUIDPipe) orderId: string,
+    @CurrentUser('id') memberId: string,
+  ) {
+    return this.shopService.findMyOrder(orderId, memberId);
+  }
+
   @Patch('orders/:id/collect')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')

@@ -520,6 +520,32 @@ export class ShopService {
     return updated;
   }
 
+  async findMyOrders(memberId: string, page = 1, limit = 20) {
+    const where = { memberId };
+    const [data, total] = await Promise.all([
+      this.prisma.shopOrder.findMany({
+        where,
+        include: { orderItems: true },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.shopOrder.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  async findMyOrder(orderId: string, memberId: string) {
+    const order = await this.prisma.shopOrder.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true },
+    });
+    if (!order || order.memberId !== memberId) {
+      throw new NotFoundException('Order not found');
+    }
+    return order;
+  }
+
   private async checkAndNotifyLowStock(
     _orderItems: Array<{
       shopItemId: string;
