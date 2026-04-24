@@ -67,7 +67,7 @@ export class LicensingService implements OnModuleInit {
 
     if (!cache) return true;
 
-    if (cache.status === 'ACTIVE') return true;
+    if (cache.status === LicenseStatus.ACTIVE) return true;
 
     if (cache.lastSuccessAt) {
       const elapsed = Date.now() - cache.lastSuccessAt.getTime();
@@ -185,13 +185,13 @@ export class LicensingService implements OnModuleInit {
             where: { id: 'singleton' },
             update: {
               licenseKey: this.licenseKey,
-              status: 'SUSPENDED',
+              status: LicenseStatus.SUSPENDED,
               lastCheckedAt: now,
             },
             create: {
               id: 'singleton',
               licenseKey: this.licenseKey,
-              status: 'SUSPENDED',
+              status: LicenseStatus.SUSPENDED,
               lastCheckedAt: now,
             },
           });
@@ -213,6 +213,7 @@ export class LicensingService implements OnModuleInit {
   async getMemberLimit(): Promise<number | null> {
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: { maxMembers: true },
     });
     return cache?.maxMembers ?? null;
   }
@@ -220,6 +221,7 @@ export class LicensingService implements OnModuleInit {
   async getAdminLimit(): Promise<number | null> {
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: { maxAdmins: true },
     });
     return cache?.maxAdmins ?? null;
   }
@@ -235,6 +237,7 @@ export class LicensingService implements OnModuleInit {
 
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: { features: true },
     });
     this.cachedFeatures = cache?.features ? (cache.features as string[]) : [];
     this.featuresCachedAt = now;
@@ -265,6 +268,16 @@ export class LicensingService implements OnModuleInit {
 
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: {
+        status: true,
+        gymName: true,
+        tierName: true,
+        maxMembers: true,
+        maxAdmins: true,
+        features: true,
+        expiresAt: true,
+        lastCheckedAt: true,
+      },
     });
 
     return {

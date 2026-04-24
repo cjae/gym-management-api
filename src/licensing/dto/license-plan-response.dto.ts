@@ -29,7 +29,11 @@ export class LicensePlanResponseDto {
   })
   expiresAt: string | null;
 
-  @ApiProperty({ type: [String] })
+  @ApiProperty({
+    type: [String],
+    description:
+      'Licensed feature keys. Empty when isDevMode is true — check isDevMode first, as all features are unlocked in dev mode regardless of this array.',
+  })
   features: string[];
 
   @ApiProperty({

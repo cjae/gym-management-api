@@ -622,9 +622,9 @@ describe('LicensingService', () => {
         features: [],
         lastCheckedAt: null,
       });
-      expect(prisma.licenseCache.findUnique).toHaveBeenCalledWith({
-        where: { id: 'singleton' },
-      });
+      expect(prisma.licenseCache.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'singleton' } }),
+      );
     });
 
     it('should reflect SUSPENDED status from cache', async () => {
@@ -639,8 +639,17 @@ describe('LicensingService', () => {
         lastCheckedAt: new Date('2026-04-24T03:00:00.000Z'),
       } as any);
       const result = await service.getLicensePlan();
-      expect(result.status).toBe('SUSPENDED');
-      expect(result.isDevMode).toBe(false);
+      expect(result).toEqual({
+        status: 'SUSPENDED',
+        isDevMode: false,
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: [],
+        expiresAt: null,
+        lastCheckedAt: '2026-04-24T03:00:00.000Z',
+      });
     });
 
     it('should reflect EXPIRED status from cache', async () => {
@@ -655,7 +664,17 @@ describe('LicensingService', () => {
         lastCheckedAt: new Date('2026-04-24T03:00:00.000Z'),
       } as any);
       const result = await service.getLicensePlan();
-      expect(result.status).toBe('EXPIRED');
+      expect(result).toEqual({
+        status: 'EXPIRED',
+        isDevMode: false,
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: [],
+        expiresAt: '2026-01-01T00:00:00.000Z',
+        lastCheckedAt: '2026-04-24T03:00:00.000Z',
+      });
     });
   });
 });
