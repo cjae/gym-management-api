@@ -37,20 +37,7 @@ export interface QrRotatedEvent {
   timestamp: string;
 }
 
-// WebSocket CORS origin allowlist. `@WebSocketGateway` options are static so
-// we read the env at module load. Mirrors the HTTP CORS config in `main.ts`
-// (which uses `ADMIN_URL`). Native mobile clients connect without an Origin
-// header and are unaffected by CORS — only browser clients are gated here.
-// Comma-separated values in `ADMIN_URL` are supported for multi-origin setups.
-const wsOrigins = (process.env.ADMIN_URL || 'http://localhost:3001')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
-
-@WebSocketGateway({
-  namespace: '/activity',
-  cors: { origin: wsOrigins, credentials: true },
-})
+@WebSocketGateway({ namespace: '/activity' })
 export class ActivityGateway implements OnGatewayConnection {
   @WebSocketServer()
   server: Server;
