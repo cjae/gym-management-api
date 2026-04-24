@@ -622,6 +622,9 @@ describe('LicensingService', () => {
         features: [],
         lastCheckedAt: null,
       });
+      expect(prisma.licenseCache.findUnique).toHaveBeenCalledWith({
+        where: { id: 'singleton' },
+      });
     });
 
     it('should reflect SUSPENDED status from cache', async () => {

@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, LicenseStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LicensingConfig, getLicensingConfigName } from './licensing.config';
@@ -268,7 +268,8 @@ export class LicensingService implements OnModuleInit {
     });
 
     return {
-      status: (cache?.status as 'ACTIVE' | 'SUSPENDED' | 'EXPIRED') ?? 'ACTIVE',
+      // No cache row on first boot — treat as ACTIVE, consistent with isActive()
+      status: cache?.status ?? LicenseStatus.ACTIVE,
       isDevMode: false,
       gymName: cache?.gymName ?? null,
       tierName: cache?.tierName ?? null,
