@@ -9,6 +9,7 @@ import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { encrypt } from '../common/utils/encryption.util';
 
 jest.mock('@sentry/nestjs', () => ({
@@ -56,6 +57,12 @@ describe('BillingService', () => {
     findBirthdays: jest.fn().mockResolvedValue([]),
   };
 
+  const mockGymSettingsService = {
+    getCachedSettings: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'Africa/Nairobi' }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -66,6 +73,7 @@ describe('BillingService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: UsersService, useValue: mockUsersService },
+        { provide: GymSettingsService, useValue: mockGymSettingsService },
       ],
     }).compile();
 
