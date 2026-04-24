@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LicensingConfig, getLicensingConfigName } from './licensing.config';
 import { LicenseResponseDto } from './dto/license-response.dto';
+import { LicensePlanResponseDto } from './dto/license-plan-response.dto';
 import axios from 'axios';
 
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -245,6 +246,38 @@ export class LicensingService implements OnModuleInit {
 
     const features = await this.getFeatures();
     return features.includes(key);
+  }
+
+  async getLicensePlan(): Promise<LicensePlanResponseDto> {
+    if (!this.isConfigured()) {
+      return {
+        status: 'ACTIVE',
+        isDevMode: true,
+        gymName: null,
+        tierName: null,
+        maxMembers: null,
+        maxAdmins: null,
+        expiresAt: null,
+        features: [],
+        lastCheckedAt: null,
+      };
+    }
+
+    const cache = await this.prisma.licenseCache.findUnique({
+      where: { id: 'singleton' },
+    });
+
+    return {
+      status: (cache?.status as 'ACTIVE' | 'SUSPENDED' | 'EXPIRED') ?? 'ACTIVE',
+      isDevMode: false,
+      gymName: cache?.gymName ?? null,
+      tierName: cache?.tierName ?? null,
+      maxMembers: cache?.maxMembers ?? null,
+      maxAdmins: cache?.maxAdmins ?? null,
+      expiresAt: cache?.expiresAt?.toISOString() ?? null,
+      features: cache?.features ? (cache.features as string[]) : [],
+      lastCheckedAt: cache?.lastCheckedAt?.toISOString() ?? null,
+    };
   }
 
   async onModuleInit(): Promise<void> {
