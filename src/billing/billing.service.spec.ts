@@ -58,7 +58,9 @@ describe('BillingService', () => {
   };
 
   const mockGymSettingsService = {
-    getSettings: jest.fn().mockResolvedValue({ timezone: 'Africa/Nairobi' }),
+    getCachedSettings: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'Africa/Nairobi' }),
   };
 
   beforeEach(async () => {

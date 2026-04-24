@@ -400,7 +400,7 @@ export class BillingService {
   }
 
   async expireOverdueSubscriptions() {
-    const settings = await this.gymSettingsService.getSettings();
+    const settings = await this.gymSettingsService.getCachedSettings();
     const now = this.getLocalMidnight(settings?.timezone ?? 'Africa/Nairobi');
 
     const overdueSubscriptions = await this.prisma.memberSubscription.findMany({
