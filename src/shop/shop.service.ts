@@ -22,9 +22,16 @@ import { UpdateShopItemVariantDto } from './dto/update-shop-item-variant.dto';
 import { CreateShopOrderDto } from './dto/create-shop-order.dto';
 import { AdminCreateShopOrderDto } from './dto/admin-create-shop-order.dto';
 import { FilterShopOrdersDto } from './dto/filter-shop-orders.dto';
-import { NotificationType, ShopOrderStatus } from '@prisma/client';
+import {
+  NotificationType,
+  PaymentMethod,
+  ShopOrderStatus,
+} from '@prisma/client';
 import axios from 'axios';
-import { Granularity } from '../analytics/dto/analytics-query.dto';
+import {
+  AnalyticsQueryDto,
+  Granularity,
+} from '../analytics/dto/analytics-query.dto';
 
 @Injectable()
 export class ShopService {
@@ -752,6 +759,82 @@ export class ShopService {
       topItems,
       lowStockCount: lowStockItems + lowStockVariants,
     };
+  }
+
+  async getShopRevenueTrends(query: AnalyticsQueryDto) {
+    const { from, to } = this.getDateRange(query);
+    const granularity = query.granularity ?? Granularity.MONTHLY;
+
+    const orders = await this.prisma.shopOrder.findMany({
+      where: {
+        status: { in: [ShopOrderStatus.PAID, ShopOrderStatus.COLLECTED] },
+        createdAt: { gte: from, lte: to },
+      },
+      select: { totalAmount: true, paymentMethod: true, createdAt: true },
+    });
+
+    const buckets = new Map<
+      string,
+      {
+        revenue: number;
+        orders: number;
+        card: number;
+        mobileMoney: number;
+        bankTransfer: number;
+        complimentary: number;
+      }
+    >();
+
+    for (const order of orders) {
+      const period = this.getPeriodKey(order.createdAt, granularity);
+      if (!buckets.has(period)) {
+        buckets.set(period, {
+          revenue: 0,
+          orders: 0,
+          card: 0,
+          mobileMoney: 0,
+          bankTransfer: 0,
+          complimentary: 0,
+        });
+      }
+      const bucket = buckets.get(period)!;
+      bucket.revenue += order.totalAmount;
+      bucket.orders++;
+
+      if (
+        order.paymentMethod === PaymentMethod.CARD ||
+        order.paymentMethod === PaymentMethod.CARD_IN_PERSON
+      )
+        bucket.card += order.totalAmount;
+      else if (
+        order.paymentMethod === PaymentMethod.MOBILE_MONEY ||
+        order.paymentMethod === PaymentMethod.MOBILE_MONEY_IN_PERSON
+      )
+        bucket.mobileMoney += order.totalAmount;
+      else if (
+        order.paymentMethod === PaymentMethod.BANK_TRANSFER ||
+        order.paymentMethod === PaymentMethod.BANK_TRANSFER_IN_PERSON
+      )
+        bucket.bankTransfer += order.totalAmount;
+      else if (order.paymentMethod === PaymentMethod.COMPLIMENTARY)
+        bucket.complimentary += order.totalAmount;
+    }
+
+    const series = Array.from(buckets.entries())
+      .map(([period, data]) => ({
+        period,
+        revenue: data.revenue,
+        orders: data.orders,
+        byMethod: {
+          card: data.card,
+          mobileMoney: data.mobileMoney,
+          bankTransfer: data.bankTransfer,
+          complimentary: data.complimentary,
+        },
+      }))
+      .sort((a, b) => a.period.localeCompare(b.period));
+
+    return { series };
   }
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Africa/Nairobi' })

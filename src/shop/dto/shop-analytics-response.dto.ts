@@ -35,7 +35,6 @@ export class ShopRevenueByMethodDto {
   @ApiProperty() card: number;
   @ApiProperty() mobileMoney: number;
   @ApiProperty() bankTransfer: number;
-  @ApiProperty() offline: number;
   @ApiProperty() complimentary: number;
 }
 
