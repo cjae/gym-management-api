@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ShopService } from './shop.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Granularity } from '../analytics/dto/analytics-query.dto';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
@@ -640,6 +641,90 @@ describe('ShopService', () => {
       expect(result.avgOrderValue).toBe(0);
       expect(result.unitsSold).toBe(0);
       expect(result.topItems).toHaveLength(0);
+    });
+  });
+
+  describe('getShopRevenueTrends', () => {
+    it('buckets PAID and COLLECTED orders by monthly period and payment method', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([
+        {
+          totalAmount: 5000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-03-15'),
+        },
+        {
+          totalAmount: 3000,
+          paymentMethod: 'MOBILE_MONEY',
+          createdAt: new Date('2026-03-20'),
+        },
+        {
+          totalAmount: 2000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-04-01'),
+        },
+      ] as any);
+
+      const result = await service.getShopRevenueTrends({
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(2);
+      const march = result.series.find((s) => s.period === '2026-03')!;
+      expect(march.revenue).toBe(8000);
+      expect(march.orders).toBe(2);
+      expect(march.byMethod.card).toBe(5000);
+      expect(march.byMethod.mobileMoney).toBe(3000);
+      expect(march.byMethod.bankTransfer).toBe(0);
+    });
+
+    it('returns series sorted chronologically', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([
+        {
+          totalAmount: 1000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-04-01'),
+        },
+        {
+          totalAmount: 2000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-02-01'),
+        },
+      ] as any);
+
+      const result = await service.getShopRevenueTrends({
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series[0].period).toBe('2026-02');
+      expect(result.series[1].period).toBe('2026-04');
+    });
+
+    it('returns empty series when no completed orders exist in range', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([]);
+
+      const result = await service.getShopRevenueTrends({});
+      expect(result.series).toHaveLength(0);
+    });
+
+    it('passes the date range filter to Prisma', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([]);
+
+      await service.getShopRevenueTrends({
+        from: '2026-01-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(prisma.shopOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: expect.objectContaining({
+              gte: new Date('2026-01-01'),
+              lte: new Date('2026-03-31'),
+            }),
+          }),
+        }),
+      );
     });
   });
 });
