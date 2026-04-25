@@ -522,4 +522,117 @@ describe('ShopService', () => {
       expect(logSpy).toHaveBeenCalled();
     });
   });
+
+  describe('getShopAnalytics', () => {
+    const mockOrderItems = [
+      {
+        shopItemId: 'item-1',
+        quantity: 3,
+        unitPrice: 5000,
+        item: { name: 'Gym Bag' },
+      },
+      {
+        shopItemId: 'item-1',
+        quantity: 2,
+        unitPrice: 5000,
+        item: { name: 'Gym Bag' },
+      },
+      {
+        shopItemId: 'item-2',
+        quantity: 1,
+        unitPrice: 3000,
+        item: { name: 'Water Bottle' },
+      },
+    ];
+
+    beforeEach(() => {
+      prisma.shopOrder.count
+        .mockResolvedValueOnce(10) // total
+        .mockResolvedValueOnce(2) // pending
+        .mockResolvedValueOnce(5) // paid
+        .mockResolvedValueOnce(2) // collected
+        .mockResolvedValueOnce(1); // cancelled
+      prisma.shopOrder.aggregate
+        .mockResolvedValueOnce({ _sum: { totalAmount: 50000 } } as any) // allTime
+        .mockResolvedValueOnce({ _sum: { totalAmount: 10000 } } as any) // thisMonth
+        .mockResolvedValueOnce({ _sum: { totalAmount: 8000 } } as any); // lastMonth
+      prisma.shopOrderItem.findMany.mockResolvedValue(mockOrderItems as any);
+      prisma.shopItem.count.mockResolvedValue(2);
+      prisma.shopItemVariant.count.mockResolvedValue(1);
+    });
+
+    it('returns order counts by status', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.orders).toEqual({
+        total: 10,
+        pending: 2,
+        paid: 5,
+        collected: 2,
+        cancelled: 1,
+      });
+    });
+
+    it('returns revenue figures for all-time, this month, and last month', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.revenue).toEqual({
+        allTime: 50000,
+        thisMonth: 10000,
+        lastMonth: 8000,
+      });
+    });
+
+    it('computes avgOrderValue from completed orders (paid + collected)', async () => {
+      const result = await service.getShopAnalytics();
+      // 5 paid + 2 collected = 7 completed; 50000 / 7 ≈ 7142.86
+      expect(result.avgOrderValue).toBeCloseTo(50000 / 7, 2);
+    });
+
+    it('sums unitsSold from order items of completed orders', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.unitsSold).toBe(6); // 3 + 2 + 1
+    });
+
+    it('returns top 5 items sorted by revenue descending', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.topItems).toHaveLength(2);
+      expect(result.topItems[0]).toMatchObject({
+        itemId: 'item-1',
+        name: 'Gym Bag',
+        revenue: 25000,
+        unitsSold: 5,
+      });
+      expect(result.topItems[1]).toMatchObject({
+        itemId: 'item-2',
+        name: 'Water Bottle',
+        revenue: 3000,
+        unitsSold: 1,
+      });
+    });
+
+    it('sums low stock items and variants into lowStockCount', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.lowStockCount).toBe(3); // 2 items + 1 variant
+    });
+
+    it('returns avgOrderValue of 0 when no completed orders exist', async () => {
+      jest.clearAllMocks();
+      prisma.shopOrder.count
+        .mockResolvedValueOnce(1) // total
+        .mockResolvedValueOnce(1) // pending
+        .mockResolvedValueOnce(0) // paid
+        .mockResolvedValueOnce(0) // collected
+        .mockResolvedValueOnce(0); // cancelled
+      prisma.shopOrder.aggregate.mockResolvedValue({
+        _sum: { totalAmount: null },
+      } as any);
+      prisma.shopOrderItem.findMany.mockResolvedValue([]);
+      prisma.shopItem.count.mockResolvedValue(0);
+      prisma.shopItemVariant.count.mockResolvedValue(0);
+
+      const result = await service.getShopAnalytics();
+      expect(result.avgOrderValue).toBe(0);
+      expect(result.unitsSold).toBe(0);
+      expect(result.topItems).toHaveLength(0);
+    });
+  });
 });
