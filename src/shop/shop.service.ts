@@ -22,8 +22,9 @@ import { UpdateShopItemVariantDto } from './dto/update-shop-item-variant.dto';
 import { CreateShopOrderDto } from './dto/create-shop-order.dto';
 import { AdminCreateShopOrderDto } from './dto/admin-create-shop-order.dto';
 import { FilterShopOrdersDto } from './dto/filter-shop-orders.dto';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, ShopOrderStatus } from '@prisma/client';
 import axios from 'axios';
+import { Granularity } from '../analytics/dto/analytics-query.dto';
 
 @Injectable()
 export class ShopService {
@@ -606,6 +607,151 @@ export class ShopService {
       throw new NotFoundException('Order not found');
     }
     return order;
+  }
+
+  private getDateRange(query: { from?: string; to?: string }) {
+    const to = query.to ? new Date(query.to) : new Date();
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getFullYear() - 1, to.getMonth(), to.getDate());
+    return { from, to };
+  }
+
+  private getPeriodKey(date: Date, granularity: Granularity): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    switch (granularity) {
+      case Granularity.DAILY:
+        return `${year}-${month}-${day}`;
+      case Granularity.WEEKLY: {
+        const startOfWeek = new Date(date);
+        startOfWeek.setDate(date.getDate() - date.getDay());
+        const wMonth = String(startOfWeek.getMonth() + 1).padStart(2, '0');
+        const wDay = String(startOfWeek.getDate()).padStart(2, '0');
+        return `${startOfWeek.getFullYear()}-${wMonth}-${wDay}`;
+      }
+      case Granularity.MONTHLY:
+        return `${year}-${month}`;
+    }
+  }
+
+  async getShopAnalytics() {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+
+    const completedWhere = {
+      status: { in: [ShopOrderStatus.PAID, ShopOrderStatus.COLLECTED] },
+    };
+
+    const [
+      totalOrders,
+      pendingOrders,
+      paidOrders,
+      collectedOrders,
+      cancelledOrders,
+      allTimeRevenueAgg,
+      thisMonthRevenueAgg,
+      lastMonthRevenueAgg,
+      orderItems,
+      lowStockItems,
+      lowStockVariants,
+    ] = await Promise.all([
+      this.prisma.shopOrder.count(),
+      this.prisma.shopOrder.count({ where: { status: 'PENDING' } }),
+      this.prisma.shopOrder.count({ where: { status: 'PAID' } }),
+      this.prisma.shopOrder.count({ where: { status: 'COLLECTED' } }),
+      this.prisma.shopOrder.count({ where: { status: 'CANCELLED' } }),
+      this.prisma.shopOrder.aggregate({
+        _sum: { totalAmount: true },
+        where: completedWhere,
+      }),
+      this.prisma.shopOrder.aggregate({
+        _sum: { totalAmount: true },
+        where: { ...completedWhere, createdAt: { gte: startOfMonth } },
+      }),
+      this.prisma.shopOrder.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          ...completedWhere,
+          createdAt: { gte: lastMonthStart, lte: lastMonthEnd },
+        },
+      }),
+      this.prisma.shopOrderItem.findMany({
+        where: {
+          order: {
+            status: { in: [ShopOrderStatus.PAID, ShopOrderStatus.COLLECTED] },
+          },
+        },
+        select: {
+          shopItemId: true,
+          quantity: true,
+          unitPrice: true,
+          item: { select: { name: true } },
+        },
+      }),
+      this.prisma.shopItem.count({ where: { stock: 0, isActive: true } }),
+      this.prisma.shopItemVariant.count({
+        where: { stock: 0, item: { isActive: true } },
+      }),
+    ]);
+
+    const allTimeRevenue = allTimeRevenueAgg._sum?.totalAmount ?? 0;
+    const completedCount = paidOrders + collectedOrders;
+
+    const itemMap = new Map<
+      string,
+      { name: string; revenue: number; unitsSold: number }
+    >();
+    let unitsSold = 0;
+    for (const oi of orderItems) {
+      const entry = itemMap.get(oi.shopItemId) ?? {
+        name: oi.item.name,
+        revenue: 0,
+        unitsSold: 0,
+      };
+      entry.revenue += oi.unitPrice * oi.quantity;
+      entry.unitsSold += oi.quantity;
+      itemMap.set(oi.shopItemId, entry);
+      unitsSold += oi.quantity;
+    }
+
+    const topItems = Array.from(itemMap.entries())
+      .map(([itemId, data]) => ({ itemId, ...data }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    return {
+      orders: {
+        total: totalOrders,
+        pending: pendingOrders,
+        paid: paidOrders,
+        collected: collectedOrders,
+        cancelled: cancelledOrders,
+      },
+      revenue: {
+        allTime: allTimeRevenue,
+        thisMonth: thisMonthRevenueAgg._sum?.totalAmount ?? 0,
+        lastMonth: lastMonthRevenueAgg._sum?.totalAmount ?? 0,
+      },
+      avgOrderValue:
+        completedCount > 0
+          ? Math.round((allTimeRevenue / completedCount) * 100) / 100
+          : 0,
+      unitsSold,
+      topItems,
+      lowStockCount: lowStockItems + lowStockVariants,
+    };
   }
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Africa/Nairobi' })

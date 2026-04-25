@@ -615,7 +615,14 @@ describe('ShopService', () => {
     });
 
     it('returns avgOrderValue of 0 when no completed orders exist', async () => {
-      jest.clearAllMocks();
+      // Reset only the mocks that carry queued Once-values from beforeEach,
+      // then restore $transaction so the service can still run transactions.
+      prisma.shopOrder.count.mockReset();
+      prisma.shopOrder.aggregate.mockReset();
+      prisma.shopOrderItem.findMany.mockReset();
+      prisma.shopItem.count.mockReset();
+      prisma.shopItemVariant.count.mockReset();
+      prisma.$transaction.mockImplementation((cb: any) => cb(prisma));
       prisma.shopOrder.count
         .mockResolvedValueOnce(1) // total
         .mockResolvedValueOnce(1) // pending
