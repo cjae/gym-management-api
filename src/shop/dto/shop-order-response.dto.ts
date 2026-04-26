@@ -3,10 +3,19 @@ import { ShopOrderStatus, PaymentMethod } from '@prisma/client';
 
 export class ShopOrderItemResponseDto {
   @ApiProperty() id: string;
+  @ApiProperty() shopOrderId: string;
   @ApiProperty() shopItemId: string;
   @ApiPropertyOptional() variantId?: string | null;
   @ApiProperty() quantity: number;
   @ApiProperty() unitPrice: number;
+  @ApiProperty() createdAt: Date;
+}
+
+export class ShopOrderMemberDto {
+  @ApiProperty() id: string;
+  @ApiProperty() firstName: string;
+  @ApiPropertyOptional() lastName?: string;
+  @ApiPropertyOptional() email?: string;
 }
 
 export class ShopOrderResponseDto {
@@ -19,6 +28,8 @@ export class ShopOrderResponseDto {
   @ApiPropertyOptional() paystackReference?: string | null;
   @ApiProperty({ type: [ShopOrderItemResponseDto] })
   orderItems: ShopOrderItemResponseDto[];
+  @ApiPropertyOptional({ type: ShopOrderMemberDto })
+  member?: ShopOrderMemberDto;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }
