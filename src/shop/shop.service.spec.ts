@@ -726,5 +726,42 @@ describe('ShopService', () => {
         }),
       );
     });
+
+    it('folds *_IN_PERSON variants into base buckets and routes COMPLIMENTARY correctly', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([
+        {
+          totalAmount: 1000,
+          paymentMethod: 'CARD_IN_PERSON',
+          createdAt: new Date('2026-03-01'),
+        },
+        {
+          totalAmount: 2000,
+          paymentMethod: 'MOBILE_MONEY_IN_PERSON',
+          createdAt: new Date('2026-03-01'),
+        },
+        {
+          totalAmount: 3000,
+          paymentMethod: 'BANK_TRANSFER_IN_PERSON',
+          createdAt: new Date('2026-03-01'),
+        },
+        {
+          totalAmount: 500,
+          paymentMethod: 'COMPLIMENTARY',
+          createdAt: new Date('2026-03-01'),
+        },
+      ] as any);
+
+      const result = await service.getShopRevenueTrends({
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(1);
+      const period = result.series[0];
+      expect(period.revenue).toBe(6500);
+      expect(period.byMethod.card).toBe(1000);
+      expect(period.byMethod.mobileMoney).toBe(2000);
+      expect(period.byMethod.bankTransfer).toBe(3000);
+      expect(period.byMethod.complimentary).toBe(500);
+    });
   });
 });

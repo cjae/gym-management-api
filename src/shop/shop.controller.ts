@@ -266,7 +266,7 @@ export class ShopController {
   @ApiOperation({
     summary: 'Get shop revenue trends',
     description:
-      'Time-series shop revenue for PAID and COLLECTED orders, grouped by granularity (daily/weekly/monthly). Each period includes total revenue, order count, and breakdown by payment method. Defaults to the last 12 months, monthly.',
+      'Time-series shop revenue for PAID and COLLECTED orders, grouped by granularity (daily/weekly/monthly). Each period includes total revenue, order count, and breakdown by payment method. Defaults to the last 12 months, monthly. Periods with no orders are omitted — callers should fill gaps client-side.',
   })
   @ApiOkResponse({ type: ShopRevenueTrendsResponseDto })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })

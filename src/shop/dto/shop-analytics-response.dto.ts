@@ -25,7 +25,11 @@ export class ShopAnalyticsResponseDto {
   @ApiProperty({ type: ShopAnalyticsOrdersDto }) orders: ShopAnalyticsOrdersDto;
   @ApiProperty({ type: ShopAnalyticsRevenueDto })
   revenue: ShopAnalyticsRevenueDto;
-  @ApiProperty() avgOrderValue: number;
+  @ApiProperty({
+    description:
+      'All-time average order value across PAID and COLLECTED orders',
+  })
+  avgOrderValue: number;
   @ApiProperty() unitsSold: number;
   @ApiProperty({ type: [ShopTopItemDto] }) topItems: ShopTopItemDto[];
   @ApiProperty() lowStockCount: number;

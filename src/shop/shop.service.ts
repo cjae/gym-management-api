@@ -675,10 +675,16 @@ export class ShopService {
       lowStockVariants,
     ] = await Promise.all([
       this.prisma.shopOrder.count(),
-      this.prisma.shopOrder.count({ where: { status: 'PENDING' } }),
-      this.prisma.shopOrder.count({ where: { status: 'PAID' } }),
-      this.prisma.shopOrder.count({ where: { status: 'COLLECTED' } }),
-      this.prisma.shopOrder.count({ where: { status: 'CANCELLED' } }),
+      this.prisma.shopOrder.count({
+        where: { status: ShopOrderStatus.PENDING },
+      }),
+      this.prisma.shopOrder.count({ where: { status: ShopOrderStatus.PAID } }),
+      this.prisma.shopOrder.count({
+        where: { status: ShopOrderStatus.COLLECTED },
+      }),
+      this.prisma.shopOrder.count({
+        where: { status: ShopOrderStatus.CANCELLED },
+      }),
       this.prisma.shopOrder.aggregate({
         _sum: { totalAmount: true },
         where: completedWhere,
@@ -707,7 +713,9 @@ export class ShopService {
           item: { select: { name: true } },
         },
       }),
-      this.prisma.shopItem.count({ where: { stock: 0, isActive: true } }),
+      this.prisma.shopItem.count({
+        where: { stock: 0, isActive: true, variants: { none: {} } },
+      }),
       this.prisma.shopItemVariant.count({
         where: { stock: 0, item: { isActive: true } },
       }),
