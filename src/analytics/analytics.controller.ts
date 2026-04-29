@@ -21,6 +21,10 @@ import { AttendanceTrendsResponseDto } from './dto/attendance-trends-response.dt
 import { SubscriptionTrendsResponseDto } from './dto/subscription-trends-response.dto';
 import { MemberTrendsResponseDto } from './dto/member-trends-response.dto';
 import { ExpiringMembershipsResponseDto } from './dto/expiring-memberships-response.dto';
+import {
+  ShopAnalyticsResponseDto,
+  ShopRevenueTrendsResponseDto,
+} from '../shop/dto/shop-analytics-response.dto';
 
 @ApiTags('Analytics')
 @ApiBearerAuth()
@@ -114,5 +118,31 @@ export class AnalyticsController {
   @ApiOkResponse({ type: MemberTrendsResponseDto })
   getMembers(@Query() query: AnalyticsQueryDto) {
     return this.analyticsService.getMemberTrends(query);
+  }
+
+  @Get('shop')
+  @RequiresFeature('shop')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Get shop analytics summary',
+    description:
+      'Returns all-time order counts by status, revenue totals (all-time, this month, last month), average order value, units sold, top 5 items by revenue, and count of out-of-stock active items/variants.',
+  })
+  @ApiOkResponse({ type: ShopAnalyticsResponseDto })
+  getShopAnalytics() {
+    return this.analyticsService.getShopAnalytics();
+  }
+
+  @Get('shop/revenue')
+  @RequiresFeature('shop')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'Get shop revenue trends',
+    description:
+      'Time-series shop revenue for PAID and COLLECTED orders, grouped by granularity (daily/weekly/monthly). Each period includes total revenue, order count, and breakdown by payment method. Defaults to the last 12 months, monthly. Periods with no orders are omitted — callers should fill gaps client-side.',
+  })
+  @ApiOkResponse({ type: ShopRevenueTrendsResponseDto })
+  getShopRevenueTrends(@Query() query: AnalyticsQueryDto) {
+    return this.analyticsService.getShopRevenueTrends(query);
   }
 }

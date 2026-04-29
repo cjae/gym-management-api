@@ -20,7 +20,6 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiForbiddenResponse,
-  ApiOperation,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -46,11 +45,6 @@ import {
   CreateShopOrderResponseDto,
   PaginatedShopOrdersResponseDto,
 } from './dto/shop-order-response.dto';
-import { AnalyticsQueryDto } from '../analytics/dto/analytics-query.dto';
-import {
-  ShopAnalyticsResponseDto,
-  ShopRevenueTrendsResponseDto,
-} from './dto/shop-analytics-response.dto';
 
 @ApiTags('Shop')
 @ApiBearerAuth()
@@ -242,35 +236,5 @@ export class ShopController {
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
   collectOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.collectOrder(id);
-  }
-
-  // ── Analytics ──
-
-  @Get('analytics')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({
-    summary: 'Get shop analytics summary',
-    description:
-      'Returns all-time order counts by status, revenue totals (all-time, this month, last month), average order value, units sold, top 5 items by revenue, and count of out-of-stock active items/variants.',
-  })
-  @ApiOkResponse({ type: ShopAnalyticsResponseDto })
-  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  getShopAnalytics() {
-    return this.shopService.getShopAnalytics();
-  }
-
-  @Get('analytics/revenue')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({
-    summary: 'Get shop revenue trends',
-    description:
-      'Time-series shop revenue for PAID and COLLECTED orders, grouped by granularity (daily/weekly/monthly). Each period includes total revenue, order count, and breakdown by payment method. Defaults to the last 12 months, monthly. Periods with no orders are omitted — callers should fill gaps client-side.',
-  })
-  @ApiOkResponse({ type: ShopRevenueTrendsResponseDto })
-  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
-  getShopRevenueTrends(@Query() query: AnalyticsQueryDto) {
-    return this.shopService.getShopRevenueTrends(query);
   }
 }
