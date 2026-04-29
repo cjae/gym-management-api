@@ -58,6 +58,25 @@ describe('GymSettingsService', () => {
         service.upsert({ timezone: 'Invalid/Timezone' }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should set currency on upsert', async () => {
+      const mockSettings = {
+        id: 'singleton',
+        timezone: 'Africa/Nairobi',
+        offPeakWindows: [],
+      };
+      const settings = { ...mockSettings, currency: 'NGN' };
+      prisma.gymSettings.upsert.mockResolvedValue(settings as any);
+
+      const result = await service.upsert({ currency: 'NGN' });
+
+      expect(prisma.gymSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ currency: 'NGN' }),
+        }),
+      );
+      expect(result.currency).toBe('NGN');
+    });
   });
 
   describe('addOffPeakWindow', () => {

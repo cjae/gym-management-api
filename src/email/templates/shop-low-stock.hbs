@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+
+  <!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td><![endif]-->
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;max-width:600px;margin:0 auto;background-color:#121212;">
+
+    <tr><td>{{> header }}</td></tr>
+
+    <tr>
+      <td style="padding:40px 48px;">
+        <h2 style="color:#FFFFFF;margin:0 0 20px;font-size:24px;font-weight:700;">
+          Shop Item Out of Stock
+        </h2>
+
+        <p style="color:#E2E8F0;line-height:1.7;margin:0 0 12px;font-size:15px;">
+          The following item has run out of stock:
+        </p>
+
+        <p style="color:#FFFFFF;line-height:1.7;margin:0 0 24px;font-size:18px;font-weight:bold;">
+          {{itemName}}{{#if variantName}} — {{variantName}}{{/if}}
+        </p>
+
+        <p style="color:#A0AEC0;line-height:1.7;margin:0;font-size:14px;">
+          Please restock this item in the admin dashboard.
+        </p>
+      </td>
+    </tr>
+
+    <tr><td>{{> footer}}</td></tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</body>
+</html>

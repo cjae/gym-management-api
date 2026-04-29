@@ -58,6 +58,13 @@ enum SalaryStatus {
   PAID
 }
 
+enum ShopOrderStatus {
+  PENDING
+  PAID
+  COLLECTED
+  CANCELLED
+}
+
 enum Gender {
   MALE
   FEMALE
@@ -79,6 +86,7 @@ enum NotificationType {
   GOAL_PLAN_READY
   GOAL_PLAN_FAILED
   GOAL_WEEKLY_PULSE
+  SHOP_ORDER_COLLECTED
 }
 
 enum AuditAction {
@@ -240,6 +248,7 @@ model User {
   memberTags                 MemberTag[]
   goals                      Goal[]                   @relation("UserGoals")
   refreshTokens              RefreshToken[]           @relation("UserRefreshTokens")
+  shopOrders                 ShopOrder[]
 }
 
 model AccountDeletionRequest {
@@ -600,6 +609,7 @@ model AuditLog {
 model GymSettings {
   id                        String   @id @default("singleton")
   timezone                  String   @default("Africa/Nairobi")
+  currency                  String   @default("KES")
   referralRewardDays        Int      @default(7)
   maxReferralsPerCycle      Int      @default(3)
   newMemberDays             Int      @default(14)
@@ -974,4 +984,69 @@ model GoalProgressLog {
   createdAt DateTime @default(now())
 
   @@index([goalId, loggedAt])
+}
+
+model ShopItem {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  imageUrl    String?
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  variants   ShopItemVariant[]
+  orderItems ShopOrderItem[]
+}
+
+model ShopItemVariant {
+  id            String   @id @default(uuid())
+  shopItemId    String
+  name          String
+  priceOverride Float?
+  stock         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  item       ShopItem      @relation(fields: [shopItemId], references: [id], onDelete: Cascade)
+  orderItems ShopOrderItem[]
+
+  @@index([shopItemId])
+}
+
+model ShopOrder {
+  id                String          @id @default(uuid())
+  memberId          String
+  status            ShopOrderStatus @default(PENDING)
+  totalAmount       Float
+  currency          String
+  paymentMethod     PaymentMethod
+  paystackReference String?         @unique
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  member     User           @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  orderItems ShopOrderItem[]
+
+  @@index([memberId])
+  @@index([status])
+}
+
+model ShopOrderItem {
+  id          String   @id @default(uuid())
+  shopOrderId String
+  shopItemId  String
+  variantId   String?
+  quantity    Int
+  unitPrice   Float
+  createdAt   DateTime @default(now())
+
+  order   ShopOrder        @relation(fields: [shopOrderId], references: [id], onDelete: Cascade)
+  item    ShopItem         @relation(fields: [shopItemId], references: [id])
+  variant ShopItemVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([shopOrderId])
+  @@index([shopItemId])
 }

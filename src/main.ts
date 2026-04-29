@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { AppConfig, getAppConfigName } from './common/config/app.config';
 import { AuthConfig, getAuthConfigName } from './common/config/auth.config';
 import { createSwaggerBasicAuthMiddleware } from './common/middleware/swagger-basic-auth.middleware';
+import { SocketIoAdapter } from './common/adapters/socket-io.adapter';
 
 const SWAGGER_DESCRIPTION = `API for gym management platform — subscriptions, attendance, payments, trainers, classes and more.
 
@@ -127,6 +128,7 @@ async function bootstrap() {
     }),
   );
   app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
+  app.useWebSocketAdapter(new SocketIoAdapter(app));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

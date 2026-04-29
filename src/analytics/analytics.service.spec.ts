@@ -430,4 +430,242 @@ describe('AnalyticsService', () => {
       });
     });
   });
+
+  describe('getShopAnalytics', () => {
+    const mockOrderItems = [
+      {
+        shopItemId: 'item-1',
+        quantity: 3,
+        unitPrice: 5000,
+        item: { name: 'Gym Bag' },
+      },
+      {
+        shopItemId: 'item-1',
+        quantity: 2,
+        unitPrice: 5000,
+        item: { name: 'Gym Bag' },
+      },
+      {
+        shopItemId: 'item-2',
+        quantity: 1,
+        unitPrice: 3000,
+        item: { name: 'Water Bottle' },
+      },
+    ];
+
+    beforeEach(() => {
+      prisma.shopOrder.count
+        .mockResolvedValueOnce(10) // total
+        .mockResolvedValueOnce(2) // pending
+        .mockResolvedValueOnce(5) // paid
+        .mockResolvedValueOnce(2) // collected
+        .mockResolvedValueOnce(1); // cancelled
+      prisma.shopOrder.aggregate
+        .mockResolvedValueOnce({ _sum: { totalAmount: 50000 } } as any) // allTime
+        .mockResolvedValueOnce({ _sum: { totalAmount: 10000 } } as any) // thisMonth
+        .mockResolvedValueOnce({ _sum: { totalAmount: 8000 } } as any); // lastMonth
+      prisma.shopOrderItem.findMany.mockResolvedValue(mockOrderItems as any);
+      prisma.shopItem.count.mockResolvedValue(2);
+      prisma.shopItemVariant.count.mockResolvedValue(1);
+    });
+
+    it('returns order counts by status', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.orders).toEqual({
+        total: 10,
+        pending: 2,
+        paid: 5,
+        collected: 2,
+        cancelled: 1,
+      });
+    });
+
+    it('returns revenue figures for all-time, this month, and last month', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.revenue).toEqual({
+        allTime: 50000,
+        thisMonth: 10000,
+        lastMonth: 8000,
+      });
+    });
+
+    it('computes avgOrderValue from completed orders (paid + collected)', async () => {
+      const result = await service.getShopAnalytics();
+      // 5 paid + 2 collected = 7 completed; 50000 / 7 ≈ 7142.86
+      expect(result.avgOrderValue).toBeCloseTo(50000 / 7, 2);
+    });
+
+    it('sums unitsSold from order items of completed orders', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.unitsSold).toBe(6); // 3 + 2 + 1
+    });
+
+    it('returns top 5 items sorted by revenue descending', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.topItems).toHaveLength(2);
+      expect(result.topItems[0]).toMatchObject({
+        itemId: 'item-1',
+        name: 'Gym Bag',
+        revenue: 25000,
+        unitsSold: 5,
+      });
+      expect(result.topItems[1]).toMatchObject({
+        itemId: 'item-2',
+        name: 'Water Bottle',
+        revenue: 3000,
+        unitsSold: 1,
+      });
+    });
+
+    it('sums low stock items and variants into lowStockCount', async () => {
+      const result = await service.getShopAnalytics();
+      expect(result.lowStockCount).toBe(3); // 2 items + 1 variant
+    });
+
+    it('returns avgOrderValue of 0 when no completed orders exist', async () => {
+      prisma.shopOrder.count.mockReset();
+      prisma.shopOrder.aggregate.mockReset();
+      prisma.shopOrderItem.findMany.mockReset();
+      prisma.shopItem.count.mockReset();
+      prisma.shopItemVariant.count.mockReset();
+      prisma.shopOrder.count
+        .mockResolvedValueOnce(1) // total
+        .mockResolvedValueOnce(1) // pending
+        .mockResolvedValueOnce(0) // paid
+        .mockResolvedValueOnce(0) // collected
+        .mockResolvedValueOnce(0); // cancelled
+      prisma.shopOrder.aggregate.mockResolvedValue({
+        _sum: { totalAmount: null },
+      } as any);
+      prisma.shopOrderItem.findMany.mockResolvedValue([]);
+      prisma.shopItem.count.mockResolvedValue(0);
+      prisma.shopItemVariant.count.mockResolvedValue(0);
+
+      const result = await service.getShopAnalytics();
+      expect(result.avgOrderValue).toBe(0);
+      expect(result.unitsSold).toBe(0);
+      expect(result.topItems).toHaveLength(0);
+    });
+  });
+
+  describe('getShopRevenueTrends', () => {
+    it('buckets PAID and COLLECTED orders by monthly period and payment method', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([
+        {
+          totalAmount: 5000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-03-15'),
+        },
+        {
+          totalAmount: 3000,
+          paymentMethod: 'MOBILE_MONEY',
+          createdAt: new Date('2026-03-20'),
+        },
+        {
+          totalAmount: 2000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-04-01'),
+        },
+      ] as any);
+
+      const result = await service.getShopRevenueTrends({
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(2);
+      const march = result.series.find((s) => s.period === '2026-03')!;
+      expect(march.revenue).toBe(8000);
+      expect(march.orders).toBe(2);
+      expect(march.byMethod.card).toBe(5000);
+      expect(march.byMethod.mobileMoney).toBe(3000);
+      expect(march.byMethod.bankTransfer).toBe(0);
+    });
+
+    it('returns series sorted chronologically', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([
+        {
+          totalAmount: 1000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-04-01'),
+        },
+        {
+          totalAmount: 2000,
+          paymentMethod: 'CARD',
+          createdAt: new Date('2026-02-01'),
+        },
+      ] as any);
+
+      const result = await service.getShopRevenueTrends({
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series[0].period).toBe('2026-02');
+      expect(result.series[1].period).toBe('2026-04');
+    });
+
+    it('returns empty series when no completed orders exist in range', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([]);
+
+      const result = await service.getShopRevenueTrends({});
+      expect(result.series).toHaveLength(0);
+    });
+
+    it('passes the date range filter to Prisma', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([]);
+
+      await service.getShopRevenueTrends({
+        from: '2026-01-01',
+        to: '2026-03-31',
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(prisma.shopOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: expect.objectContaining({
+              gte: new Date('2026-01-01'),
+              lte: new Date('2026-03-31'),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('folds *_IN_PERSON variants into base buckets and routes COMPLIMENTARY correctly', async () => {
+      prisma.shopOrder.findMany.mockResolvedValue([
+        {
+          totalAmount: 1000,
+          paymentMethod: 'CARD_IN_PERSON',
+          createdAt: new Date('2026-03-01'),
+        },
+        {
+          totalAmount: 2000,
+          paymentMethod: 'MOBILE_MONEY_IN_PERSON',
+          createdAt: new Date('2026-03-01'),
+        },
+        {
+          totalAmount: 3000,
+          paymentMethod: 'BANK_TRANSFER_IN_PERSON',
+          createdAt: new Date('2026-03-01'),
+        },
+        {
+          totalAmount: 500,
+          paymentMethod: 'COMPLIMENTARY',
+          createdAt: new Date('2026-03-01'),
+        },
+      ] as any);
+
+      const result = await service.getShopRevenueTrends({
+        granularity: Granularity.MONTHLY,
+      });
+
+      expect(result.series).toHaveLength(1);
+      const period = result.series[0];
+      expect(period.revenue).toBe(6500);
+      expect(period.byMethod.card).toBe(1000);
+      expect(period.byMethod.mobileMoney).toBe(2000);
+      expect(period.byMethod.bankTransfer).toBe(3000);
+      expect(period.byMethod.complimentary).toBe(500);
+    });
+  });
 });

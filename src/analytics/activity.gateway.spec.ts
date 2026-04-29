@@ -121,28 +121,22 @@ describe('ActivityGateway', () => {
     });
   });
 
-  // M10 — WebSocket gateway must not accept connections from any origin.
-  // The `@WebSocketGateway` decorator stores its options via `Reflect.defineMetadata`
-  // under the `GATEWAY_OPTIONS` key, which we read back here to verify CORS shape.
+  // M10 — WebSocket gateway must not open a wildcard CORS override.
+  // CORS is enforced by SocketIoAdapter (see socket-io.adapter.spec.ts).
+  // This test guards against accidentally re-opening it on the decorator.
   describe('CORS configuration (M10)', () => {
-    it('does not use wildcard origin', () => {
+    it('does not set a permissive CORS override on the decorator', () => {
       const opts = Reflect.getMetadata(GATEWAY_OPTIONS, ActivityGateway) as {
-        cors?: { origin?: unknown; credentials?: boolean } | boolean;
+        cors?: unknown;
       };
-
-      expect(opts).toBeDefined();
+      // No cors key at all is safe — the adapter handles it.
+      if (opts.cors === undefined || opts.cors === null) return;
       expect(opts.cors).not.toBe(true);
       expect(opts.cors).not.toEqual({ origin: '*' });
-      expect(
-        typeof opts.cors === 'object' && opts.cors && opts.cors.origin,
-      ).toBeDefined();
-      // Origin must be an explicit allowlist (array of strings), not '*'.
-      const origin = (opts.cors as { origin: unknown }).origin;
-      expect(Array.isArray(origin)).toBe(true);
-      expect(origin as string[]).not.toContain('*');
-      expect((origin as string[]).length).toBeGreaterThan(0);
-      // Credentials should be explicitly allowed for authenticated WS sessions.
-      expect((opts.cors as { credentials?: boolean }).credentials).toBe(true);
+      if (typeof opts.cors === 'object') {
+        const { origin } = opts.cors as { origin?: unknown };
+        expect(origin).not.toBe('*');
+      }
     });
   });
 });
