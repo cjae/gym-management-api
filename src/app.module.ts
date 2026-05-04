@@ -40,6 +40,7 @@ import { DiscountCodesModule } from './discount-codes/discount-codes.module';
 import { MilestonesModule } from './milestones/milestones.module';
 import { MemberTagsModule } from './member-tags/member-tags.module';
 import { GoalsModule } from './goals/goals.module';
+import { ShopModule } from './shop/shop.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { GoalsModule } from './goals/goals.module';
     MilestonesModule,
     MemberTagsModule,
     GoalsModule,
+    ShopModule,
   ],
   controllers: [AppController],
   providers: [
