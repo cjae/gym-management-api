@@ -227,6 +227,20 @@ export class ShopController {
     return this.shopService.findMyOrder(orderId, memberId);
   }
 
+  @Post('orders/:id/cancel')
+  @UseGuards(RolesGuard)
+  @Roles('MEMBER')
+  @ApiOkResponse({ description: 'Order cancelled successfully' })
+  @ApiNotFoundResponse({ description: 'Order not found' })
+  @ApiBadRequestResponse({ description: 'Order cannot be cancelled' })
+  @ApiForbiddenResponse({ description: 'Requires MEMBER role' })
+  cancelOrder(
+    @Param('id', ParseUUIDPipe) orderId: string,
+    @CurrentUser('id') memberId: string,
+  ) {
+    return this.shopService.cancelOrder(orderId, memberId);
+  }
+
   @Patch('orders/:id/collect')
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
