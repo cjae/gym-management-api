@@ -87,6 +87,7 @@ enum NotificationType {
   GOAL_PLAN_FAILED
   GOAL_WEEKLY_PULSE
   SHOP_ORDER_COLLECTED
+  SHOP_ORDER_PAID
 }
 
 enum AuditAction {
