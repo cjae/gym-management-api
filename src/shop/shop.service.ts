@@ -522,6 +522,46 @@ export class ShopService {
     return order;
   }
 
+  async cancelOrder(orderId: string, memberId: string) {
+    const order = await this.prisma.shopOrder.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true },
+    });
+
+    if (!order || order.memberId !== memberId) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException('Order cannot be cancelled');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.shopOrder.updateMany({
+        where: { id: orderId, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+
+      if (result.count === 0) {
+        throw new BadRequestException('Order cannot be cancelled');
+      }
+
+      for (const item of order.orderItems) {
+        if (item.variantId) {
+          await tx.shopItemVariant.updateMany({
+            where: { id: item.variantId },
+            data: { stock: { increment: item.quantity } },
+          });
+        } else {
+          await tx.shopItem.updateMany({
+            where: { id: item.shopItemId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+      }
+    });
+  }
+
   async findAllOrders(dto: FilterShopOrdersDto) {
     const where: Record<string, unknown> = {};
     if (dto.status) where.status = dto.status;

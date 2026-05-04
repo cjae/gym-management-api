@@ -417,6 +417,107 @@ describe('ShopService', () => {
     });
   });
 
+  describe('cancelOrder', () => {
+    it('should throw NotFoundException when order not found', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue(null);
+      await expect(service.cancelOrder('order-1', 'member-1')).rejects.toThrow(
+        'Order not found',
+      );
+    });
+
+    it('should throw NotFoundException when order belongs to another member', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'other-member',
+        status: 'PENDING',
+        orderItems: [],
+      } as any);
+      await expect(service.cancelOrder('order-1', 'member-1')).rejects.toThrow(
+        'Order not found',
+      );
+    });
+
+    it('should throw BadRequestException when order is not PENDING', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'PAID',
+        orderItems: [],
+      } as any);
+      await expect(service.cancelOrder('order-1', 'member-1')).rejects.toThrow(
+        'Order cannot be cancelled',
+      );
+    });
+
+    it('should throw BadRequestException when order is already CANCELLED', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'CANCELLED',
+        orderItems: [],
+      } as any);
+      await expect(service.cancelOrder('order-1', 'member-1')).rejects.toThrow(
+        'Order cannot be cancelled',
+      );
+    });
+
+    it('should cancel order and restore variant stock', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'PENDING',
+        orderItems: [
+          { shopItemId: 'item-1', variantId: 'variant-1', quantity: 2 },
+        ],
+      } as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopItemVariant.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.cancelOrder('order-1', 'member-1');
+
+      expect(prisma.shopOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+      expect(prisma.shopItemVariant.updateMany).toHaveBeenCalledWith({
+        where: { id: 'variant-1' },
+        data: { stock: { increment: 2 } },
+      });
+    });
+
+    it('should cancel order and restore item stock when no variant', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'PENDING',
+        orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 3 }],
+      } as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.cancelOrder('order-1', 'member-1');
+
+      expect(prisma.shopItem.updateMany).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { stock: { increment: 3 } },
+      });
+    });
+
+    it('should throw BadRequestException when cron races and cancels first', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'PENDING',
+        orderItems: [],
+      } as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.cancelOrder('order-1', 'member-1')).rejects.toThrow(
+        'Order cannot be cancelled',
+      );
+    });
+  });
+
   describe('findMyOrders', () => {
     it('should return paginated orders for member', async () => {
       prisma.shopOrder.findMany.mockResolvedValue([]);
@@ -499,7 +600,8 @@ describe('ShopService', () => {
 
   describe('handlePaymentSuccess', () => {
     it('should update order to PAID', async () => {
-      const notificationsService = module.get(NotificationsService);
+      const notificationsService =
+        module.get<DeepMockProxy<NotificationsService>>(NotificationsService);
       notificationsService.create.mockResolvedValue(undefined as any);
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
       prisma.shopOrder.findUnique.mockResolvedValue({
@@ -516,7 +618,8 @@ describe('ShopService', () => {
     });
 
     it('should log warn when order not PENDING', async () => {
-      const notificationsService = module.get(NotificationsService);
+      const notificationsService =
+        module.get<DeepMockProxy<NotificationsService>>(NotificationsService);
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
       const logSpy = jest.spyOn((service as any).logger, 'warn');
 
@@ -527,7 +630,8 @@ describe('ShopService', () => {
     });
 
     it('should send SHOP_ORDER_PAID push notification when order transitions to PAID', async () => {
-      const notificationsService = module.get(NotificationsService);
+      const notificationsService =
+        module.get<DeepMockProxy<NotificationsService>>(NotificationsService);
       notificationsService.create.mockResolvedValue(undefined as any);
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
       prisma.shopOrder.findUnique.mockResolvedValue({
