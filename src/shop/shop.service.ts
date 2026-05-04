@@ -560,6 +560,9 @@ export class ShopService {
         }
       }
     });
+    this.logger.log(
+      `Member cancelled shop order ${orderId} and stock restored`,
+    );
   }
 
   async findAllOrders(dto: FilterShopOrdersDto) {

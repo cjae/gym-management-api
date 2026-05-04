@@ -503,6 +503,32 @@ describe('ShopService', () => {
       });
     });
 
+    it('should restore stock for all items in a multi-item order', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        status: 'PENDING',
+        orderItems: [
+          { shopItemId: 'item-1', variantId: 'variant-1', quantity: 2 },
+          { shopItemId: 'item-2', variantId: null, quantity: 1 },
+        ],
+      } as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopItemVariant.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.cancelOrder('order-1', 'member-1');
+
+      expect(prisma.shopItemVariant.updateMany).toHaveBeenCalledWith({
+        where: { id: 'variant-1' },
+        data: { stock: { increment: 2 } },
+      });
+      expect(prisma.shopItem.updateMany).toHaveBeenCalledWith({
+        where: { id: 'item-2' },
+        data: { stock: { increment: 1 } },
+      });
+    });
+
     it('should throw BadRequestException when cron races and cancels first', async () => {
       prisma.shopOrder.findUnique.mockResolvedValue({
         id: 'order-1',
