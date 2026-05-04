@@ -431,6 +431,27 @@ describe('LicensingService', () => {
     });
   });
 
+  describe('getAdminLimit', () => {
+    it('should return maxAdmins (not maxMembers) from cached license', async () => {
+      // Regression guard: the field must be maxAdmins. A bug that returned
+      // maxMembers instead would cause this test to fail because the two
+      // values are intentionally different (5 vs 200).
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        maxAdmins: 5,
+        maxMembers: 200,
+      } as any);
+      const result = await service.getAdminLimit();
+      expect(result).toBe(5);
+      expect(result).not.toBe(200);
+    });
+
+    it('should return null when no cache exists', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
+      const result = await service.getAdminLimit();
+      expect(result).toBeNull();
+    });
+  });
+
   describe('getFeatures', () => {
     it('should return features from cached license', async () => {
       prisma.licenseCache.findUnique.mockResolvedValue({
@@ -550,6 +571,131 @@ describe('LicensingService', () => {
       prisma.licenseCache.findUnique.mockResolvedValue(null);
       const result = await configuredService.hasFeature('referrals');
       expect(result).toBe(false);
+    });
+  });
+
+  describe('getLicensePlan', () => {
+    it('should return isDevMode=true with null fields when LICENSE_KEY is not set', async () => {
+      mockConfigService.get.mockReturnValue({
+        licenseKey: '',
+        licenseServerUrl: '',
+      });
+      const devService = new LicensingService(
+        prisma as unknown as PrismaService,
+        mockConfigService as unknown as ConfigService,
+      );
+      const result = await devService.getLicensePlan();
+      expect(result).toEqual({
+        status: 'ACTIVE',
+        isDevMode: true,
+        gymName: null,
+        tierName: null,
+        maxMembers: null,
+        maxAdmins: null,
+        expiresAt: null,
+        features: [],
+        lastCheckedAt: null,
+      });
+      // Restore default config so the next beforeEach compiles the module correctly
+      mockConfigService.get.mockReturnValue(defaultConfig);
+    });
+
+    it('should return mapped cache fields when configured and cache exists', async () => {
+      const expiresAt = new Date('2026-12-31T00:00:00.000Z');
+      const lastCheckedAt = new Date('2026-04-24T03:00:00.000Z');
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        status: 'ACTIVE',
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: ['analytics', 'referrals'],
+        expiresAt,
+        lastCheckedAt,
+      } as any);
+
+      const result = await service.getLicensePlan();
+
+      expect(result).toEqual({
+        status: 'ACTIVE',
+        isDevMode: false,
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        expiresAt: '2026-12-31T00:00:00.000Z',
+        features: ['analytics', 'referrals'],
+        lastCheckedAt: '2026-04-24T03:00:00.000Z',
+      });
+    });
+
+    it('should return ACTIVE status with null fields when no cache record exists', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
+      const result = await service.getLicensePlan();
+      expect(result).toEqual({
+        status: 'ACTIVE',
+        isDevMode: false,
+        gymName: null,
+        tierName: null,
+        maxMembers: null,
+        maxAdmins: null,
+        expiresAt: null,
+        features: [],
+        lastCheckedAt: null,
+      });
+      expect(prisma.licenseCache.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'singleton' } }),
+      );
+    });
+
+    it('should reflect SUSPENDED status from cache', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        status: 'SUSPENDED',
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: [],
+        expiresAt: null,
+        lastCheckedAt: new Date('2026-04-24T03:00:00.000Z'),
+      } as any);
+      const result = await service.getLicensePlan();
+      expect(result).toEqual({
+        status: 'SUSPENDED',
+        isDevMode: false,
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: [],
+        expiresAt: null,
+        lastCheckedAt: '2026-04-24T03:00:00.000Z',
+      });
+    });
+
+    it('should reflect EXPIRED status from cache', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        status: 'EXPIRED',
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: [],
+        expiresAt: new Date('2026-01-01T00:00:00.000Z'),
+        lastCheckedAt: new Date('2026-04-24T03:00:00.000Z'),
+      } as any);
+      const result = await service.getLicensePlan();
+      expect(result).toEqual({
+        status: 'EXPIRED',
+        isDevMode: false,
+        gymName: 'PowerBarn Fitness',
+        tierName: 'Pro',
+        maxMembers: 500,
+        maxAdmins: 5,
+        features: [],
+        expiresAt: '2026-01-01T00:00:00.000Z',
+        lastCheckedAt: '2026-04-24T03:00:00.000Z',
+      });
     });
   });
 });

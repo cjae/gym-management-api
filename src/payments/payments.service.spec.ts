@@ -29,6 +29,7 @@ describe('PaymentsService', () => {
 
   const mockEventEmitter = {
     emit: jest.fn(),
+    emitAsync: jest.fn().mockResolvedValue([]),
   };
 
   const mockGymSettingsService = {
@@ -581,6 +582,32 @@ describe('PaymentsService', () => {
 
         await expect(service.handleWebhook(raw, badSignature)).rejects.toThrow(
           BadRequestException,
+        );
+      });
+
+      it('should emit shop.payment.success when metadata.type is shop', async () => {
+        const rawBody = Buffer.from(
+          JSON.stringify({
+            event: 'charge.success',
+            data: {
+              reference: 'shop_ref_123',
+              metadata: { type: 'shop', orderId: 'order-1' },
+            },
+          }),
+        );
+        const hash = crypto
+          .createHmac('sha512', paystackSecretKey)
+          .update(rawBody)
+          .digest('hex');
+
+        await service.handleWebhook(rawBody, hash);
+
+        expect(mockEventEmitter.emitAsync).toHaveBeenCalledWith(
+          'shop.payment.success',
+          {
+            orderId: 'order-1',
+            reference: 'shop_ref_123',
+          },
         );
       });
 

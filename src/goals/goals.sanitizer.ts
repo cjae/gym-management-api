@@ -45,7 +45,6 @@ export function sanitizeGoal(
   goal: FullGoal,
   options: { includeError?: boolean } = {},
 ): GoalResponseDto {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { rawLlmResponse: _raw, generationError, ...rest } = goal;
   const startingValue = Number(goal.startingValue);
   const latestLog = goal.progressLogs?.[0];

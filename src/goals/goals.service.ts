@@ -141,7 +141,6 @@ export class GoalsService {
     ]);
     return {
       data: rows.map((g) => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { planItems, milestones, progressLogs, ...rest } =
           sanitizeGoal(g);
         return rest;

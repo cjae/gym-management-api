@@ -1,10 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, LicenseStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LicensingConfig, getLicensingConfigName } from './licensing.config';
 import { LicenseResponseDto } from './dto/license-response.dto';
+import { LicensePlanResponseDto } from './dto/license-plan-response.dto';
 import axios from 'axios';
 
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -66,7 +67,7 @@ export class LicensingService implements OnModuleInit {
 
     if (!cache) return true;
 
-    if (cache.status === 'ACTIVE') return true;
+    if (cache.status === LicenseStatus.ACTIVE) return true;
 
     if (cache.lastSuccessAt) {
       const elapsed = Date.now() - cache.lastSuccessAt.getTime();
@@ -184,13 +185,13 @@ export class LicensingService implements OnModuleInit {
             where: { id: 'singleton' },
             update: {
               licenseKey: this.licenseKey,
-              status: 'SUSPENDED',
+              status: LicenseStatus.SUSPENDED,
               lastCheckedAt: now,
             },
             create: {
               id: 'singleton',
               licenseKey: this.licenseKey,
-              status: 'SUSPENDED',
+              status: LicenseStatus.SUSPENDED,
               lastCheckedAt: now,
             },
           });
@@ -212,6 +213,7 @@ export class LicensingService implements OnModuleInit {
   async getMemberLimit(): Promise<number | null> {
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: { maxMembers: true },
     });
     return cache?.maxMembers ?? null;
   }
@@ -219,6 +221,7 @@ export class LicensingService implements OnModuleInit {
   async getAdminLimit(): Promise<number | null> {
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: { maxAdmins: true },
     });
     return cache?.maxAdmins ?? null;
   }
@@ -234,6 +237,7 @@ export class LicensingService implements OnModuleInit {
 
     const cache = await this.prisma.licenseCache.findUnique({
       where: { id: 'singleton' },
+      select: { features: true },
     });
     this.cachedFeatures = cache?.features ? (cache.features as string[]) : [];
     this.featuresCachedAt = now;
@@ -245,6 +249,49 @@ export class LicensingService implements OnModuleInit {
 
     const features = await this.getFeatures();
     return features.includes(key);
+  }
+
+  async getLicensePlan(): Promise<LicensePlanResponseDto> {
+    if (!this.isConfigured()) {
+      return {
+        status: 'ACTIVE',
+        isDevMode: true,
+        gymName: null,
+        tierName: null,
+        maxMembers: null,
+        maxAdmins: null,
+        expiresAt: null,
+        features: [],
+        lastCheckedAt: null,
+      };
+    }
+
+    const cache = await this.prisma.licenseCache.findUnique({
+      where: { id: 'singleton' },
+      select: {
+        status: true,
+        gymName: true,
+        tierName: true,
+        maxMembers: true,
+        maxAdmins: true,
+        features: true,
+        expiresAt: true,
+        lastCheckedAt: true,
+      },
+    });
+
+    return {
+      // No cache row on first boot — treat as ACTIVE, consistent with isActive()
+      status: cache?.status ?? LicenseStatus.ACTIVE,
+      isDevMode: false,
+      gymName: cache?.gymName ?? null,
+      tierName: cache?.tierName ?? null,
+      maxMembers: cache?.maxMembers ?? null,
+      maxAdmins: cache?.maxAdmins ?? null,
+      expiresAt: cache?.expiresAt?.toISOString() ?? null,
+      features: cache?.features ? (cache.features as string[]) : [],
+      lastCheckedAt: cache?.lastCheckedAt?.toISOString() ?? null,
+    };
   }
 
   async onModuleInit(): Promise<void> {

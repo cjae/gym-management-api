@@ -61,6 +61,7 @@ export class GymSettingsService {
         ...(dto.streakDaysRequiredPerWeek !== undefined && {
           streakDaysRequiredPerWeek: dto.streakDaysRequiredPerWeek,
         }),
+        ...(dto.currency !== undefined && { currency: dto.currency }),
       },
       update: {
         ...(dto.timezone && { timezone: dto.timezone }),
@@ -85,6 +86,7 @@ export class GymSettingsService {
         ...(dto.streakDaysRequiredPerWeek !== undefined && {
           streakDaysRequiredPerWeek: dto.streakDaysRequiredPerWeek,
         }),
+        ...(dto.currency !== undefined && { currency: dto.currency }),
       },
       include: { offPeakWindows: true },
     });

@@ -5,6 +5,8 @@ import {
   IsInt,
   Min,
   Max,
+  Length,
+  Matches,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -108,4 +110,14 @@ export class UpsertGymSettingsDto {
   @Min(1)
   @Max(7)
   streakDaysRequiredPerWeek?: number;
+
+  @ApiPropertyOptional({
+    example: 'KES',
+    description: 'ISO 4217 currency code (e.g. KES, NGN, USD)',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(3, 3)
+  @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter ISO code' })
+  currency?: string;
 }

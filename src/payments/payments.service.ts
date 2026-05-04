@@ -43,8 +43,10 @@ interface PaystackWebhookAuthorization {
 }
 
 interface PaystackWebhookMetadata {
+  type?: 'subscription' | 'shop';
   subscriptionId?: string;
   paymentId?: string;
+  orderId?: string;
 }
 
 interface PaystackWebhookData {
@@ -255,6 +257,23 @@ export class PaymentsService {
 
     if (body.event === 'charge.success') {
       const { reference, metadata, authorization, channel } = body.data;
+
+      // Route shop payments to ShopService via EventEmitter
+      if (metadata?.type === 'shop') {
+        const orderId = metadata.orderId;
+        if (!orderId) {
+          this.logger.warn(
+            `shop charge.success missing orderId (reference=${reference})`,
+          );
+          return { received: true };
+        }
+        await this.eventEmitter.emitAsync('shop.payment.success', {
+          orderId,
+          reference,
+        });
+        return { received: true };
+      }
+
       const subscriptionId = metadata?.subscriptionId;
       const paymentId = metadata?.paymentId;
 
@@ -599,7 +618,6 @@ export class PaymentsService {
     ]);
 
     const sanitized = data.map((payment) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { paystackAuthorizationCode, ...sub } = payment.subscription;
       return { ...payment, subscription: sub };
     });

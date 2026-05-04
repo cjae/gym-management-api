@@ -17,7 +17,8 @@ describe('EventsService', () => {
   let emailService: DeepMockProxy<EmailService>;
   let notificationsService: DeepMockProxy<NotificationsService>;
 
-  const futureDate = new Date('2026-05-01');
+  const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const futureDateStr = futureDate.toISOString().split('T')[0];
   const pastDate = new Date('2025-01-01');
 
   const mockEvent = {
@@ -74,7 +75,7 @@ describe('EventsService', () => {
 
       const result = await service.create({
         title: 'Outdoor Bootcamp',
-        date: '2026-05-01',
+        date: futureDateStr,
         startTime: '09:00',
         endTime: '11:00',
         location: 'Uhuru Park',
@@ -104,7 +105,7 @@ describe('EventsService', () => {
 
       await service.create({
         title: 'Outdoor Bootcamp',
-        date: '2026-05-01',
+        date: futureDateStr,
         startTime: '09:00',
         endTime: '11:00',
         location: 'Uhuru Park',
@@ -137,7 +138,7 @@ describe('EventsService', () => {
 
       await service.create({
         title: 'Outdoor Bootcamp',
-        date: '2026-05-01',
+        date: futureDateStr,
         startTime: '09:00',
         endTime: '11:00',
         notifyMembers: false,
@@ -153,7 +154,7 @@ describe('EventsService', () => {
 
       const result = await service.create({
         title: 'Outdoor Bootcamp',
-        date: '2026-05-01',
+        date: futureDateStr,
         startTime: '09:00',
         endTime: '11:00',
         location: 'Uhuru Park',
@@ -173,7 +174,7 @@ describe('EventsService', () => {
 
       const result = await service.create({
         title: 'Outdoor Bootcamp',
-        date: '2026-05-01',
+        date: futureDateStr,
         startTime: '09:00',
         endTime: '11:00',
         location: 'Uhuru Park',
