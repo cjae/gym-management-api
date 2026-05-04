@@ -267,7 +267,10 @@ export class PaymentsService {
           );
           return { received: true };
         }
-        this.eventEmitter.emit('shop.payment.success', { orderId, reference });
+        await this.eventEmitter.emitAsync('shop.payment.success', {
+          orderId,
+          reference,
+        });
         return { received: true };
       }
 
@@ -615,7 +618,6 @@ export class PaymentsService {
     ]);
 
     const sanitized = data.map((payment) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { paystackAuthorizationCode, ...sub } = payment.subscription;
       return { ...payment, subscription: sub };
     });

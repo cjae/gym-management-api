@@ -200,6 +200,16 @@ export class ShopController {
     return this.shopService.findAllOrders(dto);
   }
 
+  @Get('admin/orders/:id')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiOkResponse({ type: ShopOrderResponseDto })
+  @ApiNotFoundResponse({ description: 'Order not found' })
+  @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
+  findOrderById(@Param('id', ParseUUIDPipe) orderId: string) {
+    return this.shopService.findOrderById(orderId);
+  }
+
   // ── Member Orders ──
 
   @Get('orders/mine')

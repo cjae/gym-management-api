@@ -8,7 +8,7 @@ export class ShopPaymentListener {
 
   constructor(private readonly shopService: ShopService) {}
 
-  @OnEvent('shop.payment.success', { async: true })
+  @OnEvent('shop.payment.success')
   async handle(payload: { orderId: string; reference: string }) {
     try {
       await this.shopService.handlePaymentSuccess(
@@ -18,7 +18,9 @@ export class ShopPaymentListener {
     } catch (err) {
       this.logger.error(
         `Failed to process shop payment for order ${payload.orderId}: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
       );
+      throw err;
     }
   }
 }

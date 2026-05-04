@@ -72,6 +72,7 @@ describe('GymSettingsService', () => {
 
       expect(prisma.gymSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
+          create: expect.objectContaining({ currency: 'NGN' }),
           update: expect.objectContaining({ currency: 'NGN' }),
         }),
       );

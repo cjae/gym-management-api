@@ -1022,7 +1022,7 @@ model ShopOrder {
   memberId          String
   status            ShopOrderStatus @default(PENDING)
   totalAmount       Float
-  currency          String
+  currency          String            @default("KES")
   paymentMethod     PaymentMethod
   paystackReference String?         @unique
   createdAt         DateTime        @default(now())
@@ -1033,6 +1033,7 @@ model ShopOrder {
 
   @@index([memberId])
   @@index([status])
+  @@index([status, createdAt])
 }
 
 model ShopOrderItem {

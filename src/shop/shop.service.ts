@@ -320,6 +320,7 @@ export class ShopService {
           Authorization: `Bearer ${this.paystackSecretKey}`,
           'Content-Type': 'application/json',
         },
+        timeout: 30000,
       });
 
       const updatedOrder = await this.prisma.shopOrder.update({
@@ -332,23 +333,25 @@ export class ShopService {
     } catch (error) {
       // Cancel the order and restore stock so inventory isn't locked
       try {
-        await this.prisma.shopOrder.update({
-          where: { id: order.id },
-          data: { status: 'CANCELLED' },
-        });
-        for (const l of lineItems) {
-          if (l.hasVariant && l.variantId) {
-            await this.prisma.shopItemVariant.update({
-              where: { id: l.variantId },
-              data: { stock: { increment: l.quantity } },
-            });
-          } else {
-            await this.prisma.shopItem.update({
-              where: { id: l.shopItemId },
-              data: { stock: { increment: l.quantity } },
-            });
+        await this.prisma.$transaction(async (tx) => {
+          await tx.shopOrder.update({
+            where: { id: order.id },
+            data: { status: 'CANCELLED' },
+          });
+          for (const l of lineItems) {
+            if (l.hasVariant && l.variantId) {
+              await tx.shopItemVariant.update({
+                where: { id: l.variantId },
+                data: { stock: { increment: l.quantity } },
+              });
+            } else {
+              await tx.shopItem.update({
+                where: { id: l.shopItemId },
+                data: { stock: { increment: l.quantity } },
+              });
+            }
           }
-        }
+        });
       } catch (rollbackErr) {
         this.logger.error(
           `Failed to roll back stock for order ${order.id}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
@@ -665,6 +668,17 @@ export class ShopService {
       include: { orderItems: true },
     });
     if (!order || order.memberId !== memberId) {
+      throw new NotFoundException('Order not found');
+    }
+    return order;
+  }
+
+  async findOrderById(orderId: string) {
+    const order = await this.prisma.shopOrder.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true },
+    });
+    if (!order) {
       throw new NotFoundException('Order not found');
     }
     return order;

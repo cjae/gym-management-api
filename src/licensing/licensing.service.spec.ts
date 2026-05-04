@@ -431,6 +431,27 @@ describe('LicensingService', () => {
     });
   });
 
+  describe('getAdminLimit', () => {
+    it('should return maxAdmins (not maxMembers) from cached license', async () => {
+      // Regression guard: the field must be maxAdmins. A bug that returned
+      // maxMembers instead would cause this test to fail because the two
+      // values are intentionally different (5 vs 200).
+      prisma.licenseCache.findUnique.mockResolvedValue({
+        maxAdmins: 5,
+        maxMembers: 200,
+      } as any);
+      const result = await service.getAdminLimit();
+      expect(result).toBe(5);
+      expect(result).not.toBe(200);
+    });
+
+    it('should return null when no cache exists', async () => {
+      prisma.licenseCache.findUnique.mockResolvedValue(null);
+      const result = await service.getAdminLimit();
+      expect(result).toBeNull();
+    });
+  });
+
   describe('getFeatures', () => {
     it('should return features from cached license', async () => {
       prisma.licenseCache.findUnique.mockResolvedValue({

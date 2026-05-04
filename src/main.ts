@@ -127,7 +127,11 @@ async function bootstrap() {
       },
     }),
   );
-  app.enableCors({ origin: [appConfig.adminUrl], credentials: true });
+  const corsOrigins = appConfig.adminUrl
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({ origin: corsOrigins, credentials: true });
   app.useWebSocketAdapter(new SocketIoAdapter(app));
   app.useGlobalPipes(
     new ValidationPipe({

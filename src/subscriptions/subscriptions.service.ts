@@ -176,7 +176,6 @@ export class SubscriptionsService {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = subscription;
     return safe;
   }
@@ -358,7 +357,6 @@ export class SubscriptionsService {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = subscription;
     return safe;
   }
@@ -545,7 +543,6 @@ export class SubscriptionsService {
       },
     });
     return subscriptions.map(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       ({ paystackAuthorizationCode, payments, ...sub }) => ({
         ...sub,
         paymentReference: payments[0]?.paystackReference ?? undefined,
@@ -600,7 +597,6 @@ export class SubscriptionsService {
     ]);
 
     const data = subscriptions.map(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       ({ paystackAuthorizationCode, payments, ...sub }) => ({
         ...sub,
         paymentReference: payments[0]?.paystackReference ?? undefined,
@@ -652,7 +648,6 @@ export class SubscriptionsService {
       );
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, payments, ...result } = subscription;
     return {
       ...result,
@@ -726,7 +721,6 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = result;
     return safe;
   }
@@ -874,7 +868,6 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = result;
     return safe;
   }
@@ -991,7 +984,6 @@ export class SubscriptionsService {
       })
       .catch(() => {});
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { paystackAuthorizationCode, ...safe } = result;
     return safe;
   }

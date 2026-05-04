@@ -29,6 +29,7 @@ describe('PaymentsService', () => {
 
   const mockEventEmitter = {
     emit: jest.fn(),
+    emitAsync: jest.fn().mockResolvedValue([]),
   };
 
   const mockGymSettingsService = {
@@ -601,7 +602,7 @@ describe('PaymentsService', () => {
 
         await service.handleWebhook(rawBody, hash);
 
-        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        expect(mockEventEmitter.emitAsync).toHaveBeenCalledWith(
           'shop.payment.success',
           {
             orderId: 'order-1',
