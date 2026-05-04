@@ -499,6 +499,8 @@ describe('ShopService', () => {
 
   describe('handlePaymentSuccess', () => {
     it('should update order to PAID', async () => {
+      const notificationsService = module.get(NotificationsService);
+      notificationsService.create.mockResolvedValue(undefined as any);
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
       prisma.shopOrder.findUnique.mockResolvedValue({
         id: 'order-1',
@@ -514,12 +516,14 @@ describe('ShopService', () => {
     });
 
     it('should log warn when order not PENDING', async () => {
+      const notificationsService = module.get(NotificationsService);
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
       const logSpy = jest.spyOn((service as any).logger, 'warn');
 
       await service.handlePaymentSuccess('order-1', 'ref_123');
 
       expect(logSpy).toHaveBeenCalled();
+      expect(notificationsService.create).not.toHaveBeenCalled();
     });
 
     it('should send SHOP_ORDER_PAID push notification when order transitions to PAID', async () => {
