@@ -532,6 +532,10 @@ export class ShopService {
       throw new NotFoundException('Order not found');
     }
 
+    if (order.status === 'CANCELLED') {
+      return;
+    }
+
     if (order.status !== 'PENDING') {
       throw new BadRequestException('Order cannot be cancelled');
     }
@@ -560,6 +564,7 @@ export class ShopService {
         }
       }
     });
+
     this.logger.log(
       `Member cancelled shop order ${orderId} and stock restored`,
     );

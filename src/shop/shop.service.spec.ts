@@ -449,16 +449,17 @@ describe('ShopService', () => {
       );
     });
 
-    it('should throw BadRequestException when order is already CANCELLED', async () => {
+    it('should return silently when order is already CANCELLED (idempotent)', async () => {
       prisma.shopOrder.findUnique.mockResolvedValue({
         id: 'order-1',
         memberId: 'member-1',
         status: 'CANCELLED',
         orderItems: [],
       } as any);
-      await expect(service.cancelOrder('order-1', 'member-1')).rejects.toThrow(
-        'Order cannot be cancelled',
-      );
+      await expect(
+        service.cancelOrder('order-1', 'member-1'),
+      ).resolves.toBeUndefined();
+      expect(prisma.shopOrder.updateMany).not.toHaveBeenCalled();
     });
 
     it('should cancel order and restore variant stock', async () => {
