@@ -383,6 +383,20 @@ export class ShopService {
     });
     if (order) {
       await this.checkAndNotifyLowStock(order.orderItems);
+
+      Promise.resolve(
+        this.notificationsService.create({
+          userId: order.memberId,
+          title: 'Payment Confirmed',
+          body: 'Your shop order has been received and is being prepared.',
+          type: NotificationType.SHOP_ORDER_PAID,
+          metadata: { orderId },
+        }),
+      ).catch((err: Error) =>
+        this.logger.error(
+          `Failed to send shop payment notification for order ${orderId}: ${err.message}`,
+        ),
+      );
     }
   }
 

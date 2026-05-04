@@ -6,7 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { GymSettingsService } from '../gym-settings/gym-settings.service';
 import { ConfigService } from '@nestjs/config';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
-import { PrismaClient } from '@prisma/client';
+import { NotificationType, PrismaClient } from '@prisma/client';
 import axios from 'axios';
 
 describe('ShopService', () => {
@@ -520,6 +520,27 @@ describe('ShopService', () => {
       await service.handlePaymentSuccess('order-1', 'ref_123');
 
       expect(logSpy).toHaveBeenCalled();
+    });
+
+    it('should send SHOP_ORDER_PAID push notification when order transitions to PAID', async () => {
+      const notificationsService = module.get(NotificationsService);
+      notificationsService.create.mockResolvedValue(undefined as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        memberId: 'member-1',
+        orderItems: [],
+      } as any);
+
+      await service.handlePaymentSuccess('order-1', 'ref_123');
+
+      expect(notificationsService.create).toHaveBeenCalledWith({
+        userId: 'member-1',
+        title: 'Payment Confirmed',
+        body: 'Your shop order has been received and is being prepared.',
+        type: NotificationType.SHOP_ORDER_PAID,
+        metadata: { orderId: 'order-1' },
+      });
     });
   });
 });
