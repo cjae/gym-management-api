@@ -509,7 +509,7 @@ export class SubscriptionsService {
         memberId,
         subscription: {
           status: SubscriptionStatus.ACTIVE,
-          endDate: { gte: now },
+          nextBillingDate: { gte: now },
         },
       },
     });

@@ -83,7 +83,10 @@ export class AttendanceService {
     const activeMembership = await this.prisma.subscriptionMember.findFirst({
       where: {
         memberId,
-        subscription: { status: 'ACTIVE', endDate: { gte: new Date() } },
+        subscription: {
+          status: 'ACTIVE',
+          nextBillingDate: { gte: new Date() },
+        },
       },
       include: {
         subscription: { include: { plan: { select: { isOffPeak: true } } } },

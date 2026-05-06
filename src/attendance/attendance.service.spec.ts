@@ -559,7 +559,7 @@ describe('AttendanceService', () => {
       memberId: 'member-1',
       subscription: {
         status: 'ACTIVE',
-        endDate: new Date(Date.now() + 86400000),
+        nextBillingDate: new Date(Date.now() + 86400000),
         plan: { isOffPeak: false },
       },
     } as any);

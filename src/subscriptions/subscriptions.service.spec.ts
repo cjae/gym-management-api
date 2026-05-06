@@ -186,8 +186,7 @@ describe('SubscriptionsService', () => {
           memberId: 'user-1',
           subscription: {
             status: 'ACTIVE',
-
-            endDate: { gte: expect.any(Date) },
+            nextBillingDate: { gte: expect.any(Date) },
           },
         },
       });
@@ -198,6 +197,20 @@ describe('SubscriptionsService', () => {
 
       const result = await service.hasActiveSubscription('user-2');
       expect(result).toBe(false);
+    });
+
+    it('uses nextBillingDate (not endDate) to determine active subscription', async () => {
+      prisma.subscriptionMember.findFirst.mockResolvedValue(null);
+      await service.hasActiveSubscription('member-id');
+
+      const call = prisma.subscriptionMember.findFirst.mock.calls[0] as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const where = call[0].where;
+      expect(where).toMatchObject({
+        subscription: { nextBillingDate: { gte: expect.any(Date) } },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(where.subscription.endDate).toBeUndefined();
     });
   });
 
