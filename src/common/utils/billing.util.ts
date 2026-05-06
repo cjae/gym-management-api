@@ -66,3 +66,10 @@ export function getCycleStartDate(
 
   return cycleStart;
 }
+
+/** Returns the last day of membership coverage (the day before nextBillingDate). */
+export function getSubscriptionEndDate(nextBillingDate: Date): Date {
+  const end = new Date(nextBillingDate);
+  end.setDate(end.getDate() - 1);
+  return end;
+}
