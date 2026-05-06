@@ -391,13 +391,144 @@ describe('PaymentsService', () => {
       const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
       const newEndDate = updateCall.data.endDate as Date;
 
-      // Should be ~1 month from now (not from the past endDate)
-      const oneMonthFromNow = new Date();
-      oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+      // endDate = nextBillingDate - 1 day, so endDate is ~1 month - 1 day
+      // from now. Compare against oneMonthFromNow minus 1 day.
+      const oneMonthMinusOneDayFromNow = new Date();
+      oneMonthMinusOneDayFromNow.setMonth(
+        oneMonthMinusOneDayFromNow.getMonth() + 1,
+      );
+      oneMonthMinusOneDayFromNow.setDate(
+        oneMonthMinusOneDayFromNow.getDate() - 1,
+      );
       // Allow 1 minute tolerance
       expect(
-        Math.abs(newEndDate.getTime() - oneMonthFromNow.getTime()),
+        Math.abs(newEndDate.getTime() - oneMonthMinusOneDayFromNow.getTime()),
       ).toBeLessThan(60_000);
+    });
+
+    it('endDate should be 1 day before nextBillingDate on renewal', async () => {
+      const subscriptionId = 'sub-end-date';
+      const paymentId = 'pay-end-date';
+      const reference = 'ref_end_date';
+
+      const body = {
+        event: 'charge.success',
+        data: {
+          reference,
+          metadata: { subscriptionId, paymentId },
+          channel: 'mobile_money',
+        },
+      };
+      const { raw, signature } = buildWebhookPayload(body);
+
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.findUnique.mockResolvedValue({
+        id: paymentId,
+        amount: 2500,
+        currency: 'KES',
+        subscription: {
+          primaryMember: {
+            id: 'user-end',
+            email: 'end@test.com',
+            firstName: 'End',
+            lastName: 'Date',
+          },
+        },
+      } as any);
+
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        id: subscriptionId,
+        status: 'PENDING',
+        primaryMemberId: 'user-end',
+        endDate: new Date('2026-04-15'),
+        nextBillingDate: null,
+        plan: { price: 2500, billingInterval: 'MONTHLY' },
+      } as any);
+
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
+      prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.handleWebhook(raw, signature);
+
+      const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
+      const updatedEndDate = updateCall.data.endDate as Date;
+      const updatedNextBilling = updateCall.data.nextBillingDate as Date;
+
+      // endDate must be exactly 1 day before nextBillingDate
+      expect(updatedNextBilling.getTime() - updatedEndDate.getTime()).toBe(
+        24 * 60 * 60 * 1000,
+      );
+
+      // freezeCycleAnchor must equal endDate (not nextBillingDate)
+      expect(updateCall.data.freezeCycleAnchor).toEqual(updatedEndDate);
+    });
+
+    it('should not reset freeze counters when nextBillingDate has not advanced (replay guard)', async () => {
+      const subscriptionId = 'sub-replay';
+      const paymentId = 'pay-replay';
+      const reference = 'ref_replay';
+
+      const body = {
+        event: 'charge.success',
+        data: {
+          reference,
+          metadata: { subscriptionId, paymentId },
+          channel: 'mobile_money',
+        },
+      };
+      const { raw, signature } = buildWebhookPayload(body);
+
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.findUnique.mockResolvedValue({
+        id: paymentId,
+        amount: 2500,
+        currency: 'KES',
+        subscription: {
+          primaryMember: {
+            id: 'user-replay',
+            email: 'replay@test.com',
+            firstName: 'Re',
+            lastName: 'Play',
+          },
+        },
+      } as any);
+
+      // Use DAILY billing so endDate = nextBillingDate - 1 day, and
+      // getNextBillingDate(endDate) = endDate + 1 day = nextBillingDate
+      // exactly. This means the replay computes the same nextBillingDate
+      // as what is already stored -> isCycleAdvance = false -> no counter reset.
+      const existingNextBillingDate = new Date();
+      existingNextBillingDate.setDate(existingNextBillingDate.getDate() + 2);
+      existingNextBillingDate.setHours(0, 0, 0, 0);
+      const existingEndDate = new Date(existingNextBillingDate);
+      existingEndDate.setDate(existingEndDate.getDate() - 1);
+
+      prisma.memberSubscription.findUnique.mockResolvedValue({
+        id: subscriptionId,
+        status: 'ACTIVE',
+        primaryMemberId: 'user-replay',
+        // endDate is 1 day before nextBillingDate (invariant from our fix)
+        endDate: existingEndDate,
+        // For DAILY billing, getNextBillingDate(endDate) = endDate + 1 day
+        // = existingNextBillingDate exactly — the replay scenario.
+        nextBillingDate: existingNextBillingDate,
+        plan: { price: 2500, billingInterval: 'DAILY' },
+      } as any);
+
+      prisma.memberSubscription.updateMany.mockResolvedValue({ count: 1 });
+      prisma.referral.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.handleWebhook(raw, signature);
+
+      const updateCall = prisma.memberSubscription.updateMany.mock.calls[0][0];
+
+      // baseDate = endDate (ACTIVE, endDate > now).
+      // newNextBillingDate = getNextBillingDate(endDate) = endDate + 1 day
+      //                    = existingNextBillingDate (not strictly greater).
+      // isCycleAdvance = false -> freeze counters must NOT be reset.
+      expect(updateCall.data.frozenDaysUsed).toBeUndefined();
+      expect(updateCall.data.freezeCount).toBeUndefined();
+      expect(updateCall.data.freezeCycleAnchor).toBeUndefined();
     });
 
     // C2 — timing-safe signature comparison

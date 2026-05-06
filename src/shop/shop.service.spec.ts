@@ -415,6 +415,49 @@ describe('ShopService', () => {
         'Order is not ready for collection',
       );
     });
+
+    it('should mark order as COLLECTED and return updated order', async () => {
+      const notificationsService =
+        module.get<DeepMockProxy<NotificationsService>>(NotificationsService);
+      notificationsService.create.mockResolvedValue(undefined as any);
+
+      const paidOrder = {
+        id: 'order-1',
+        status: 'PAID',
+        member: { id: 'member-1', firstName: 'Jane' },
+      } as any;
+      const collectedOrder = {
+        id: 'order-1',
+        status: 'COLLECTED',
+        orderItems: [],
+        member: { id: 'member-1', firstName: 'Jane' },
+      } as any;
+
+      prisma.shopOrder.findUnique.mockResolvedValueOnce(paidOrder);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shopOrder.findUnique.mockResolvedValueOnce(collectedOrder);
+
+      const result = await service.collectOrder('order-1');
+
+      expect(prisma.shopOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', status: 'PAID' },
+        data: { status: 'COLLECTED' },
+      });
+      expect(result).toEqual(collectedOrder);
+    });
+
+    it('should throw BadRequestException when concurrent request already collected the order', async () => {
+      prisma.shopOrder.findUnique.mockResolvedValueOnce({
+        id: 'order-1',
+        status: 'PAID',
+        member: { id: 'member-1', firstName: 'Jane' },
+      } as any);
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.collectOrder('order-1')).rejects.toThrow(
+        'Order is not ready for collection',
+      );
+    });
   });
 
   describe('cancelOrder', () => {
@@ -581,6 +624,9 @@ describe('ShopService', () => {
         orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
       };
       prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
+      (prisma.$transaction as any).mockImplementation(
+        async (fn: (tx: any) => Promise<any>) => fn(prisma),
+      );
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
       prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
 
@@ -594,6 +640,27 @@ describe('ShopService', () => {
         where: { id: 'item-1' },
         data: { stock: { increment: 2 } },
       });
+    });
+
+    it('should skip stock restore and not log when order was already claimed', async () => {
+      const staleOrder = {
+        id: 'order-1',
+        status: 'PENDING',
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
+      };
+      prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
+      (prisma.$transaction as any).mockImplementation(
+        async (fn: (tx: any) => Promise<any>) => fn(prisma),
+      );
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
+
+      const loggerSpy = jest.spyOn((service as any).logger, 'log');
+
+      await service.cleanupPendingOrders();
+
+      expect(prisma.shopItem.updateMany).not.toHaveBeenCalled();
+      expect(loggerSpy).not.toHaveBeenCalled();
     });
   });
 

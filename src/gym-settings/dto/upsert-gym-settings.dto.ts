@@ -117,6 +117,7 @@ export class UpsertGymSettingsDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(3)
   @Length(3, 3)
   @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter ISO code' })
   currency?: string;

@@ -4,6 +4,7 @@ import {
   IsArray,
   ValidateNested,
   ArrayMinSize,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -14,6 +15,7 @@ import { ShopOrderItemDto } from './create-shop-order.dto';
 export class AdminCreateShopOrderDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
+  @MaxLength(36)
   memberId: string;
 
   @ApiProperty({ type: [ShopOrderItemDto] })

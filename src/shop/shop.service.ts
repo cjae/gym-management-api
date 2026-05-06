@@ -621,9 +621,17 @@ export class ShopService {
       throw new BadRequestException('Order is not ready for collection');
     }
 
-    const updated = await this.prisma.shopOrder.update({
-      where: { id: orderId },
+    // Atomic guard — prevents double-collection under concurrent requests
+    const result = await this.prisma.shopOrder.updateMany({
+      where: { id: orderId, status: 'PAID' },
       data: { status: 'COLLECTED' },
+    });
+    if (result.count === 0) {
+      throw new BadRequestException('Order is not ready for collection');
+    }
+
+    const updated = await this.prisma.shopOrder.findUnique({
+      where: { id: orderId },
       include: {
         orderItems: true,
         member: { select: { id: true, firstName: true } },
@@ -697,27 +705,32 @@ export class ShopService {
     });
 
     for (const order of staleOrders) {
-      const result = await this.prisma.shopOrder.updateMany({
-        where: { id: order.id, status: 'PENDING' },
-        data: { status: 'CANCELLED' },
+      const claimed = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.shopOrder.updateMany({
+          where: { id: order.id, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
+
+        if (result.count === 0) return false; // already claimed by another process
+
+        for (const item of order.orderItems) {
+          if (item.variantId) {
+            await tx.shopItemVariant.updateMany({
+              where: { id: item.variantId },
+              data: { stock: { increment: item.quantity } },
+            });
+          } else {
+            await tx.shopItem.updateMany({
+              where: { id: item.shopItemId },
+              data: { stock: { increment: item.quantity } },
+            });
+          }
+        }
+
+        return true;
       });
 
-      if (result.count === 0) continue; // already claimed by another process
-
-      for (const item of order.orderItems) {
-        if (item.variantId) {
-          await this.prisma.shopItemVariant.updateMany({
-            where: { id: item.variantId },
-            data: { stock: { increment: item.quantity } },
-          });
-        } else {
-          await this.prisma.shopItem.updateMany({
-            where: { id: item.shopItemId },
-            data: { stock: { increment: item.quantity } },
-          });
-        }
-      }
-
+      if (!claimed) continue;
       this.logger.log(
         `Cancelled stale shop order ${order.id} and restored stock`,
       );
