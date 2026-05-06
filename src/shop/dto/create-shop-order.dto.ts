@@ -8,14 +8,23 @@ import {
   IsOptional,
   IsEnum,
   ArrayMinSize,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '@prisma/client';
 
 export class ShopOrderItemDto {
-  @ApiProperty() @IsUUID() shopItemId: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() variantId?: string;
+  @ApiProperty()
+  @IsUUID()
+  @MaxLength(36)
+  shopItemId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  @MaxLength(36)
+  variantId?: string;
   @ApiProperty({ minimum: 1, maximum: 9999 })
   @IsInt()
   @Min(1)

@@ -31,6 +31,7 @@ export class CreateShopItemDto {
   @ApiPropertyOptional({ example: 'https://res.cloudinary.com/...' })
   @IsOptional()
   @IsUrl()
+  @MaxLength(2048)
   imageUrl?: string;
 
   @ApiPropertyOptional({

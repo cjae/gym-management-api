@@ -51,14 +51,13 @@ import {
 @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
 @RequiresFeature('shop')
 @Controller('shop')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ShopController {
   constructor(private readonly shopService: ShopService) {}
 
   // ── Items ──
 
   @Post('items')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopItemResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid input' })
@@ -89,7 +88,6 @@ export class ShopController {
   }
 
   @Patch('items/:id')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopItemResponseDto })
   @ApiNotFoundResponse({ description: 'Shop item not found' })
@@ -102,7 +100,6 @@ export class ShopController {
   }
 
   @Delete('items/:id')
-  @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ description: 'Item deleted' })
   @ApiNotFoundResponse({ description: 'Shop item not found' })
@@ -117,7 +114,6 @@ export class ShopController {
   // ── Item Variants ──
 
   @Post('items/:id/variants')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopItemVariantResponseDto })
   @ApiNotFoundResponse({ description: 'Shop item not found' })
@@ -130,7 +126,6 @@ export class ShopController {
   }
 
   @Patch('items/:id/variants/:vid')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopItemVariantResponseDto })
   @ApiNotFoundResponse({ description: 'Variant not found' })
@@ -144,7 +139,6 @@ export class ShopController {
   }
 
   @Delete('items/:id/variants/:vid')
-  @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOkResponse({ description: 'Variant deleted' })
   @ApiNotFoundResponse({ description: 'Variant not found' })
@@ -162,7 +156,6 @@ export class ShopController {
   // ── Orders ──
 
   @Post('orders')
-  @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiCreatedResponse({ type: CreateShopOrderResponseDto })
   @ApiBadRequestResponse({
@@ -181,7 +174,6 @@ export class ShopController {
   // ── Admin Orders ──
 
   @Post('orders/admin')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiCreatedResponse({ type: ShopOrderResponseDto })
   @ApiBadRequestResponse({ description: 'Item not found or member not found' })
@@ -192,7 +184,6 @@ export class ShopController {
   }
 
   @Get('orders')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: PaginatedShopOrdersResponseDto })
   @ApiForbiddenResponse({ description: 'Requires ADMIN or SUPER_ADMIN role' })
@@ -201,7 +192,6 @@ export class ShopController {
   }
 
   @Get('admin/orders/:id')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
@@ -213,7 +203,6 @@ export class ShopController {
   // ── Member Orders ──
 
   @Get('orders/mine')
-  @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiOkResponse({ type: PaginatedShopOrdersResponseDto })
   @ApiForbiddenResponse({ description: 'Requires MEMBER role' })
@@ -225,7 +214,6 @@ export class ShopController {
   }
 
   @Get('orders/:id')
-  @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
@@ -238,7 +226,6 @@ export class ShopController {
   }
 
   @Post('orders/:id/cancel')
-  @UseGuards(RolesGuard)
   @Roles('MEMBER')
   @ApiOkResponse({ description: 'Order cancelled successfully' })
   @ApiNotFoundResponse({ description: 'Order not found' })
@@ -252,7 +239,6 @@ export class ShopController {
   }
 
   @Patch('orders/:id/collect')
-  @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOkResponse({ type: ShopOrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order not found' })
