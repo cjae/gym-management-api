@@ -624,6 +624,9 @@ describe('ShopService', () => {
         orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
       };
       prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: any) => Promise<any>) => fn(prisma),
+      );
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
       prisma.shopItem.updateMany.mockResolvedValue({ count: 1 });
 
@@ -637,6 +640,27 @@ describe('ShopService', () => {
         where: { id: 'item-1' },
         data: { stock: { increment: 2 } },
       });
+    });
+
+    it('should skip stock restore and not log when order was already claimed', async () => {
+      const staleOrder = {
+        id: 'order-1',
+        status: 'PENDING',
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
+      };
+      prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: any) => Promise<any>) => fn(prisma),
+      );
+      prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });
+
+      const loggerSpy = jest.spyOn((service as any).logger, 'log');
+
+      await service.cleanupPendingOrders();
+
+      expect(prisma.shopItem.updateMany).not.toHaveBeenCalled();
+      expect(loggerSpy).not.toHaveBeenCalled();
     });
   });
 
