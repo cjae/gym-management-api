@@ -17,6 +17,7 @@ import {
 } from '../common/config/payment.config';
 import {
   getNextBillingDate,
+  getSubscriptionEndDate,
   getCycleStartDate,
 } from '../common/utils/billing.util';
 import { encrypt } from '../common/utils/encryption.util';
@@ -380,16 +381,16 @@ export class PaymentsService {
 
           // L7 — only reset freeze counters on a genuine cycle advance.
           // A cycle advance is defined as `nextBillingDate` strictly moving
-          // forward past the current endDate. On first activation the
-          // counters are already zero so either behaviour is safe; on
-          // renewal this guards against a replayed webhook silently
-          // re-zeroing counters the member has already consumed.
+          // forward past the stored `nextBillingDate`. Comparing against
+          // `endDate` (which is now nextBillingDate - 1 day) would always be
+          // true for a replayed webhook, incorrectly re-zeroing counters.
           const isCycleAdvance =
-            nextBillingDate.getTime() > subscription.endDate.getTime();
+            nextBillingDate.getTime() >
+            (subscription.nextBillingDate?.getTime() ?? 0);
 
           const updateData: Prisma.MemberSubscriptionUpdateManyMutationInput = {
             status: 'ACTIVE',
-            endDate: nextBillingDate,
+            endDate: getSubscriptionEndDate(nextBillingDate),
             nextBillingDate,
             // Clear discount fields after first payment so renewals
             // charge full price.
@@ -400,7 +401,8 @@ export class PaymentsService {
           if (isCycleAdvance) {
             updateData.frozenDaysUsed = 0;
             updateData.freezeCount = 0;
-            updateData.freezeCycleAnchor = nextBillingDate;
+            updateData.freezeCycleAnchor =
+              getSubscriptionEndDate(nextBillingDate);
           }
 
           // Update subscription to the online payment method so the billing
