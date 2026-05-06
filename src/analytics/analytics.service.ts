@@ -261,6 +261,9 @@ export class AnalyticsService {
 
   private getDateRange(query: AnalyticsQueryDto) {
     const to = query.to ? new Date(query.to) : new Date();
+    if (query.to) {
+      to.setUTCHours(23, 59, 59, 999);
+    }
     const from = query.from
       ? new Date(query.from)
       : new Date(to.getFullYear() - 1, to.getMonth(), to.getDate());
