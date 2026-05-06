@@ -624,7 +624,7 @@ describe('ShopService', () => {
         orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
       };
       prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
-      prisma.$transaction.mockImplementation(
+      (prisma.$transaction as any).mockImplementation(
         async (fn: (tx: any) => Promise<any>) => fn(prisma),
       );
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 1 });
@@ -650,7 +650,7 @@ describe('ShopService', () => {
         orderItems: [{ shopItemId: 'item-1', variantId: null, quantity: 2 }],
       };
       prisma.shopOrder.findMany.mockResolvedValue([staleOrder] as any);
-      prisma.$transaction.mockImplementation(
+      (prisma.$transaction as any).mockImplementation(
         async (fn: (tx: any) => Promise<any>) => fn(prisma),
       );
       prisma.shopOrder.updateMany.mockResolvedValue({ count: 0 });

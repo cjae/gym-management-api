@@ -153,7 +153,7 @@ describe('AnalyticsService', () => {
       });
 
       const callArgs = prisma.payment.findMany.mock.calls[0][0];
-      const toDate: Date = callArgs?.where?.createdAt?.lte as Date;
+      const toDate: Date = (callArgs?.where?.createdAt as any)?.lte as Date;
       expect(toDate.getUTCHours()).toBe(23);
       expect(toDate.getUTCMinutes()).toBe(59);
       expect(toDate.getUTCSeconds()).toBe(59);
@@ -626,11 +626,12 @@ describe('AnalyticsService', () => {
       });
 
       const shopCallArgs = prisma.shopOrder.findMany.mock.calls[0][0];
-      const shopToDate: Date = shopCallArgs?.where?.createdAt?.lte as Date;
+      const shopToDate: Date = (shopCallArgs?.where?.createdAt as any)
+        ?.lte as Date;
       expect(shopToDate.getUTCHours()).toBe(23);
       expect(shopToDate.getUTCMinutes()).toBe(59);
       expect(shopToDate.getUTCSeconds()).toBe(59);
-      expect(shopCallArgs?.where?.createdAt?.gte).toEqual(
+      expect((shopCallArgs?.where?.createdAt as any)?.gte).toEqual(
         new Date('2026-01-01'),
       );
     });
