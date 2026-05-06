@@ -21,7 +21,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { DiscountCodesService } from '../discount-codes/discount-codes.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { AdminCreateSubscriptionDto } from './dto/admin-create-subscription.dto';
-import { getNextBillingDate } from '../common/utils/billing.util';
+import {
+  getNextBillingDate,
+  getSubscriptionEndDate,
+} from '../common/utils/billing.util';
 import { ADMIN_PAYMENT_METHODS } from '../common/constants/payment-methods';
 
 @Injectable()
@@ -56,7 +59,8 @@ export class SubscriptionsService {
     }
 
     const startDate = new Date();
-    const endDate = getNextBillingDate(startDate, plan.billingInterval);
+    const nextBillingDate = getNextBillingDate(startDate, plan.billingInterval);
+    const endDate = getSubscriptionEndDate(nextBillingDate);
 
     const member = await this.prisma.user.findUnique({
       where: { id: memberId },
@@ -116,7 +120,7 @@ export class SubscriptionsService {
               startDate,
               endDate,
               paymentMethod: dto.paymentMethod,
-              nextBillingDate: endDate,
+              nextBillingDate,
               discountCodeId,
               discountAmount,
               originalPlanPrice: plan.price,
@@ -131,7 +135,7 @@ export class SubscriptionsService {
               endDate,
               status: SubscriptionStatus.PENDING,
               paymentMethod: dto.paymentMethod,
-              nextBillingDate: endDate,
+              nextBillingDate,
               discountCodeId,
               discountAmount,
               originalPlanPrice: plan.price,
@@ -257,8 +261,9 @@ export class SubscriptionsService {
     } else {
       startDate = now;
     }
-    const endDate = getNextBillingDate(startDate, plan.billingInterval);
-    if (endDate <= now) {
+    const nextBillingDate = getNextBillingDate(startDate, plan.billingInterval);
+    const endDate = getSubscriptionEndDate(nextBillingDate);
+    if (nextBillingDate <= now) {
       throw new BadRequestException(
         'Start date results in an already expired billing window for this plan',
       );
@@ -293,7 +298,7 @@ export class SubscriptionsService {
           endDate,
           status: SubscriptionStatus.ACTIVE,
           paymentMethod: dto.paymentMethod,
-          nextBillingDate: endDate,
+          nextBillingDate,
           autoRenew: false,
           createdBy: adminId,
           paymentNote: dto.paymentNote,

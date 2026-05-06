@@ -95,6 +95,14 @@ describe('SubscriptionsService', () => {
           }),
         }),
       );
+
+      // endDate must be exactly one day before nextBillingDate
+      const createCall = prisma.memberSubscription.create.mock.calls[0][0];
+      const endDate: Date = createCall.data.endDate as Date;
+      const nextBilling: Date = createCall.data.nextBillingDate as Date;
+      expect(nextBilling.getTime() - endDate.getTime()).toBe(
+        24 * 60 * 60 * 1000,
+      );
     });
 
     it('should update existing PENDING subscription instead of creating new one', async () => {
@@ -534,6 +542,14 @@ describe('SubscriptionsService', () => {
         expect.objectContaining({
           type: 'subscription',
         }),
+      );
+
+      // endDate must be exactly one day before nextBillingDate
+      const createCall = prisma.memberSubscription.create.mock.calls[0][0];
+      const endDate: Date = createCall.data.endDate as Date;
+      const nextBilling: Date = createCall.data.nextBillingDate as Date;
+      expect(nextBilling.getTime() - endDate.getTime()).toBe(
+        24 * 60 * 60 * 1000,
       );
     });
 
